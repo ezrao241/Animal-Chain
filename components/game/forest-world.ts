@@ -10,6 +10,7 @@ import {createSkyEnvironment} from './sky';
 import {createInstances, Placement} from './instances';
 import {addTerrainDetail, addBaseGround} from './terrain-detail';
 import {loadDaylight, Daylight} from './lighting';
+import {assetRoot} from './asset-root';
 
 const STEP = 5, NX = 801, NY = 561;
 let HEIGHT: Float32Array | null = null, PATH: Uint8Array | null = null, WATER: Float32Array | null = null;
@@ -124,7 +125,7 @@ export function createForest(scene: THREE.Scene, seed: number, lightweight: bool
     }, undefined, e => console.error('tile load failed', t.url, e));
   }
   let inst: Awaited<ReturnType<typeof createInstances>> | null = null;
-  if (WORLD_CONFIG.placements.length) createInstances(scene, '/env/', WORLD_CONFIG.placements).then(r => {
+  if (WORLD_CONFIG.placements.length) createInstances(scene, assetRoot() + 'env/', WORLD_CONFIG.placements).then(r => {
     inst = r; (window as any).__instances = {triangles: r.triangles, chunks: r.chunks};
   }).catch(e => console.error('instances failed', e));
   (window as any).__probe = () => { const out: any = {casters: 0, inst: 0, mats: {} as any, sun: null};
