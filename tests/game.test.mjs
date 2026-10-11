@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ANIMALS,SPECIES,WILDLIFE,newPlayer,newRoom,start,respawn,die,tick,move,props,interact,forestEvent,useAbility,perch,hidden,publicRoom,cameraInput} from '../lib/game.ts';
+import {W,H,ANIMALS,SPECIES,WILDLIFE,newPlayer,newRoom,start,respawn,die,tick,move,props,interact,forestEvent,useAbility,perch,hidden,publicRoom,cameraInput} from '../lib/game.ts';
 const NOW=1800000000000;
 function fixture(species='fox'){
  const player=newPlayer('test-host','Test Host',NOW,false,species);player.token='test-only-token';player.x=1000;player.y=700;player.protectedUntil=0;
  const room=newRoom('TESTAB',player,NOW);Object.assign(room,{phase:'playing',started:NOW,ends:NOW+300000,foods:[]});return{room,player};
 }
-test('five-minute rounds, two humans, and 24 ecological slots',()=>{
+test('five-minute rounds, two humans, and 60 ecological slots',()=>{
  const {room,player}=fixture();room.players.push(newPlayer('friend','Friend',NOW,false,'mouse'));const previous=room.players.map(p=>p.species);start(room,NOW);
- assert.equal(room.ends-room.started,300000);assert.equal(room.players.length,26);assert.equal(room.players[0].token,'test-only-token');
+ assert.equal(room.ends-room.started,300000);assert.equal(room.players.length,2+WILDLIFE.length);assert.equal(room.players[0].token,'test-only-token');
  room.players.slice(0,2).forEach((p,i)=>assert.notEqual(p.species,previous[i]));assert.deepEqual(room.players.filter(p=>p.bot).map(p=>p.species),WILDLIFE);
  assert.equal(publicRoom(room,NOW).players.some(p=>'token' in p),false);
 });
@@ -41,7 +41,7 @@ test('holding sprint while stationary does not consume stamina',()=>{
  for(let i=1;i<=20;i++){player.lastSeen=NOW+600+i*100;tick(room,player.lastSeen);}assert.equal(player.exhausted,false);assert.ok(player.stamina>=25);
 });
 test('owl flight and canopy hiding work; squirrel climbs against a tree',()=>{
- const{room,player}=fixture('owl');useAbility(player,room,NOW);assert.equal(player.owlMode,'flying');const tree=props(room.seed).find(p=>p.kind==='tree');player.x=tree.x+50;player.y=tree.y;perch(player,room,NOW+1000);assert.equal(player.owlMode,'perched');assert.ok(player.perchHeight>100);assert.equal(hidden(player,room,NOW+1000),true);perch(player,room,NOW+2000);assert.equal(player.owlMode,'flying');
+ const{room,player}=fixture('owl');useAbility(player,room,NOW);assert.equal(player.owlMode,'flying');const trees=props(room.seed).filter(p=>p.kind==='tree'||p.kind==='pine'),tree=trees.find(p=>p.kind==='tree'&&!trees.some(q=>q!==p&&Math.hypot(q.x-p.x,q.y-p.y)<180));player.x=tree.x+50;player.y=tree.y;perch(player,room,NOW+1000);assert.equal(player.owlMode,'perched');assert.ok(player.perchHeight>100);assert.equal(hidden(player,room,NOW+1000),true);perch(player,room,NOW+2000);assert.equal(player.owlMode,'flying');
  player.species='squirrel';player.abilityReady=0;player.x=tree.x+70;useAbility(player,room,NOW+3000);assert.ok(player.abilityUntil>NOW+3000);assert.ok(Math.abs(Math.hypot(player.x-tree.x,player.y-tree.y)-34)<.01);
 });
 test('camera-relative input rotates consistently',()=>{
@@ -49,7 +49,7 @@ test('camera-relative input rotates consistently',()=>{
 });
 test('full-round simulation keeps all species populated and ends on time',()=>{
  const {room,player}=fixture();room.players.push(newPlayer('friend','Friend',NOW,false,'mouse'));start(room,NOW);let minimumAvailableMice=100;const counts={};
- for(let i=1;i<=3000;i++){const t=NOW+i*100;for(const p of room.players)if(!p.bot)p.lastSeen=t;tick(room,t);const bots=room.players.filter(p=>p.bot);assert.deepEqual(bots.map(p=>p.species),WILDLIFE);assert.ok(bots.every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)&&p.x>=0&&p.x<=2000&&p.y>=0&&p.y<=1400));minimumAvailableMice=Math.min(minimumAvailableMice,bots.filter(p=>p.species==='mouse'&&!p.deadUntil).length);}
+ for(let i=1;i<=3000;i++){const t=NOW+i*100;for(const p of room.players)if(!p.bot)p.lastSeen=t;tick(room,t);const bots=room.players.filter(p=>p.bot);assert.deepEqual(bots.map(p=>p.species),WILDLIFE);assert.ok(bots.every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)&&p.x>=0&&p.x<=W&&p.y>=0&&p.y<=H));minimumAvailableMice=Math.min(minimumAvailableMice,bots.filter(p=>p.species==='mouse'&&!p.deadUntil).length);}
  for(const s of SPECIES)counts[s]=room.players.filter(p=>p.bot&&p.species===s).length;
  assert.equal(room.phase,'finished');assert.ok(minimumAvailableMice>0);assert.ok(room.players.every(p=>p.vx===0&&p.vy===0));console.log('Full round:',JSON.stringify({counts,minimumAvailableMice,humanScores:room.players.filter(p=>!p.bot).map(p=>p.score)}));
 });

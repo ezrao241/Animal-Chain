@@ -19,7 +19,7 @@ try{
  assert.equal(guest.room.players.filter(p=>!p.bot).length,2);
  await api({action:'start',...auth(guest)},403);
  const started=await api({action:'start',...auth(host)});
- assert.equal(started.room.phase,'playing');assert.equal(started.room.practice,false);assert.equal(started.room.ends-started.room.started,300000);assert.equal(started.room.players.length,26);
+ assert.equal(started.room.phase,'playing');assert.equal(started.room.practice,false);assert.equal(started.room.ends-started.room.started,300000);assert.equal(started.room.players.length,62);
  await api({action:'sync',code:host.room.code,id:'wild-0',seq:1},401);
  await api({action:'sync',...auth(guest),token:'invalid-token'},401);
  await api({action:'join',code:host.room.code,name:'Late player'},409);
