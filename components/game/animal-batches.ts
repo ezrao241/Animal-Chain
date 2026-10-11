@@ -11,7 +11,7 @@ export class AnimalBatches {
  update(rigs:Iterable<AnimalRig>,focus:THREE.Vector3,lowDetail=false){
   for(const batch of this.batches.values())batch.count=0;
   for(const rig of rigs){
-   if(!rig.root.visible)continue;
+   if(!rig.root.visible||rig.root.userData.real)continue;
    let parts=this.parts.get(rig);if(!parts){parts=[];rig.root.traverse(o=>{if(o instanceof THREE.Mesh)parts!.push(o);});this.parts.set(rig,parts);}
    rig.root.updateMatrixWorld(true);
    const distant=lowDetail||rig.root.position.distanceToSquared(focus)>260*260;

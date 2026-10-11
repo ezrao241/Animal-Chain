@@ -48,42 +48,45 @@ export function notify(p:Player,message:string,now:number){p.message=message;p.m
 export function respawn(p:Player,now:number){const choices=SPECIES.filter(s=>s!==p.species);const species=p.bot?(WILDLIFE[Number(p.id.replace('wild-',''))]||p.species):choices[Math.floor(Math.random()*choices.length)];const fresh=newPlayer(p.id,p.bot?ANIMALS[species].name:p.name,now,p.bot,species);Object.assign(p,fresh,{score:p.score,deaths:p.deaths,token:p.token,lastSeen:p.lastSeen,seq:p.seq});notify(p,'New life. New animal.',now);}
 export function start(room:Room,now:number){room.phase='playing';room.started=now;room.ends=now+300000;room.tick=now;room.round++;room.foods=makeFoods(room.seed);room.players=room.players.filter(p=>!p.bot);for(const p of room.players){const token=p.token,choices=SPECIES.filter(s=>s!==p.species);Object.assign(p,newPlayer(p.id,p.name,now,false,choices[Math.floor(Math.random()*choices.length)]),{token});}WILDLIFE.forEach((s,i)=>room.players.push(newPlayer('wild-'+i,ANIMALS[s].name,now,true,s)));room.events=['Golden forage. Find food, complete tasks, survive.'];}
 export function hidden(p:Player,room:Room,now:number){return(p.species==='owl'&&p.owlMode==='perched')||(p.species==='mouse'||p.species==='snake'||p.species==='squirrel')&&p.abilityUntil>now||Math.hypot(p.dx,p.dy)<.1&&bushNear(props(room.seed),p.x,p.y,37);}
+// Real-size world: animals are modelled at life size, so movement and reach use real distances. Speeds keep the
+// species balance of the original design scaled to real running speeds (fox 8.6 m/s, 12.2 m/s sprinting).
+export const REAL_SPEED=.4,TRUNK_RADIUS=7,CATCH_RANGE=14,POUNCE_RANGE=30,TALON_RANGE=25,FOOD_RANGE=15,CACHE_RANGE=25,TREE_REACH=40;
 export function move(p:Player,dt:number,ps:Prop[],now:number){
  p.vx??=0;p.vy??=0;p.stamina??=100;
  if(p.species==='owl'&&p.owlMode==='perched'||p.species==='squirrel'&&p.abilityUntil>now){p.vx=0;p.vy=0;return;}
  let speed=ANIMALS[p.species].speed;
  if(p.species==='owl')speed=p.owlMode==='flying'?255:125;
  else if(p.abilityUntil>now)speed*=p.species==='rabbit'?2:p.species==='fox'?2.1:p.species==='snake'?.65:1.4;
- const sprinting=p.sprint&&!p.exhausted&&p.stamina>0&&Math.hypot(p.dx,p.dy)>.1;speed*=sprinting?1.42:1;
+ const sprinting=p.sprint&&!p.exhausted&&p.stamina>0&&Math.hypot(p.dx,p.dy)>.1;speed*=(sprinting?1.42:1)*REAL_SPEED;
  const n=Math.max(1,Math.hypot(p.dx,p.dy)),blend=1-Math.exp(-18*dt);
  p.vx+=(p.dx/n*speed-p.vx)*blend;p.vy+=(p.dy/n*speed-p.vy)*blend;
  if(Math.abs(p.vx)<.1)p.vx=0;if(Math.abs(p.vy)<.1)p.vy=0;
  let x=Math.max(25,Math.min(W-25,p.x+p.vx*dt)),y=Math.max(25,Math.min(H-25,p.y+p.vy*dt));
- if(!(p.species==='owl'&&p.owlMode==='flying'))for(const t of solidNear(ps,x,y,126)){const radius=t.kind==='rock'?42:31;
+ if(!(p.species==='owl'&&p.owlMode==='flying'))for(const t of solidNear(ps,x,y,126)){const radius=t.kind==='rock'?42:TRUNK_RADIUS;
  const d=Math.hypot(x-t.x,y-t.y);if(d<radius){const nx=d>.001?(x-t.x)/d:1,ny=d>.001?(y-t.y)/d:0;x=t.x+nx*radius;y=t.y+ny*radius;const inward=p.vx*nx+p.vy*ny;if(inward<0){p.vx-=inward*nx;p.vy-=inward*ny;}}}
  p.x=x;p.y=y;if(Math.abs(p.vx)>1)p.face=p.vx>0?1:-1;
 }
 export function perch(p:Player,room:Room,now:number){
  if(p.species!=='owl'||p.deadUntil)return;
  if(p.owlMode==='perched'){p.owlMode='flying';p.abilityReady=now+600;notify(p,'Taking flight.',now);return;}
- const tree=props(room.seed).filter(t=>(t.kind==='tree'||t.kind==='pine')&&dist(p,t)<110).sort((a,b)=>dist(a,p)-dist(b,p))[0];
+ const tree=props(room.seed).filter(t=>(t.kind==='tree'||t.kind==='pine')&&dist(p,t)<TREE_REACH).sort((a,b)=>dist(a,p)-dist(b,p))[0];
  if(!tree){notify(p,'Move closer to a tree, then press Q to hide.',now);return;}
  p.owlMode='perched';p.x=tree.x;p.y=tree.y;p.perchHeight=tree.size*1.8;p.dx=0;p.dy=0;p.vx=0;p.vy=0;notify(p,'Hidden in the canopy. Space or Q to fly.',now);
 }
 export function useAbility(p:Player,room:Room,now:number){if(now<p.abilityReady||p.deadUntil)return;
  if(p.species==='owl'){
  if(p.owlMode==='flying'){
- const blocked=props(room.seed).some(t=>t.kind!=='bush'&&t.kind!=='hollow'&&dist(t,p)<(t.kind==='rock'?45:35));
+ const blocked=props(room.seed).some(t=>t.kind!=='bush'&&t.kind!=='hollow'&&dist(t,p)<(t.kind==='rock'?45:TRUNK_RADIUS+4));
  if(blocked){notify(p,'Move to a clearing before landing, or Q to perch.',now);return;}p.owlMode='ground';notify(p,'Landing.',now);
  }else{p.owlMode='flying';notify(p,'Taking flight. E to dive; Q near a tree to hide.',now);}
  p.abilityReady=now+600;return;}
- if(p.species==='squirrel'){const tree=props(room.seed).filter(t=>(t.kind==='tree'||t.kind==='pine')&&dist(t,p)<95).sort((a,b)=>dist(a,p)-dist(b,p))[0];if(!tree){notify(p,'Get closer to a tree to climb.',now);return;}const d=Math.max(1,dist(tree,p));p.x=tree.x+(p.x-tree.x)/d*34;p.y=tree.y+(p.y-tree.y)/d*34;}
+ if(p.species==='squirrel'){const tree=props(room.seed).filter(t=>(t.kind==='tree'||t.kind==='pine')&&dist(t,p)<TREE_REACH).sort((a,b)=>dist(a,p)-dist(b,p))[0];if(!tree){notify(p,'Get closer to a tree to climb.',now);return;}const d=Math.max(1,dist(tree,p));p.x=tree.x+(p.x-tree.x)/d*(TRUNK_RADIUS+1);p.y=tree.y+(p.y-tree.y)/d*(TRUNK_RADIUS+1);}
  p.abilityUntil=now+ANIMALS[p.species].duration*1000;p.abilityReady=now+ANIMALS[p.species].cooldown*1000;notify(p,ANIMALS[p.species].ability+'!',now);}
 export function die(p:Player,room:Room,now:number,cause:string){if(p.deadUntil)return;p.deadUntil=now+2600;p.dx=0;p.dy=0;p.vx=0;p.vy=0;p.deaths++;notify(p,cause,now);if(!p.bot){room.events.unshift(p.name+' '+cause);room.events=room.events.slice(0,5);}}
 export function interact(p:Player,room:Room,now:number){if(p.deadUntil||now<p.interactReady)return;p.interactReady=now+650;p.actionUntil=now+500;if(p.species==='owl'&&p.owlMode==='perched'){notify(p,'Take flight before hunting.',now);return;}if(p.species==='owl'&&p.owlMode==='flying')p.diveUntil=now+650;
- if((p.species==='mouse'||p.species==='squirrel')&&p.carry>0&&props(room.seed).some(t=>t.kind==='hollow'&&dist(t,p)<75)){p.carry--;p.caches++;p.score+=5;notify(p,'Food stored +5',now);return;}
- const a=ANIMALS[p.species];const victims=room.players.filter(q=>q.id!==p.id&&!q.deadUntil&&q.protectedUntil<now&&a.prey.includes(q.species)&&!hidden(q,room,now)&&dist(p,q)<(p.species==='owl'&&p.owlMode==='flying'?95:p.abilityUntil>now?78:52));victims.sort((x,y)=>dist(p,x)-dist(p,y));if(victims[0]){const q=victims[0];die(q,room,now,'was caught by '+a.name.toLowerCase()+'.');p.hunger=Math.min(100,p.hunger+42);p.hunts++;p.food++;p.carry++;const points=forestEvent(room,now).kind==='hunt'?15:10;p.score+=points;notify(p,'Successful hunt +'+points,now);return;}
- const f=room.foods.filter(f=>f.ready<=now&&a.foods.includes(f.kind)&&dist(p,f)<65).sort((x,y)=>dist(p,x)-dist(p,y))[0];if(f){f.ready=now+18000;p.food++;p.carry++;p.hunger=Math.min(100,p.hunger+28);const points=forestEvent(room,now).kind==='forage'?5:3;p.score+=points;notify(p,'Food found +'+points,now);}else if(!p.bot)notify(p,'Move closer to your food or suitable prey.',now);
+ if((p.species==='mouse'||p.species==='squirrel')&&p.carry>0&&props(room.seed).some(t=>t.kind==='hollow'&&dist(t,p)<CACHE_RANGE)){p.carry--;p.caches++;p.score+=5;notify(p,'Food stored +5',now);return;}
+ const a=ANIMALS[p.species];const victims=room.players.filter(q=>q.id!==p.id&&!q.deadUntil&&q.protectedUntil<now&&a.prey.includes(q.species)&&!hidden(q,room,now)&&dist(p,q)<(p.species==='owl'&&p.owlMode==='flying'?TALON_RANGE:p.abilityUntil>now?POUNCE_RANGE:CATCH_RANGE));victims.sort((x,y)=>dist(p,x)-dist(p,y));if(victims[0]){const q=victims[0];die(q,room,now,'was caught by '+a.name.toLowerCase()+'.');p.hunger=Math.min(100,p.hunger+42);p.hunts++;p.food++;p.carry++;const points=forestEvent(room,now).kind==='hunt'?15:10;p.score+=points;notify(p,'Successful hunt +'+points,now);return;}
+ const f=room.foods.filter(f=>f.ready<=now&&a.foods.includes(f.kind)&&dist(p,f)<FOOD_RANGE).sort((x,y)=>dist(p,x)-dist(p,y))[0];if(f){f.ready=now+18000;p.food++;p.carry++;p.hunger=Math.min(100,p.hunger+28);const points=forestEvent(room,now).kind==='forage'?5:3;p.score+=points;notify(p,'Food found +'+points,now);}else if(!p.bot)notify(p,'Move closer to your food or suitable prey.',now);
 }
 export function tasks(p:Player,now:number){const pred=ANIMALS[p.species].prey.length>0;return[{label:pred?'Complete 2 hunts':'Eat 4 food items',value:pred?p.hunts:p.food,target:pred?2:4,points:30},{label:p.species==='mouse'||p.species==='squirrel'?'Store 2 food items at hollows':pred?'Eat 4 food items':'Stay hidden for 8 seconds',value:p.species==='mouse'||p.species==='squirrel'?p.caches:pred?p.food:Math.floor(p.hiddenSeconds),target:p.species==='mouse'||p.species==='squirrel'?2:pred?4:8,points:25},{label:'Survive this life for 60 seconds',value:Math.floor(p.survivalSeconds),target:60,points:40}];}
 export function tick(room:Room,now:number){
@@ -108,10 +111,10 @@ export function tick(room:Room,now:number){
    if(!goal){let best=Infinity;for(const f of room.foods){if(f.ready>t||!ANIMALS[p.species].foods.includes(f.kind))continue;const d=dist(p,f);if(d<best){best=d;goal=f;}}}
   }
   if(!goal){if(!p.targetX||dist(p,{x:p.targetX,y:p.targetY})<60){const q=safePoint(Math.floor(t+p.x));p.targetX=q.x;p.targetY=q.y;}goal={x:p.targetX,y:p.targetY};}
-  const d=dist(p,goal);p.dx=d>15?(goal.x-p.x)/Math.max(1,d):0;p.dy=d>15?(goal.y-p.y)/Math.max(1,d):0;
+  const d=dist(p,goal);p.dx=d>8?(goal.x-p.x)/Math.max(1,d):0;p.dy=d>8?(goal.y-p.y)/Math.max(1,d):0;
   // Steer around trunks before collision instead of running into them forever.
   if(!(p.species==='owl'&&p.owlMode==='flying'))for(const tree of solidNear(ps,p.x,p.y,83)){
-   const ox=tree.x-p.x,oy=tree.y-p.y,clearance=tree.kind==='rock'?83:70;
+   const ox=tree.x-p.x,oy=tree.y-p.y,clearance=tree.kind==='rock'?83:TRUNK_RADIUS+16;
    if(Math.hypot(ox,oy)<clearance&&ox*p.dx+oy*p.dy>0){
     const side=p.dx*oy-p.dy*ox>=0?-1:1,angle=side*.9;
     const dx=p.dx*Math.cos(angle)-p.dy*Math.sin(angle);p.dy=p.dx*Math.sin(angle)+p.dy*Math.cos(angle);p.dx=dx;break;

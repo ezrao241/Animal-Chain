@@ -5,7 +5,10 @@ import {mergeGeometries} from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {createRenderer,SoftwareRenderer} from './software-renderer';
 import {cameraInput,ANIMALS,SPECIES,Species,Room,Player,W,H,props,makeFoods,move,newPlayer,dist} from '@/lib/game';
 import {makeAnimal,animateAnimal,AnimalRig,animalPortrait} from './animal-models';
-import {createForest,groundY} from './forest-world';
+import {hasReal,makeRealAnimal,animateReal,cameraProfile} from './real-animals';
+import {hasRealFood,makeRealFood} from './real-food';
+import {createForest,groundY,setAnimals} from './forest-world';
+import {loadGameAssets} from './world-assets';
 import {AnimalBatches} from './animal-batches';
 import type {AnimalSoundEvent} from '@/lib/animal-sounds';
 export type GraphicsMode='auto'|'performance'|'high';
@@ -19,9 +22,10 @@ function makeFood(kind:string){
  const halo=new THREE.Mesh(new THREE.RingGeometry(12,14,24),new THREE.MeshBasicMaterial({color:0xbdda78,transparent:true,opacity:.55,side:THREE.DoubleSide}));halo.rotation.x=-Math.PI/2;halo.position.y=1;halo.name='food-ring';g.add(halo);return g;
 }
 export default function WorldScene({room,me,input,preview=false,onPerformance,onAnimalSound}:{room:WorldRoom|null;me:Player|undefined;input:React.RefObject<WorldInput>;preview?:boolean;onPerformance?:(stats:PerformanceStats)=>void;onAnimalSound?:(species:Species,event:AnimalSoundEvent,volume:number,pan:number)=>void}){
- const host=useRef<HTMLDivElement>(null),latest=useRef({room,me,onPerformance,onAnimalSound});latest.current={room,me,onPerformance,onAnimalSound};const [failure,setFailure]=useState(''),[software,setSoftware]=useState(false);
+ const host=useRef<HTMLDivElement>(null),latest=useRef({room,me,onPerformance,onAnimalSound});latest.current={room,me,onPerformance,onAnimalSound};const [failure,setFailure]=useState(''),[software,setSoftware]=useState(false),[assetsReady,setAssetsReady]=useState(false);
+ useEffect(()=>{let live=true;loadGameAssets().catch(e=>console.error('world assets failed',e)).then(()=>{if(live)setAssetsReady(true);});return()=>{live=false;};},[]);
  useEffect(()=>{
-  if(!host.current)return;const element=host.current;let renderer:THREE.WebGLRenderer|SoftwareRenderer;
+  if(!assetsReady||!host.current)return;const element=host.current;let renderer:THREE.WebGLRenderer|SoftwareRenderer;
   try{renderer=createRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});}catch{setFailure('3D rendering is unavailable. Enable graphics acceleration and reload.');return;}
   const lightweight=renderer instanceof SoftwareRenderer;setSoftware(lightweight);let pixelRatio=lightweight?.7:1;
   renderer.setPixelRatio(pixelRatio);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.12;renderer.shadowMap.enabled=false;renderer.shadowMap.type=THREE.PCFSoftShadowMap;if(renderer instanceof THREE.WebGLRenderer)renderer.shadowMap.autoUpdate=false;
@@ -31,7 +35,7 @@ export default function WorldScene({room,me,input,preview=false,onPerformance,on
   scene.add(new THREE.HemisphereLight(0xc5ddf1,0x303923,1.5));const sun=new THREE.DirectionalLight(0xffdab0,2.9);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);Object.assign(sun.shadow.camera,{left:-400,right:400,top:400,bottom:-400,near:10,far:1700});sun.shadow.bias=-.0003;sun.shadow.normalBias=1.5;sun.shadow.camera.updateProjectionMatrix();scene.add(sun,sun.target);
   const rim=new THREE.DirectionalLight(0x99bbca,.65);rim.position.set(-400,200,500);scene.add(rim);
   const forest=createForest(scene,417,lightweight,preview),ps=props(417),previewFoods=makeFoods(417),foodModels=new Map<number,THREE.Group>();
-  for(const f of previewFoods){const food=makeFood(f.kind);food.position.set(f.x,groundY(f.x,f.y),f.y);foodModels.set(f.id,food);scene.add(food);}
+  for(const f of previewFoods){const food=hasRealFood(f.kind)?makeRealFood(f.kind,f.id):makeFood(f.kind);food.position.set(f.x,groundY(f.x,f.y),f.y);foodModels.set(f.id,food);scene.add(food);}
   const rigs=new Map<string,AnimalRig>(),positions=new Map<string,Player>(),shadows=new Map<string,THREE.Mesh>(),shadowGeo=new THREE.CircleGeometry(1,20),shadowMat=new THREE.MeshBasicMaterial({color:0x0b1913,transparent:true,opacity:.22,depthWrite:false});
   const animalBatches=lightweight?null:new AnimalBatches(scene);
   const demo=SPECIES.map((s,i)=>{const p=newPlayer('preview-'+s,ANIMALS[s].name,Date.now(),true,s);p.x=900+(i%3)*90;p.y=610+Math.floor(i/3)*110;p.protectedUntil=0;if(s==='owl')p.owlMode='flying';return p;});
@@ -78,7 +82,7 @@ export default function WorldScene({room,me,input,preview=false,onPerformance,on
    for(const [id,rig]of rigs)if(!ids.has(id)){scene.remove(rig.root);rigs.delete(id);positions.delete(id);const shadow=shadows.get(id);if(shadow)scene.remove(shadow);shadows.delete(id);}
    for(const p of players){
     const own=p.id===m?.id;let rig=rigs.get(p.id);
-    if(!rig||rig.species!==p.species){if(rig)scene.remove(rig.root);rig=makeAnimal(p.species);rig.born=p.born;rig.turn=own?Math.PI/2:0;rigs.set(p.id,rig);positions.set(p.id,{...p});if(!animalBatches)scene.add(rig.root);if(!shadows.has(p.id)){const shadow=new THREE.Mesh(shadowGeo,shadowMat);shadow.rotation.x=-Math.PI/2;scene.add(shadow);shadows.set(p.id,shadow);}}
+    if(!rig||rig.species!==p.species){if(rig)scene.remove(rig.root);rig=hasReal(p.species)?makeRealAnimal(p.species):makeAnimal(p.species);rig.born=p.born;rig.turn=own?Math.PI/2:0;rigs.set(p.id,rig);positions.set(p.id,{...p});if(!animalBatches||rig.root.userData.real)scene.add(rig.root);if(!shadows.has(p.id)){const shadow=new THREE.Mesh(shadowGeo,shadowMat);shadow.rotation.x=-Math.PI/2;scene.add(shadow);shadows.set(p.id,shadow);}}
     const position=positions.get(p.id)!;if(position.born!==p.born||Math.hypot(position.x-p.x,position.y-p.y)>220){Object.assign(position,p);rig.altitude=0;}
     const concealed=(p as Player&{concealed?:boolean}).concealed;rig.root.visible=!p.deadUntil&&(!concealed||own)&&(own||!m||dist(m,p)<drawRange-60);const shadow=shadows.get(p.id)!;shadow.visible=rig.root.visible;
     if(!rig.root.visible)continue;let vx=p.vx||0,vy=p.vy||0;
@@ -90,17 +94,18 @@ export default function WorldScene({room,me,input,preview=false,onPerformance,on
     }else{const k=1-Math.exp(-12*dt);position.x+=(p.x+vx*lag-position.x)*k;position.y+=(p.y+vy*lag-position.y)*k;}
     const speed=Math.hypot(vx,vy);if(speed>3){const direction=-Math.atan2(vy,vx),delta=Math.atan2(Math.sin(direction-rig.turn),Math.cos(direction-rig.turn));rig.turn+=delta*(1-Math.exp(-11*dt));}
     rig.root.rotation.y=rig.turn;rig.root.position.set(position.x,groundY(position.x,position.y),position.y);
-    animateAnimal(rig,{speed,time,dt,flying:p.species==='owl'&&p.owlMode==='flying',perched:p.species==='owl'&&p.owlMode==='perched',altitude:p.perchHeight,climbing:p.species==='squirrel'&&p.abilityUntil>now,ability:p.abilityUntil>now,action:p.actionUntil>now,dive:p.diveUntil>now?1-(p.diveUntil-now)/650:0});
-    shadow.position.set(position.x,groundY(position.x,position.y)+.6,position.y);shadow.scale.set(p.species==='fox'?26:18,p.species==='fox'?13:12,1);
-    if(own){ownHeading=rig.turn;const headHeight=p.species==='fox'?25:p.species==='owl'?30:p.species==='snake'?9:19;target.set(position.x,rig.root.position.y+headHeight,position.y);if(first||ownBorn!==p.born){follow.copy(target);ownBorn=p.born;first=false;}follow.lerp(target,1-Math.exp(-9*dt));}
+    (rig.root.userData.real?animateReal:animateAnimal)(rig,{speed,time,dt,flying:p.species==='owl'&&p.owlMode==='flying',perched:p.species==='owl'&&p.owlMode==='perched',altitude:p.perchHeight,climbing:p.species==='squirrel'&&p.abilityUntil>now,ability:p.abilityUntil>now,action:p.actionUntil>now,dive:p.diveUntil>now?1-(p.diveUntil-now)/650:0});
+    shadow.position.set(position.x,groundY(position.x,position.y)+.6,position.y);{const sp=cameraProfile(p.species);shadow.scale.set(sp?sp.shadow[0]:p.species==='fox'?26:18,sp?sp.shadow[1]:p.species==='fox'?13:12,1);}
+    if(own){ownHeading=rig.turn;const headHeight=cameraProfile(p.species)?.head??(p.species==='fox'?25:p.species==='owl'?30:p.species==='snake'?9:19);target.set(position.x,rig.root.position.y+headHeight,position.y);if(first||ownBorn!==p.born){follow.copy(target);ownBorn=p.born;first=false;}follow.lerp(target,1-Math.exp(-9*dt));}
    }
+   setAnimals(Array.from(rigs,([id,rg])=>({id,x:rg.root.position.x,z:rg.root.position.z,y:rg.altitude||0})));
    if(preview){follow.set(1000,45,700);yaw=-.5+Math.sin(time*.08)*.15;distance=width<760?330:240;pitch=.2;}
    if(input.current.recenter){yaw=ownHeading-Math.PI/2;pitch=.24;input.current.recenter=false;}if(!preview)input.current.cameraYaw=yaw;
-   let actualDistance=distance*(width<650?.91:1);const forwardX=Math.sin(yaw),forwardZ=Math.cos(yaw);
-   for(const t of ps){if(t.kind==='bush'||t.kind==='hollow')continue;const dx=t.x-follow.x,dz=t.y-follow.z,along=dx*forwardX+dz*forwardZ,side=Math.abs(dx*forwardZ-dz*forwardX);if(along>24&&along<actualDistance&&side<(t.kind==='rock'?32:19))actualDistance=Math.max(55,along-22);}
+   const prof=!preview&&m?cameraProfile(m.species):undefined;if(camera.near!==(prof?.near??1.8)){camera.near=prof?.near??1.8;camera.updateProjectionMatrix();}let actualDistance=(prof?prof.distance*distance/155:distance)*(width<650?.91:1);const forwardX=Math.sin(yaw),forwardZ=Math.cos(yaw);
+   for(const t of ps){if(t.kind==='bush'||t.kind==='hollow')continue;const dx=t.x-follow.x,dz=t.y-follow.z,along=dx*forwardX+dz*forwardZ,side=Math.abs(dx*forwardZ-dz*forwardX);if(along>(prof?3:24)&&along<actualDistance&&side<(t.kind==='rock'?32:19))actualDistance=prof?Math.max(prof.min,along-6):Math.max(55,along-22);}
    const boost=m?.sprint&&!m.exhausted&&m.stamina>2&&Math.hypot(m.vx,m.vy)>60?1:0,nextFov=THREE.MathUtils.damp(camera.fov,61+boost*5,5,dt);if(Math.abs(nextFov-camera.fov)>.01){camera.fov=nextFov;camera.updateProjectionMatrix();}
-   camera.position.set(follow.x+forwardX*Math.cos(pitch)*actualDistance,Math.max(groundY(follow.x+forwardX*actualDistance,follow.z+forwardZ*actualDistance)+12,follow.y+Math.sin(pitch)*actualDistance+13),follow.z+forwardZ*Math.cos(pitch)*actualDistance);
-   camera.lookAt(follow.x-forwardX*32,follow.y+6,follow.z-forwardZ*32);sun.position.set(follow.x-300,620,follow.z-350);sun.target.position.set(follow.x,0,follow.z);forest.update(time,follow.x,follow.z,drawRange);animalBatches?.update(rigs.values(),follow,tier==='performance');
+   camera.position.set(follow.x+forwardX*Math.cos(pitch)*actualDistance,Math.max(groundY(follow.x+forwardX*actualDistance,follow.z+forwardZ*actualDistance)+(prof?prof.clearance:12),follow.y+Math.sin(pitch)*actualDistance+(prof?prof.lift:13)),follow.z+forwardZ*Math.cos(pitch)*actualDistance);
+   {const la=prof?prof.lookAhead:32;camera.lookAt(follow.x-forwardX*la,follow.y+(prof?prof.lookY:6),follow.z-forwardZ*la);}sun.position.set(follow.x-300,620,follow.z-350);sun.target.position.set(follow.x,0,follow.z);forest.update(time,follow.x,follow.z,drawRange);animalBatches?.update(rigs.values(),follow,tier==='performance');
    if(renderer instanceof THREE.WebGLRenderer&&renderer.shadowMap.enabled&&ms-lastShadow>100){renderer.shadowMap.needsUpdate=true;lastShadow=ms;}
    for(const f of r?.foods||previewFoods){const model=foodModels.get(f.id);if(!model)continue;model.visible=f.ready<=now&&(!m||dist(m,f)<(lightweight?240:360));const halo=model.getObjectByName('food-ring');if(halo)halo.visible=!!m&&ANIMALS[m.species].foods.includes(f.kind)&&(input.current.instinct!==false||dist(m,f)<75);}
    const before=performance.now();renderer.render(scene,camera);frameCost=frameCost*.97+(performance.now()-before)*.03;
@@ -122,6 +127,6 @@ export default function WorldScene({room,me,input,preview=false,onPerformance,on
   };
   renderer.setAnimationLoop(render);
   return()=>{observer.disconnect();renderer.setAnimationLoop(null);canvas.removeEventListener('pointerdown',down);canvas.removeEventListener('pointermove',drag);canvas.removeEventListener('pointerup',up);canvas.removeEventListener('pointercancel',up);canvas.removeEventListener('wheel',wheel);animalBatches?.dispose();forest.dispose();shadowGeo.dispose();shadowMat.dispose();for(const g of foodModels.values())g.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});renderer.dispose();renderer.forceContextLoss();canvas.remove();overlay.remove();};
- },[preview,input]);
+ },[preview,input,assetsReady]);
  return <div ref={host} className="world-scene">{failure&&<div className="graphics-error" role="alert">{failure}</div>}{software&&!preview&&<span className="render-mode">Compatibility graphics</span>}</div>;
 }
