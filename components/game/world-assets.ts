@@ -3,6 +3,7 @@
 import {preloadWorld} from './forest-world';
 import {preloadRealAnimals} from './real-animals';
 import {preloadRealFood} from './real-food';
+import {assetRoot} from './asset-root';
 
 type Tile = {url: string; x0: number; y0: number; x1: number; y1: number};
 // finished areas of the 400 x 280 m map (game units); the rest of the map uses the base terrain until it is built
@@ -12,8 +13,8 @@ export const WORLD_PLACEMENTS = ['placements_trees.json', 'test_ford/placements_
 let ready: Promise<void> | null = null;
 export function loadGameAssets(opts: {tiles?: Tile[]; placements?: string[]; animals?: boolean} = {}) {
   return ready ||= Promise.all([
-    preloadWorld('/world/', opts.tiles ?? WORLD_TILES, opts.placements ?? WORLD_PLACEMENTS),
-    opts.animals === false ? null : preloadRealAnimals('/animals/'),
-    opts.animals === false ? null : preloadRealFood('/food/'),
+    preloadWorld(assetRoot() + 'world/', opts.tiles ?? WORLD_TILES, opts.placements ?? WORLD_PLACEMENTS),
+    opts.animals === false ? null : preloadRealAnimals(assetRoot() + 'animals/'),
+    opts.animals === false ? null : preloadRealFood(assetRoot() + 'food/'),
   ]).then(() => undefined);
 }
