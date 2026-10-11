@@ -13,7 +13,7 @@ import type {AnimalRig, Pose} from './animal-models';
 export type CameraProfile = {distance: number; min: number; max: number; head: number; lift: number; lookAhead: number; lookY: number; clearance: number; near: number; shadow: [number, number]};
 type Source = {scene: THREE.Group; fur: number; shells: number; density: number; gait: Gait; size: number; profile: CameraProfile; rest: Map<string, {q: THREE.Quaternion; p: THREE.Vector3; wq: THREE.Quaternion; wqi: THREE.Quaternion}>};
 
-type Gait = 'quad' | 'hop' | 'bound' | 'slither';
+type Gait = 'quad' | 'hop' | 'bound' | 'slither' | 'bird';
 const SPECS: Partial<Record<Species, {file: string; fur: number; shells: number; density: number; gait: Gait; size: number; profile: CameraProfile}>> = {
   // red fox: 0.40 m at the shoulder, head carried ~0.47 m; camera ~2.7 m back, a little above head height
   fox: {file: 'fox.glb', fur: 0.07, shells: 16, density: 520, gait: 'quad', size: 1,
@@ -24,6 +24,9 @@ const SPECS: Partial<Record<Species, {file: string; fur: number; shells: number;
   // red squirrel: bounds on the ground, tail held over the back
   squirrel: {file: 'squirrel.glb', fur: 0.022, shells: 14, density: 800, gait: 'bound', size: 0.32,
     profile: {distance: 11, min: 6, max: 30, head: 1.0, lift: 0.7, lookAhead: 3, lookY: 0.2, clearance: 1.0, near: 0.05, shadow: [3.2, 1.5]}},
+  // tawny owl: 0.33 m perched, 0.95 m wingspan; feathers are alpha-tested cards
+  owl: {file: 'owl.glb', fur: 0.026, shells: 12, density: 600, gait: 'bird', size: 0.45,
+    profile: {distance: 22, min: 10, max: 60, head: 3.0, lift: 1.6, lookAhead: 5, lookY: 0.5, clearance: 2.0, near: 0.1, shadow: [4, 4]}},
   // grass snake: 0.9 m, head ~2 cm off the ground; scaled skin, no fur
   snake: {file: 'snake.glb', fur: 0, shells: 0, density: 0, gait: 'slither', size: 0.3,
     profile: {distance: 9, min: 5, max: 26, head: 0.35, lift: 0.9, lookAhead: 2.5, lookY: 0.1, clearance: 0.6, near: 0.03, shadow: [2.6, 2.6]}},
@@ -32,6 +35,9 @@ const SPECS: Partial<Record<Species, {file: string; fur: number; shells: number;
     profile: {distance: 4.2, min: 2.5, max: 14, head: 0.32, lift: 0.3, lookAhead: 1.1, lookY: 0.05, clearance: 0.45, near: 0.03, shadow: [1.2, 0.55]}},
 };
 const SOURCES = new Map<Species, Source>();
+// fur shells cost a draw each, so only animals near the camera's subject wear them (beyond, the coat texture reads the same)
+const FOCUS = new THREE.Vector3(); let hasFocus = false;
+export function setRealFocus(v: THREE.Vector3) { FOCUS.copy(v); hasFocus = true; }
 const UP = new THREE.Vector3(0, 1, 0), SIDE = new THREE.Vector3(0, 0, 1);   // +Z = the animal's right side; +angle swings a limb forward
 
 export async function preloadRealAnimals(base: string, list?: Species[]) {
@@ -49,7 +55,12 @@ export async function preloadRealAnimals(base: string, list?: Species[]) {
         if (col && !geo.getAttribute('furLen')) { const f = new Float32Array(col.count); for (let i = 0; i < col.count; i++) f[i] = col.itemSize > 3 ? col.getW(i) : 0; geo.setAttribute('furLen', new THREE.BufferAttribute(f, 1)); }
       });
       // shared by every clone: the bare base layer is the fur root zone, shaded by the coat above it
+      scene.traverse(o => { const m = o as THREE.Mesh; const mt = m.material as THREE.MeshStandardMaterial;
+        if (m.isMesh && mt.name.includes('feather')) { mt.transparent = false; mt.alphaTest = 0.5; mt.side = THREE.DoubleSide; mt.depthWrite = true; if ((mt as any).sheen) (mt as any).sheen = 0; } });
       if (spec.shells > 0) scene.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh && (m.material as THREE.Material).name.endsWith('_skin')) (m.material as THREE.MeshStandardMaterial).color.multiplyScalar(0.62); });
+      // Blender exports a white sheen at full strength, which greys the coat at grazing angles: tint it with the coat itself
+      scene.traverse(o => { const m = o as THREE.Mesh; const mt = m.material as THREE.MeshPhysicalMaterial;
+        if (m.isMesh && mt.name.endsWith('_skin') && mt.sheen) { mt.sheen = 0.5; mt.sheenColorMap = mt.map; mt.sheenColor.setScalar(1); mt.needsUpdate = true; } });
       SOURCES.set(species, {scene, fur: spec.fur, shells: spec.shells, density: spec.density, gait: spec.gait, size: spec.size, profile: spec.profile, rest});
     } catch (e) { console.warn('real animal failed to load', species, e); }
   }));
@@ -100,18 +111,18 @@ export function makeRealAnimal(species: Species): AnimalRig {
   const root = new THREE.Group(); root.add(model); root.userData.real = true;
   const bones = new Map<string, THREE.Bone>();
   model.traverse(o => { if ((o as THREE.Bone).isBone) bones.set(o.name, o as THREE.Bone); });
-  const skins: THREE.SkinnedMesh[] = [];
+  const skins: THREE.SkinnedMesh[] = [], shells: THREE.Object3D[] = [];
   model.traverse(o => { const m = o as THREE.SkinnedMesh; if (m.isSkinnedMesh) { m.frustumCulled = false; m.castShadow = true; m.receiveShadow = true; if ((m.material as THREE.Material).name.endsWith('_skin')) skins.push(m); } });
   for (const m of skins) {
     const base = m.material as THREE.MeshStandardMaterial;
     for (const mat of shellMaterials(species, base, src.shells, src.fur, src.density)) {
       const s = new THREE.SkinnedMesh(m.geometry, mat); s.bind(m.skeleton, m.bindMatrix); s.frustumCulled = false; s.castShadow = false; s.receiveShadow = true;
-      m.parent!.add(s);
+      m.parent!.add(s); shells.push(s);
     }
   }
   const g = () => new THREE.Group();
   const rig: AnimalRig = {root, body: g(), head: g(), legs: [], knees: [], ears: [], tail: g(), wings: [], segments: [], species, phase: Math.random(), stride: 0, altitude: 0, turn: 0, born: 0, lastX: 0, lastZ: 0};
-  (rig as any).real = {bones, src, gait: 0, pounce: -1, look: 0, lookT: 0, blend: {} as Record<string, number>};
+  (rig as any).real = {bones, src, shells, gait: 0, pounce: -1, look: 0, lookT: 0, blend: {} as Record<string, number>};
   return rig;
 }
 
@@ -135,7 +146,14 @@ type GaitName = keyof typeof GAITS;
 
 export function animateReal(rig: AnimalRig, p: Pose) {
   const R = (rig as any).real, src: Source = R.src, bones: Map<string, THREE.Bone> = R.bones; acc.clear();
+  // height above the ground: owls perch in the canopy and fly at ~7 m, squirrels run up trunks
+  const climb = p.climbing ? 1 : 0, flyH = p.flying ? 68 : 0, hTarget = p.perched ? (p.altitude || 72) : flyH || climb * 26;
+  rig.altitude = THREE.MathUtils.damp(rig.altitude, hTarget * (1 - Math.sin((p.dive || 0) * Math.PI) * 0.92), p.perched ? 5 : 7, p.dt);
+  rig.root.position.y += rig.altitude;
+  const near = !hasFocus || rig.root.position.distanceToSquared(FOCUS) < (60 + 160 * src.size) ** 2;
+  for (const sh of R.shells as THREE.Object3D[]) sh.visible = near;
   if (src.gait === 'slither') { slither(rig, p, R, src, bones); return; }
+  if (src.gait === 'bird') { bird(rig, p, R, src, bones); return; }
   const ms = p.speed / 10 / src.size;                        // body-lengths-normalised speed (fox-equivalent m/s)
   const target: Record<string, number> = src.gait === 'quad'
     ? {walk: ms < 2.2 ? 1 : 0, trot: ms >= 2.2 && ms < 5.5 ? 1 : 0, gallop: ms >= 5.5 ? 1 : 0}
@@ -200,7 +218,9 @@ export function animateReal(rig: AnimalRig, p: Pose) {
   }
   const root = bones.get('root');
   if (root) { const r = src.rest.get('root')!; root.position.copy(r.p); root.position.y += (bob * 0.15 + lift) * src.size; }
-  const model = rig.root.children[0]; model.rotation.z = pitch;
+  // climbing: body turned nose-up against the trunk
+  R.climb = THREE.MathUtils.damp(R.climb ?? 0, p.climbing ? 1 : 0, 8, p.dt);
+  const model = rig.root.children[0]; model.rotation.z = pitch + R.climb * 1.45;
 }
 
 // lateral undulation: a bending wave runs from head to tail as fast as the snake moves forward, so each part of the
@@ -222,4 +242,37 @@ function slither(rig: AnimalRig, p: Pose, R: any, src: Source, bones: Map<string
     const r = src.rest.get(name)!; b.quaternion.copy(r.q);
     const q = acc.get(name); if (q) b.quaternion.multiply(qb.copy(r.wqi).multiply(q).multiply(r.wq));
   }
+}
+
+// owl: wings spread in the model; folded against the flanks when perched or on the ground (span swung back along the
+// body, feathers hanging down), flapped in flight with the hand lagging the arm, body pitched level and legs tucked
+const FWD = new THREE.Vector3(1, 0, 0);
+function bird(rig: AnimalRig, p: Pose, R: any, src: Source, bones: Map<string, THREE.Bone>) {
+  acc.clear();
+  const fly = R.fly = THREE.MathUtils.damp(R.fly ?? 0, p.flying ? 1 : 0, 4, p.dt), fold = 1 - fly;
+  const dive = p.dive || 0, ms = p.speed / 10;
+  R.flap = (R.flap ?? 0) + p.dt * (2.6 + ms * 0.15) * Math.PI * 2;
+  const glide = 0.5 + 0.5 * Math.sin(p.time * 0.5) > 0.75 ? 0.25 : 1;          // owls glide between bouts of flapping
+  const a = Math.sin(R.flap) * 0.75 * fly * glide * (1 - dive);
+  for (const [sfx, s] of [['L', 1], ['R', -1]] as const) {
+    // folded: span back along the body (about up), then the wing plane turned vertical (about the forward axis)
+    turn('wing_' + sfx, UP, s * Math.PI / 2 * Math.max(fold, dive * 0.6));
+    turn('wing_' + sfx, FWD, s * (Math.PI / 2 * fold + a + 0.25 * dive));
+    turn('wing2_' + sfx, FWD, s * Math.sin(R.flap - 0.6) * 0.3 * fly * glide);
+    turn('wing3_' + sfx, FWD, s * Math.sin(R.flap - 1.2) * 0.35 * fly * glide);
+    // a folded wing is far shorter than a spread one (the arm and hand fold in a Z): shrink the panel to the flank
+    const b1 = bones.get('wing_' + sfx); if (b1) b1.scale.setScalar(1 - 0.38 * fold);
+    turn('thigh_' + sfx, SIDE, -1.1 * fly + 1.2 * dive + (fold * Math.sin(p.time * 9 + (s > 0 ? 0 : Math.PI)) * 0.35 * THREE.MathUtils.smoothstep(ms, 0.1, 0.5)));
+  }
+  turn('tail_1', SIDE, fly * 0.9 - 0.2 * dive);
+  // head: owls swivel the head far round while perched, and hold it level in flight
+  if (p.time > R.lookT) { R.lookT = p.time + 1.2 + Math.random() * 3.5; R.lookTarget = (Math.random() - 0.5) * 2.6; }
+  R.look += ((R.lookTarget || 0) * fold - R.look) * (1 - Math.exp(-5 * p.dt));
+  turn('head', UP, R.look); turn('head', SIDE, fly * 1.0 + (p.action ? -0.5 : 0));
+  for (const [name, b] of bones) {
+    const r = src.rest.get(name)!; b.quaternion.copy(r.q);
+    const q = acc.get(name); if (q) b.quaternion.multiply(qb.copy(r.wqi).multiply(q).multiply(r.wq));
+  }
+  // flight posture: the body tips forward to level about its middle
+  const model = rig.root.children[0]; model.rotation.z = -1.15 * fly - 0.4 * dive; model.position.y = (1.6 * fly) + (Math.sin(R.flap) * 0.15 * fly);
 }

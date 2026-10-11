@@ -27,7 +27,7 @@ export async function loadDaylight(scene: THREE.Scene, renderer: THREE.WebGLRend
   (scene as any).environmentIntensity = 0.6; (scene as any).backgroundIntensity = 1.0;
   // aerial perspective: squared-exponential haze toward the photo's shaded olive-grey woodland. Unlike linear fog it
   // leaves trees at 30-50 m with their own shading (no flat paper-cutout silhouettes) and still hides the draw range.
-  scene.fog = new THREE.FogExp2(0x627062, 0.0016);
+  scene.fog = new THREE.FogExp2(0x46523f, 0.0013);
   let sun: THREE.DirectionalLight | null = null; const fills: THREE.Light[] = [];
   scene.traverse(o => {
     if ((o as THREE.DirectionalLight).isDirectionalLight && (o as THREE.DirectionalLight).castShadow && !sun) sun = o as THREE.DirectionalLight;

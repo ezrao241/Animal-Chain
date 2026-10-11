@@ -23,7 +23,7 @@ export async function createInstances(scene: THREE.Scene, base: string, placemen
     files.get(f)!.push(p);
   }
   const loader = new GLTFLoader();
-  const chunks: {mesh: THREE.InstancedMesh; x: number; z: number}[] = [];
+  const chunks: {mesh: THREE.InstancedMesh; x: number; z: number; reach: number}[] = [];
   const group = new THREE.Group(); group.name = 'Instanced_Assets'; scene.add(group);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), v = new THREE.Vector3(), sc = new THREE.Vector3();
   let triangles = 0;
@@ -53,7 +53,10 @@ export async function createInstances(scene: THREE.Scene, base: string, placemen
           im.castShadow = opts.shadows ?? true; im.receiveShadow = true;
           im.computeBoundingSphere(); im.frustumCulled = true;
           im.name = `${asset}:${prim.name}`;
-          group.add(im); chunks.push({mesh: im, x: cx / bp.length, z: cz / bp.length});
+          // ground cover is small: it only needs drawing near the camera (half the tree range); shadows only for big things
+          const small = /^(GRASS|FERN|PLANT|GROUND|BRANCH|ROOT)_/.test(asset);
+          if (small) im.castShadow = false;
+          group.add(im); chunks.push({mesh: im, x: cx / bp.length, z: cz / bp.length, reach: small ? 0.45 : 1});
           triangles += (prim.geometry.index ? prim.geometry.index.count / 3 : prim.geometry.attributes.position.count / 3) * bp.length;
         }
       }
@@ -65,7 +68,7 @@ export async function createInstances(scene: THREE.Scene, base: string, placemen
     update(x: number, z: number, range: number) {
       if (Math.hypot(x - lastX, z - lastZ) < 40 && range === lastR) return;
       lastX = x; lastZ = z; lastR = range;
-      for (const c of chunks) c.mesh.visible = Math.hypot(c.x - x, c.z - z) < range + CHUNK;
+      for (const c of chunks) c.mesh.visible = Math.hypot(c.x - x, c.z - z) < range * c.reach + CHUNK;
     },
     dispose() { for (const c of chunks) c.mesh.dispose(); scene.remove(group); },
   };

@@ -5,7 +5,7 @@ import {mergeGeometries} from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {createRenderer,SoftwareRenderer} from './software-renderer';
 import {cameraInput,ANIMALS,SPECIES,Species,Room,Player,W,H,props,makeFoods,move,newPlayer,dist} from '@/lib/game';
 import {makeAnimal,animateAnimal,AnimalRig,animalPortrait} from './animal-models';
-import {hasReal,makeRealAnimal,animateReal,cameraProfile} from './real-animals';
+import {hasReal,makeRealAnimal,animateReal,cameraProfile,setRealFocus} from './real-animals';
 import {hasRealFood,makeRealFood} from './real-food';
 import {createForest,groundY,setAnimals} from './forest-world';
 import {loadGameAssets} from './world-assets';
@@ -98,6 +98,7 @@ export default function WorldScene({room,me,input,preview=false,onPerformance,on
     shadow.position.set(position.x,groundY(position.x,position.y)+.6,position.y);{const sp=cameraProfile(p.species);shadow.scale.set(sp?sp.shadow[0]:p.species==='fox'?26:18,sp?sp.shadow[1]:p.species==='fox'?13:12,1);}
     if(own){ownHeading=rig.turn;const headHeight=cameraProfile(p.species)?.head??(p.species==='fox'?25:p.species==='owl'?30:p.species==='snake'?9:19);target.set(position.x,rig.root.position.y+headHeight,position.y);if(first||ownBorn!==p.born){follow.copy(target);ownBorn=p.born;first=false;}follow.lerp(target,1-Math.exp(-9*dt));}
    }
+   setRealFocus(follow);
    setAnimals(Array.from(rigs,([id,rg])=>({id,x:rg.root.position.x,z:rg.root.position.z,y:rg.altitude||0})));
    if(preview){follow.set(1000,45,700);yaw=-.5+Math.sin(time*.08)*.15;distance=width<760?330:240;pitch=.2;}
    if(input.current.recenter){yaw=ownHeading-Math.PI/2;pitch=.24;input.current.recenter=false;}if(!preview)input.current.cameraYaw=yaw;

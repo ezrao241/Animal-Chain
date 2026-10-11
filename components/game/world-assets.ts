@@ -7,7 +7,7 @@ import {preloadRealFood} from './real-food';
 type Tile = {url: string; x0: number; y0: number; x1: number; y1: number};
 // finished areas of the 400 x 280 m map (game units); the rest of the map uses the base terrain until it is built
 export const WORLD_TILES: Tile[] = [{url: 'tiles/test_ford.glb', x0: 2190, y0: 930, x1: 2990, y1: 1730}];
-export const WORLD_PLACEMENTS = ['placements_trees.json', 'test_ford/placements_detail.json'];
+export const WORLD_PLACEMENTS = ['placements_trees.json', 'test_ford/placements_detail.json', 'placements_ground.json'];
 
 let ready: Promise<void> | null = null;
 export function loadGameAssets(opts: {tiles?: Tile[]; placements?: string[]; animals?: boolean} = {}) {

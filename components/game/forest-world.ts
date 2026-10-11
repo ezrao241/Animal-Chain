@@ -8,7 +8,7 @@ import {W, H} from '@/lib/game';
 import {createWater, WaterHandle, addRipple} from './water';
 import {createSkyEnvironment} from './sky';
 import {createInstances, Placement} from './instances';
-import {addTerrainDetail} from './terrain-detail';
+import {addTerrainDetail, addBaseGround} from './terrain-detail';
 import {loadDaylight, Daylight} from './lighting';
 
 const STEP = 5, NX = 801, NY = 561;
@@ -80,13 +80,14 @@ export function createForest(scene: THREE.Scene, seed: number, lightweight: bool
 
   // base terrain (outside the finished test tiles): 2 m grid over the map plus a 500-unit apron
   const S = 20, x0 = -500, z0 = -500, nx = Math.ceil((W + 1000) / S) + 1, nz = Math.ceil((H + 1000) / S) + 1;
-  const pos = new Float32Array(nx * nz * 3), col = new Float32Array(nx * nz * 3);
-  const floor = new THREE.Color(0x3e3a26), trail = new THREE.Color(0x5a4630), c = new THREE.Color();
+  const pos = new Float32Array(nx * nz * 3), col = new Float32Array(nx * nz * 3), trl = new Float32Array(nx * nz);
+  const c = new THREE.Color();
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
     const x = x0 + i * S, z = z0 + j * S, k = (j * nx + i) * 3;
     pos[k] = x; pos[k + 1] = groundY(x, z); pos[k + 2] = z;
-    c.copy(floor).lerp(trail, 1 - THREE.MathUtils.smoothstep(pathDistance(x, z), 18, 45));
-    col[k] = c.r; col[k + 1] = c.g; col[k + 2] = c.b;
+    trl[j * nx + i] = 1 - THREE.MathUtils.smoothstep(pathDistance(x, z), 14, 40);
+    const v = 0.9 + 0.1 * Math.sin(x * 0.013 + Math.sin(z * 0.009) * 2);   // gentle tint variation (the photo texture carries colour)
+    c.setRGB(v, v * 0.98, v * 0.95); col[k] = c.r; col[k + 1] = c.g; col[k + 2] = c.b;
   }
   const idx: number[] = [];
   for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
@@ -96,10 +97,10 @@ export function createForest(scene: THREE.Scene, seed: number, lightweight: bool
     idx.push(a, a + nx, a + 1, a + 1, a + nx, a + nx + 1);
   }
   const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setAttribute('trail', new THREE.BufferAttribute(trl, 1));
   g.setIndex(idx); g.computeVertexNormals();
   const gm = new THREE.MeshStandardMaterial({vertexColors: true, roughness: 1});
-  addTerrainDetail(gm, WORLD_CONFIG.base); const ground = new THREE.Mesh(g, gm); ground.receiveShadow = true; scene.add(ground);
+  addBaseGround(gm, WORLD_CONFIG.base); const ground = new THREE.Mesh(g, gm); ground.receiveShadow = true; scene.add(ground);
   resources.push(g, gm);
 
   // finished tiles: GLB in metres, Blender Z-up already converted to Y-up by the exporter; game units = 10 x metres
