@@ -18,5 +18,5 @@ fs.writeFileSync(html, fs.readFileSync(html, 'utf8').replace('<head>', `<head>\n
 // The static host wraps the page in its own document skeleton and serves fonts next to the page, not at the site root.
 for (const f of walk(path.join(out, 'assets')).filter(f => f.endsWith('.css'))) fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replaceAll("url('/fonts/", "url('../fonts/").replaceAll('url(/fonts/', 'url(../fonts/'));
 const page = fs.readFileSync(html, 'utf8').replace(/<!doctype html>\s*<html[^>]*>\s*<head>\s*/i, '').replace(/<meta[^>]*>\s*/g, '')
-  .replace(/<\/head>\s*<body[^>]*>/i, '<style>html,body{height:100%;background:#0c1814}</style>').replace(/<\/body>\s*<\/html>\s*$/i, '');
+  .replace(/<\/head>\s*<body[^>]*>/i, '<style>html,body{height:100%;background:#18170c}</style>').replace(/<\/body>\s*<\/html>\s*$/i, '');
 fs.writeFileSync(html, page.replace(/^(<script>[^<]*<\/script>\s*)(<title>[^<]*<\/title>\s*)/, '$2$1'));
