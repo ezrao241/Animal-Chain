@@ -130,7 +130,7 @@ test('hidden animals, AI plans and other players\' private fields never reach ot
  // the guest sees itself, marked concealed
  const own=find((await call({action:'sync',...auth(guest),seq:1})).room,guest.id);assert.ok(own&&own.concealed);
  // nothing server-only or another animal's private plan is serialized
- for(const p of view.players){for(const k of ['token','bag','seq','lastSeen','inputAt'])assert.ok(!(k in p),k+' leaked');
+ for(const p of view.players){for(const k of ['token','bag','seq','lastSeen','inputAt','strikeId','strikeBorn','strikeDir'])assert.ok(!(k in p),k+' leaked');
   if(p.id!==host.id)for(const k of ['targetX','targetY','targetId','threatX','threatY','homeX','homeY','nextDrink','message','hunger','claimed','dx','dy'])assert.ok(!(k in p),k+' of '+p.id+' leaked');}
  assert.ok(!('rs' in view),'the room RNG state is not sent');
  assert.ok('hunger' in find(view,host.id)&&'claimed' in find(view,host.id),'your own animal keeps its private fields');

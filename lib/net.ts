@@ -96,7 +96,7 @@ function quiet(p:Player,seenBefore:number,room:Room,b:Record<string,unknown>,now
 
 // Fields only the server (and the animal's own player) may see: credentials, input, AI plans and targets, task progress,
 // private messages. Everything else describes what any animal on the plains could observe.
-const SERVER_ONLY=['token','bag','seq','act','inputAt','lastSeen','strikeId','strikeBorn'] as const;
+const SERVER_ONLY=['token','bag','seq','act','inputAt','lastSeen','strikeId','strikeBorn','strikeDir'] as const;
 const OWNER_ONLY=['dx','dy','targetX','targetY','targetId','threatX','threatY','lastThreatAt','threatAt','homeX','homeY','nextDrink','chaseStart','thinkAt','stuckX','stuckY','stuckAt','unstickUntil','moodUntil','alarmAt','message','messageUntil','hunger','thirst','claimed','food','hunts','drinks','scavenged','escapes','hiddenSeconds','survivalSeconds','abilityReady','interactReady','done','carry','lives','lifeStart','survived'] as const;
 // Beyond FAR_VIEW (past the largest draw range, sound and sense ranges) an animal is never drawn or heard; it is sent with just
 // what its tracks need (components/game/safari-traces.ts), about a quarter of the size.
