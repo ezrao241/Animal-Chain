@@ -44,18 +44,23 @@ function groundColour(x:number,z:number,r:number){
  if(x<0||z<0||x>W||z>H)c.lerp(hex(0xbfa066),.25);
  return c;
 }
-function terrain(){
- const g=grid(),pos:number[]=[],col:number[]=[];
- const put=(i:number,j:number)=>pos.push(X0+i*S,g[j*NX+i],Z0+j*S);
- for(let j=0;j<NZ-1;j++)for(let i=0;i<NX-1;i++){
-  const x=X0+(i+.5)*S,z=Z0+(j+.5)*S;
-  for(const [tri,ox,oz] of [[[[i,j],[i+1,j+1],[i+1,j]],.66,.33],[[[i,j],[i,j+1],[i+1,j+1]],.33,.66]] as const){
-   for(const [a,b] of tri)put(a,b);
-   const c=groundColour(x+(ox-.5)*S,z+(oz-.5)*S,hash(i*7+ox*3,j*13+oz*5,1));c.multiplyScalar(.93+hash(i,j,ox*9)*.12);for(let k=0;k<3;k++)col.push(c.r,c.g,c.b);
+/** Ground tiles are TILE x TILE grid cells, so the renderer frustum-culls the land behind and beyond the camera. */
+const TILE=12;
+function terrain(material:THREE.Material){
+ const g=grid(),tiles:THREE.Mesh[]=[];
+ for(let tj=0;tj<NZ-1;tj+=TILE)for(let ti=0;ti<NX-1;ti+=TILE){
+  const pos:number[]=[],col:number[]=[],put=(i:number,j:number)=>pos.push(X0+i*S,g[j*NX+i],Z0+j*S);
+  for(let j=tj;j<Math.min(tj+TILE,NZ-1);j++)for(let i=ti;i<Math.min(ti+TILE,NX-1);i++){
+   const x=X0+(i+.5)*S,z=Z0+(j+.5)*S;
+   for(const [tri,ox,oz] of [[[[i,j],[i+1,j+1],[i+1,j]],.66,.33],[[[i,j],[i,j+1],[i+1,j+1]],.33,.66]] as const){
+    for(const [a,b] of tri)put(a,b);
+    const c=groundColour(x+(ox-.5)*S,z+(oz-.5)*S,hash(i*7+ox*3,j*13+oz*5,1));c.multiplyScalar(.93+hash(i,j,ox*9)*.12);for(let k=0;k<3;k++)col.push(c.r,c.g,c.b);
+   }
   }
+  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));geo.computeVertexNormals();geo.computeBoundingSphere();
+  const mesh=new THREE.Mesh(geo,material);mesh.receiveShadow=true;tiles.push(mesh);
  }
- const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));geo.computeVertexNormals();
- const mesh=new THREE.Mesh(geo,facetMaterial());mesh.receiveShadow=true;return mesh;
+ return tiles;
 }
 
 // ---------------------------------------------------------------- vegetation and rocks (authored in metres, placed x10)
@@ -170,11 +175,11 @@ function pool(size:number,seed:number){
  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));g.computeVertexNormals();return g;
 }
 
-export type Savanna={update(time:number,x:number,z:number,range:number,cameraFar:number,camera:THREE.Vector3,wind?:{x:number;y:number}):void;realShadows(on:boolean):void;dispose():void};
+export type Savanna={update(time:number,x:number,z:number,range:number,cameraFar:number,camera:THREE.Vector3,wind?:{x:number;y:number}):void;realShadows(on:boolean):void;dusk():void;dispose():void};
 export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
  const disposables:{dispose():void}[]=[],add=<T extends THREE.Object3D>(o:T)=>{scene.add(o);return o;};
- const ground=add(terrain());disposables.push(ground.geometry,ground.material as THREE.Material);
  const facet=facetMaterial();disposables.push(facet);
+ for(const tile of terrain(facet)){add(tile);disposables.push(tile.geometry);}
  const r=(i:number,k:number)=>hash(i,k,417);
  // scenery beyond the edge of the map (where nobody can walk): acacias and scrub that carry the plains to the hills
  const beyond=(count:number,seed:number)=>{const out:{x:number;y:number;size:number}[]=[];for(let k=0;out.length<count&&k<count*20;k++){const x=-760+hash(k,seed,1)*(W+1520),z=-760+hash(k,seed,2)*(H+1520),o=Math.max(-x,x-W,-z,z-H);if(o>90&&o<760)out.push({x,y:z,size:.8+hash(k,seed,3)*.6});}return out;};
@@ -186,23 +191,27 @@ export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
  // kopjes: boulders half sunk into their mounds
  const rocks=PROPS.filter(p=>p.kind==='rock');
  [5,9,17,29].forEach((seed,v)=>leveled(boulder(seed),boulder(seed,1),rocks.filter((_,i)=>i%4===v).map((t,i)=>({x:t.x,y:groundY(t.x,t.y)-t.size*6,z:t.y,rot:r(i,v+5)*6.28,scale:t.size*33,sy:.85+r(i,v+9)*.4}))));
- // level of detail: trees and boulders near the player use the full-facet model, distant ones a lighter cut
- const NEAR_LOD=lightweight?220:420,mat=new THREE.Matrix4(),quat=new THREE.Quaternion(),eul=new THREE.Euler(),lodAt={x:1e9,z:1e9};
- const relevel=(x:number,z:number)=>{for(const l of lods){l.near.count=0;l.far.count=0;for(const it of l.items){quat.setFromEuler(eul.set(0,it.rot,0));mat.compose(new THREE.Vector3(it.x,it.y,it.z),quat,new THREE.Vector3(it.scale,it.scale*(it.sy??1),it.scale));const near=Math.hypot(it.x-x,it.z-z)<NEAR_LOD,mesh=near?l.near:l.far;mesh.setMatrixAt(mesh.count++,mat);}for(const mesh of [l.near,l.far]){mesh.instanceMatrix.needsUpdate=true;mesh.computeBoundingSphere();}}};
+ // level of detail: trees and boulders near the player use the full-facet model, distant ones a lighter cut, and those
+ // past the far clipping plane are not submitted at all (the margin covers the camera's orbit around the animal, up to
+ // ~260 units, plus a canopy's width and the 40-unit relevel step)
+ const NEAR_LOD=lightweight?220:420,CULL_MARGIN=440,mat=new THREE.Matrix4(),quat=new THREE.Quaternion(),eul=new THREE.Euler(),at=new THREE.Vector3(),size=new THREE.Vector3(),lodAt={x:1e9,z:1e9,far:0};
+ const relevel=(x:number,z:number,far:number)=>{const reach=far+CULL_MARGIN;for(const l of lods){l.near.count=0;l.far.count=0;for(const it of l.items){const d=Math.hypot(it.x-x,it.z-z);if(d>reach)continue;quat.setFromEuler(eul.set(0,it.rot,0));mat.compose(at.set(it.x,it.y,it.z),quat,size.set(it.scale,it.scale*(it.sy??1),it.scale));const mesh=d<NEAR_LOD?l.near:l.far;mesh.setMatrixAt(mesh.count++,mat);}for(const mesh of [l.near,l.far]){mesh.instanceMatrix.needsUpdate=true;mesh.computeBoundingSphere();}}};
  // thickets: a scrub bush wrapped in tall grass (the hiding spots); half are green bush, half grey thorn scrub
  const bushes=PROPS.filter(p=>p.kind==='bush'),shrubs=[...bushes,...beyond(lightweight?40:120,2)],shrubGeo=[shrub(3),shrub(8,true)];disposables.push(...shrubGeo);
  shrubGeo.forEach((geo,v)=>add(instanced(geo,facet,shrubs.filter((_,i)=>i%2===v).map((b,i)=>({x:b.x,y:groundY(b.x,b.y),z:b.y,rot:r(i,2+v)*6.28,scale:b.size*8,sy:.75+r(i,4+v)*.35,tint:new THREE.Color().setScalar(.9+r(i,6+v)*.2)})))));
  // soft cool shade pooled under every acacia, bush and kopje, draped over the ground facets (real shadow maps are only on
  // the high tier; this gives every tier grounded props and the sunlit/shaded contrast of the savanna)
- const shadePos:number[]=[],drape=(cx:number,cz:number,rad:number,stretch:number)=>{const n=lightweight?9:14,ux=-SUN.x,uz=-SUN.z,ul=Math.hypot(ux,uz),dx=ux/ul,dz=uz/ul;
+ // (pooled per ground tile, like the terrain, so shade off screen is culled with it)
+ const shadeTiles=new Map<number,number[]>(),drape=(cx:number,cz:number,rad:number,stretch:number)=>{const n=lightweight?9:14,ux=-SUN.x,uz=-SUN.z,ul=Math.hypot(ux,uz),dx=ux/ul,dz=uz/ul;
+  const key=Math.floor((cz-Z0)/(TILE*S))*1000+Math.floor((cx-X0)/(TILE*S));let shadePos=shadeTiles.get(key);if(!shadePos)shadeTiles.set(key,shadePos=[]);
   const at=(a:number,f:number)=>{const lx=Math.cos(a)*rad*f*stretch,lz=Math.sin(a)*rad*f,x=cx+dx*lx-dz*lz,z=cz+dz*lx+dx*lz;return[x,groundY(x,z)+1.2,z];};
   const c=[cx,groundY(cx,cz)+1.2,cz];for(let k=0;k<n;k++){const a0=k/n*Math.PI*2,a1=(k+1)/n*Math.PI*2;for(const f of [1,.6])shadePos.push(...c,...at(a1,f),...at(a0,f));}};
  for(const t of trees){const o=shadowOffset(26*t.size);drape(t.x+o.x,t.y+o.z,32*t.size,1.2);drape(t.x+o.x*.15,t.y+o.z*.15,7*t.size,1);}
  for(const b of shrubs){const o=shadowOffset(6*b.size);drape(b.x+o.x,b.y+o.z,11*b.size,1.2);}
  for(const k of rocks){const o=shadowOffset(10*k.size);drape(k.x+o.x,k.y+o.z,34*k.size,1.15);}
- const shadeGeo=new THREE.BufferGeometry();shadeGeo.setAttribute('position',new THREE.Float32BufferAttribute(shadePos,3));
- const shadeMat=new THREE.MeshBasicMaterial({color:0x3b3049,transparent:true,opacity:.17,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
- const shade=add(new THREE.Mesh(shadeGeo,shadeMat));shade.renderOrder=1;disposables.push(shadeGeo,shadeMat);
+ const shadeMat=new THREE.MeshBasicMaterial({color:0x3b3049,transparent:true,opacity:.17,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});disposables.push(shadeMat);
+ const shade=add(new THREE.Group());
+ for(const shadePos of shadeTiles.values()){const shadeGeo=new THREE.BufferGeometry();shadeGeo.setAttribute('position',new THREE.Float32BufferAttribute(shadePos,3));shadeGeo.computeBoundingSphere();const mesh=new THREE.Mesh(shadeGeo,shadeMat);mesh.renderOrder=1;shade.add(mesh);disposables.push(shadeGeo);}
  // burrows: a dark hole ringed by a lip of dug earth
  const holeGeo=new THREE.CircleGeometry(5.5,7).rotateX(-Math.PI/2),holeMat=new THREE.MeshBasicMaterial({color:0x1d140c}),lipGeo=new THREE.TorusGeometry(7,2.4,3,8).rotateX(Math.PI/2),lipMat=new THREE.MeshStandardMaterial({color:0x9a7048,flatShading:true,roughness:1});disposables.push(holeGeo,holeMat,lipGeo,lipMat);
  add(instanced(holeGeo,holeMat,BURROWS.map((b,i)=>({x:b.x,y:groundY(b.x,b.y)+.6,z:b.y,rot:r(i,8)*6.28,scale:1})),false));
@@ -254,10 +263,16 @@ export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
    for(const [disc,d] of [[sunDisc,.95],[sunHalo,.96]] as const){disc.position.copy(cam).addScaledVector(sunDir,radius*d);disc.scale.setScalar(radius);disc.lookAt(cam);}
    // grass thins out with distance (instances are in random order, so drawing fewer keeps an even spread)
    for(const c of chunks){const d=Math.hypot(c.cx-x,c.cz-z),reach=range*(lightweight?.6:.85)+CH*.7;c.mesh.visible=d<reach;c.mesh.count=Math.ceil(c.full*(d<CH*1.1?1:d<reach*.6?.45:.2));}
-   if(Math.hypot(x-lodAt.x,z-lodAt.z)>40){lodAt.x=x;lodAt.z=z;relevel(x,z);}
+   if(Math.hypot(x-lodAt.x,z-lodAt.z)>40||far!==lodAt.far){lodAt.x=x;lodAt.z=z;lodAt.far=far;relevel(x,z,far);}
    if(t-lastWater>.08){lastWater=t;for(const w of waters){const pos=w.mesh.geometry.getAttribute('position') as THREE.BufferAttribute,a=pos.array as Float32Array;for(let i=0;i<a.length;i+=3){const px=w.base[i],pz=w.base[i+2],edge=Math.hypot(px,pz)>1?1:0;a[i+1]=edge*Math.sin(t*1.3+px*.05+pz*.07)*.5;}pos.needsUpdate=true;w.mesh.geometry.computeVertexNormals();}}
   },
   realShadows(on){shade.visible=!on;},
+  // the home screen's late golden hour: an ember horizon under a deepening violet sky, rose-lit clouds, dusky hills
+  dusk(){
+   const col=skyGeo.getAttribute('color') as THREE.BufferAttribute;
+   for(let i=0;i<sp.count;i++){sv.fromBufferAttribute(sp,i);const y=sv.y,c=hex(0xffb36a).lerp(hex(0xf08a5c),smooth(.0,.1,y)).lerp(hex(0xa8607a),smooth(.08,.32,y)).lerp(hex(0x4a3f78),smooth(.3,.7,y)).lerp(hex(0x1f2450),smooth(.7,1,y));c.lerp(hex(0xffe0a8),smooth(.75,1,sv.normalize().dot(SUN))*.75);col.setXYZ(i,c.r,c.g,c.b);}
+   col.needsUpdate=true;cloudMat.color.set(0xffb9a0);hillMat.color.set(0x8a6f86);sunMat.color.set(0xffe2a6);haloMat.color.set(0xffb070);haloMat.opacity=.45;
+  },
   dispose(){disposables.forEach(d=>d.dispose());},
  };
 }
