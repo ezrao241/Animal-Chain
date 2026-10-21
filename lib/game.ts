@@ -4,16 +4,21 @@ export const W=4000,H=2800;
 export const SPECIES=['lion','leopard','hyena','zebra','impala','warthog'] as const;
 export type Species=typeof SPECIES[number];
 export type FoodKind='grass'|'browse'|'roots'|'carrion';
-type Animal={name:string;subtitle:string;speed:number;ability:string;duration:number;cooldown:number;prey:Species[];foods:FoodKind[];diet:string;tip:string;color:string;size:number;catchRange:number};
-// size is shoulder height in metres. Predators only list prey they can realistically take alone: a leopard or a lone
+/** Real locomotion in metres and seconds: walking, cruising and top speed, acceleration, the sideways grip that sets
+ *  the turning circle (a = v²/r), how long the sprint lasts, how long a full recovery takes, and where the trot and
+ *  gallop begin (big cats walk straight into a gallop, they don't trot). */
+export type Gait={walk:number;run:number;sprint:number;accel:number;turn:number;sprintTime:number;recover:number;trot:number;gallop:number};
+type Animal={name:string;subtitle:string;gait:Gait;ability:string;duration:number;cooldown:number;prey:Species[];foods:FoodKind[];diet:string;tip:string;color:string;size:number;catchRange:number};
+// size is shoulder height in metres. Speeds: lion 80 km/h for a few seconds, leopard 58, hyena 60 but for kilometres,
+// zebra 65, impala 75 with 10 m bounds, warthog 48. Predators only list prey they can realistically take alone: a leopard or a lone
 // hyena does not bring down an adult zebra, and nothing here hunts a lion.
 export const ANIMALS:Record<Species,Animal>={
- lion:{name:'Lion',subtitle:'Panthera leo · 190 kg',speed:205,ability:'Charge',duration:1.6,cooldown:9,prey:['zebra','impala','warthog'],foods:['carrion'],diet:'Zebra, impala, warthog & carrion',tip:'Charge closes the gap. Watch a zebra’s hind legs.',color:'#d9a54c',size:1.2,catchRange:26},
- leopard:{name:'Leopard',subtitle:'Panthera pardus · 60 kg',speed:210,ability:'Stalk',duration:4,cooldown:9,prey:['impala','warthog'],foods:['carrion'],diet:'Impala, warthog & carrion',tip:'Stalk unseen, or Q to climb an acacia and drop on prey below.',color:'#e0b25e',size:.7,catchRange:20},
- hyena:{name:'Spotted hyena',subtitle:'Crocuta crocuta · 60 kg',speed:200,ability:'Tireless',duration:6,cooldown:12,prey:['impala','warthog'],foods:['carrion'],diet:'Impala, warthog & any carcass',tip:'Outlast prey with Tireless. Every carcass is yours to clean up.',color:'#b99a6c',size:.8,catchRange:22},
- zebra:{name:'Plains zebra',subtitle:'Equus quagga · 300 kg',speed:220,ability:'Kick',duration:.6,cooldown:8,prey:[],foods:['grass'],diet:'Grasses',tip:'Kick stuns any predator right behind you.',color:'#ece6d6',size:1.35,catchRange:0},
- impala:{name:'Impala',subtitle:'Aepyceros melampus · 55 kg',speed:235,ability:'Leap',duration:1.2,cooldown:6,prey:[],foods:['grass','browse'],diet:'Grass & acacia browse',tip:'Leap clears a predator’s reach. Keep moving.',color:'#c98a4b',size:.85,catchRange:0},
- warthog:{name:'Warthog',subtitle:'Phacochoerus africanus · 75 kg',speed:185,ability:'Burrow',duration:5,cooldown:9,prey:[],foods:['grass','roots'],diet:'Grass, roots & bulbs',tip:'Back into a burrow to vanish. Dig up roots to eat.',color:'#8e7a6a',size:.7,catchRange:0},
+ lion:{name:'Lion',subtitle:'Panthera leo · 190 kg',gait:{walk:1.4,run:8,sprint:22,accel:9.5,turn:9,sprintTime:9,recover:30,trot:Infinity,gallop:4.5},ability:'Charge',duration:1.6,cooldown:9,prey:['zebra','impala','warthog'],foods:['carrion'],diet:'Zebra, impala, warthog & carrion',tip:'Charge closes the gap. Watch a zebra’s hind legs.',color:'#d9a54c',size:1.2,catchRange:26},
+ leopard:{name:'Leopard',subtitle:'Panthera pardus · 60 kg',gait:{walk:1.2,run:8,sprint:16.5,accel:9,turn:10,sprintTime:10,recover:25,trot:Infinity,gallop:4},ability:'Stalk',duration:4,cooldown:9,prey:['impala','warthog'],foods:['carrion'],diet:'Impala, warthog & carrion',tip:'Stalk unseen, or Q to climb an acacia and drop on prey below.',color:'#e0b25e',size:.7,catchRange:20},
+ hyena:{name:'Spotted hyena',subtitle:'Crocuta crocuta · 60 kg',gait:{walk:1.3,run:6.5,sprint:17,accel:6,turn:6.5,sprintTime:45,recover:12,trot:2.2,gallop:7},ability:'Tireless',duration:6,cooldown:12,prey:['impala','warthog'],foods:['carrion'],diet:'Impala, warthog & any carcass',tip:'Outlast prey with Tireless. Every carcass is yours to clean up.',color:'#b99a6c',size:.8,catchRange:22},
+ zebra:{name:'Plains zebra',subtitle:'Equus quagga · 300 kg',gait:{walk:1.6,run:7,sprint:18,accel:5.5,turn:6,sprintTime:30,recover:15,trot:2.6,gallop:8},ability:'Kick',duration:.6,cooldown:8,prey:[],foods:['grass'],diet:'Grasses',tip:'Kick stuns any predator right behind you.',color:'#ece6d6',size:1.35,catchRange:0},
+ impala:{name:'Impala',subtitle:'Aepyceros melampus · 55 kg',gait:{walk:1.4,run:9,sprint:21,accel:8,turn:12,sprintTime:18,recover:14,trot:2.4,gallop:6},ability:'Leap',duration:.9,cooldown:6,prey:[],foods:['grass','browse'],diet:'Grass & acacia browse',tip:'Leap clears a predator’s reach. Keep moving.',color:'#c98a4b',size:.85,catchRange:0},
+ warthog:{name:'Warthog',subtitle:'Phacochoerus africanus · 75 kg',gait:{walk:1.2,run:5.5,sprint:13,accel:6.5,turn:8,sprintTime:14,recover:14,trot:2,gallop:6},ability:'Burrow',duration:5,cooldown:9,prey:[],foods:['grass','roots'],diet:'Grass, roots & bulbs',tip:'Back into a burrow to vanish. Dig up roots to eat.',color:'#8e7a6a',size:.7,catchRange:0},
 };
 export type Prop={x:number;y:number;kind:'tree'|'rock'|'bush'|'burrow'|'water';size:number};
 export type Food={id:number;x:number;y:number;kind:string;ready:number;until?:number};
@@ -77,30 +82,71 @@ const blocked=(ps:Prop[],x:number,y:number,gap:number)=>ps.some(t=>solid(t)&&dis
 // Food: fresh grass on open ground, acacia browse under trees, roots and bulbs, and old carcasses.
 export function makeFoods(seed:number):Food[]{const r=rng(seed+111),ps=props(seed),trees=ps.filter(t=>t.kind==='tree');return Array.from({length:560},(_,id)=>{const kind=(['grass','grass','browse','roots','grass','carrion','roots','browse','grass','grass'] as const)[id%10];let x=0,y=0;for(let n=0;n<35;n++){if(kind==='browse'){const t=trees[Math.floor(r()*trees.length)],a=r()*Math.PI*2,d=25+r()*35;x=t.x+Math.cos(a)*d;y=t.y+Math.sin(a)*d;}else{x=65+r()*(W-130);y=65+r()*(H-130);}if(!blocked(ps,x,y,30))break;}return{id,x,y,kind,ready:0};});}
 export function safePoint(seed:number):{x:number;y:number}{const r=rng(seed),ps=props(417);for(let i=0;i<30;i++){const q={x:100+r()*(W-200),y:100+r()*(H-200)};if(!blocked(ps,q.x,q.y,40))return q;}return{x:W/2,y:H/2};}
-export function newPlayer(id:string,name:string,now:number,bot=false,species?:Species):Player{const p={id,name,bot,species:species||SPECIES[Math.floor(Math.random()*6)],...safePoint(Math.floor(Math.random()*1e6)),dx:0,dy:0,vx:0,vy:0,perched:false,perchHeight:0,actionUntil:0,lastSeen:now,inputAt:now,born:now,protectedUntil:now+4000,deadUntil:0,abilityUntil:0,abilityReady:0,interactReady:0,stunUntil:0,hunger:100,score:0,deaths:0,food:0,hunts:0,drinks:0,scavenged:0,escapes:0,hiddenSeconds:0,survivalSeconds:0,claimed:[false,false,false],sprint:false,stamina:100,threatAt:0,face:1,message:'A new place in the chain.',messageUntil:now+3000,seq:0,targetX:0,targetY:0};return p;}
+// Spawning follows where each animal really lives: zebra and impala herds graze the open grass around water (impala
+// also along acacia edges), warthogs keep near their burrows, lions lie up by thickets and in acacia shade, leopards
+// stay by trees and kopjes, and hyena clans den among the rocks. Herd animals join a living group of their own kind,
+// and nobody spawns in a predator's sight.
+const GROUPS:Partial<Record<Species,number>>={zebra:8,impala:10,warthog:4,hyena:4,lion:4};
+function habitat(species:Species,r:()=>number){
+ const ps=props(417),pick=(kind:Prop['kind'],test:(p:Prop)=>boolean=()=>true)=>{const list=ps.filter(p=>p.kind===kind&&test(p));return list[Math.floor(r()*list.length)];};
+ const around=(c:{x:number;y:number},min:number,max:number)=>{const a=r()*Math.PI*2,d=min+r()*(max-min);return{x:c.x+Math.cos(a)*d,y:c.y+Math.sin(a)*d};};
+ for(let i=0;i<40;i++){
+  let q:{x:number;y:number};
+  if(species==='zebra'||species==='impala'&&r()<.65){const w=pick('water');q=around(w,w.size+60,w.size+(species==='zebra'?520:380));}
+  else if(species==='impala')q=around(pick('tree'),50,160);
+  else if(species==='warthog')q=around(pick('burrow'),25,110);
+  else if(species==='lion')q=r()<.55?around(pick('bush'),20,60):around(pick('tree'),25,55);
+  else if(species==='leopard')q=r()<.6?around(pick('tree'),15,40):around(pick('rock',p=>p.size>=1.3),70,150);
+  else q=around(pick('rock',p=>p.size>=1.3),90,220);
+  if(q.x>60&&q.y>60&&q.x<W-60&&q.y<H-60&&!blocked(ps,q.x,q.y,30))return q;
+ }
+ return safePoint(Math.floor(r()*1e9));
+}
+const inSight=(room:Room|undefined,species:Species,q:{x:number;y:number})=>!!room&&room.players.some(o=>!o.deadUntil&&(ANIMALS[o.species].prey.includes(species)||!o.bot&&ANIMALS[species].prey.includes(o.species))&&dist(o,q)<THREAT_RANGE*.85);
+export function spawnPoint(species:Species,room?:Room,seed=Math.floor(Math.random()*1e9)):{x:number;y:number}{
+ const r=rng(seed),ps=props(417),cap=GROUPS[species];
+ if(room&&cap){
+  const mates=room.players.filter(o=>o.species===species&&!o.deadUntil&&room.players.filter(m=>m.species===species&&!m.deadUntil&&dist(m,o)<150).length<cap);
+  for(let i=0;i<8&&mates.length;i++){const m=mates[Math.floor(r()*mates.length)],a=r()*Math.PI*2,d=22+r()*55,q={x:m.x+Math.cos(a)*d,y:m.y+Math.sin(a)*d};if(q.x>60&&q.y>60&&q.x<W-60&&q.y<H-60&&!blocked(ps,q.x,q.y,25)&&!inSight(room,species,q))return q;}
+ }
+ let q=habitat(species,r);for(let i=0;i<14&&inSight(room,species,q);i++)q=habitat(species,r);
+ return q;
+}
+export function newPlayer(id:string,name:string,now:number,bot=false,species?:Species,room?:Room):Player{const kind=species||SPECIES[Math.floor(Math.random()*6)];const p={id,name,bot,species:kind,...spawnPoint(kind,room,Math.floor(Math.random()*1e9)),dx:0,dy:0,vx:0,vy:0,perched:false,perchHeight:0,actionUntil:0,lastSeen:now,inputAt:now,born:now,protectedUntil:now+4000,deadUntil:0,abilityUntil:0,abilityReady:0,interactReady:0,stunUntil:0,hunger:100,score:0,deaths:0,food:0,hunts:0,drinks:0,scavenged:0,escapes:0,hiddenSeconds:0,survivalSeconds:0,claimed:[false,false,false],sprint:false,stamina:100,threatAt:0,face:1,message:'A new place in the chain.',messageUntil:now+3000,seq:0,targetX:0,targetY:0};return p;}
 export function newRoom(code:string,host:Player,now:number):Room{return{code,host:host.id,phase:'lobby',started:0,ends:0,tick:now,players:[host],foods:makeFoods(417),events:['Welcome to the Golden Plains.'],seed:417,round:0};}
 export function notify(p:Player,message:string,now:number){p.message=message;p.messageUntil=now+2500;}
-export function respawn(p:Player,now:number){const choices=SPECIES.filter(s=>s!==p.species);const species=p.bot?(WILDLIFE[Number(p.id.replace('wild-',''))]||p.species):choices[Math.floor(Math.random()*choices.length)];const fresh=newPlayer(p.id,p.bot?ANIMALS[species].name:p.name,now,p.bot,species);Object.assign(p,fresh,{score:p.score,deaths:p.deaths,token:p.token,lastSeen:p.lastSeen,seq:p.seq});notify(p,'New life. New animal.',now);}
-export function start(room:Room,now:number){room.phase='playing';room.started=now;room.ends=now+300000;room.tick=now;room.round++;room.foods=makeFoods(room.seed);room.players=room.players.filter(p=>!p.bot);for(const p of room.players){const token=p.token,choices=SPECIES.filter(s=>s!==p.species);Object.assign(p,newPlayer(p.id,p.name,now,false,choices[Math.floor(Math.random()*choices.length)]),{token});}WILDLIFE.forEach((s,i)=>room.players.push(newPlayer('wild-'+i,ANIMALS[s].name,now,true,s)));room.events=['Golden graze. Find food, complete tasks, survive.'];}
+export function respawn(p:Player,now:number,room?:Room){const choices=SPECIES.filter(s=>s!==p.species);const species=p.bot?(WILDLIFE[Number(p.id.replace('wild-',''))]||p.species):choices[Math.floor(Math.random()*choices.length)];const fresh=newPlayer(p.id,p.bot?ANIMALS[species].name:p.name,now,p.bot,species,room);Object.assign(p,fresh,{score:p.score,deaths:p.deaths,token:p.token,lastSeen:p.lastSeen,seq:p.seq});notify(p,'New life. New animal.',now);}
+export function start(room:Room,now:number){room.phase='playing';room.started=now;room.ends=now+300000;room.tick=now;room.round++;room.foods=makeFoods(room.seed);room.players=room.players.filter(p=>!p.bot);for(const p of room.players){const token=p.token,choices=SPECIES.filter(s=>s!==p.species);Object.assign(p,newPlayer(p.id,p.name,now,false,choices[Math.floor(Math.random()*choices.length)],room),{token});}WILDLIFE.forEach((s,i)=>room.players.push(newPlayer('wild-'+i,ANIMALS[s].name,now,true,s,room)));room.events=['Golden graze. Find food, complete tasks, survive.'];}
 export const leaping=(p:Player,now:number)=>p.species==='impala'&&p.abilityUntil>now;
 // Hidden: a leopard up a tree or stalking, a warthog in its burrow, or anyone but a zebra standing still in a thicket.
 export function hidden(p:Player,room:Room,now:number){return p.species==='leopard'&&(p.perched||p.abilityUntil>now)||p.species==='warthog'&&p.abilityUntil>now||p.species!=='zebra'&&Math.hypot(p.dx,p.dy)<.1&&bushNear(props(room.seed),p.x,p.y,45);}
-// Speeds keep the species balance of the design, scaled to real running speeds (impala 9.4 m/s, 13.3 m/s sprinting).
-export const REAL_SPEED=.4,TRUNK_RADIUS=7,POUNCE_RANGE=42,AMBUSH_RANGE=60,KICK_RANGE=40,FOOD_RANGE=18,BURROW_REACH=45,TREE_REACH=40,WATER_REACH=30;
+export const UNITS_PER_METRE=10,TRUNK_RADIUS=7,POUNCE_RANGE=42,AMBUSH_RANGE=60,KICK_RANGE=40,FOOD_RANGE=18,BURROW_REACH=45,TREE_REACH=40,WATER_REACH=30,THREAT_RANGE=300,LEAP_SPEED=11,STALK_SPEED=1;
+const wrap=(a:number)=>Math.atan2(Math.sin(a),Math.cos(a)),clamp=(v:number,a:number,b:number)=>Math.max(a,Math.min(b,v));
+/** True while the animal is running flat out on its stamina (Charge and Tireless sprint for free). */
+export const sprinting=(p:Player,now:number)=>{const g=ANIMALS[p.species].gait,free=p.abilityUntil>now&&(p.species==='lion'||p.species==='hyena');return!free&&p.sprint&&!p.exhausted&&Math.hypot(p.vx,p.vy)/UNITS_PER_METRE>g.run+.5;};
+// Movement follows the real animal: speed builds and falls at its own acceleration, and at speed it can only turn as
+// tightly as its grip allows, so a galloping zebra swings wide while an impala jinks. A hard reversal brakes first.
 export function move(p:Player,dt:number,ps:Prop[],now:number){
  p.vx??=0;p.vy??=0;p.stamina??=100;
  if(p.perched||p.species==='warthog'&&p.abilityUntil>now||(p.stunUntil??0)>now){p.vx=0;p.vy=0;return;}
- let speed=ANIMALS[p.species].speed;
- if(p.abilityUntil>now)speed*=p.species==='lion'?1.9:p.species==='impala'?2.2:p.species==='leopard'?.6:p.species==='hyena'?1.15:1;
- const tireless=p.species==='hyena'&&p.abilityUntil>now;
- const sprinting=p.sprint&&(tireless||!p.exhausted&&p.stamina>0)&&Math.hypot(p.dx,p.dy)>.1;speed*=(sprinting?1.42:1)*REAL_SPEED;
- const n=Math.max(1,Math.hypot(p.dx,p.dy)),blend=1-Math.exp(-(p.species==='zebra'||p.species==='lion'?12:18)*dt);
- p.vx+=(p.dx/n*speed-p.vx)*blend;p.vy+=(p.dy/n*speed-p.vy)*blend;
- if(Math.abs(p.vx)<.1)p.vx=0;if(Math.abs(p.vy)<.1)p.vy=0;
+ const g=ANIMALS[p.species].gait,U=UNITS_PER_METRE,active=p.abilityUntil>now,input=Math.hypot(p.dx,p.dy)>.1;
+ const leap=p.species==='impala'&&active,charge=p.species==='lion'&&active,free=charge||p.species==='hyena'&&active,stalk=p.species==='leopard'&&active;
+ let speed=Math.hypot(p.vx,p.vy)/U,heading=speed>.05?Math.atan2(p.vy,p.vx):Math.atan2(p.dy,p.dx);
+ let target=!input&&!charge?0:stalk?STALK_SPEED:(p.sprint||charge)&&(free||!p.exhausted&&p.stamina>0)?g.sprint:g.run;
+ if(input&&!leap){const diff=wrap(Math.atan2(p.dy,p.dx)-heading),maxTurn=(speed<1.5?6:Math.min(6,g.turn/speed))*dt;if(Math.abs(diff)>2.2&&speed>3)target=0;heading+=clamp(diff,-maxTurn,maxTurn);}
+ const rate=(target>speed?g.accel*(charge?1.4:1):g.accel*1.6)*dt;speed+=clamp(target-speed,-rate,rate);
+ if(leap)speed=Math.max(speed,LEAP_SPEED);
+ p.vx=Math.cos(heading)*speed*U;p.vy=Math.sin(heading)*speed*U;if(speed<.02){p.vx=0;p.vy=0;}
  let x=Math.max(25,Math.min(W-25,p.x+p.vx*dt)),y=Math.max(25,Math.min(H-25,p.y+p.vy*dt));
- for(const t of solidNear(ps,x,y,126)){const radius=solidRadius(t);
+ if(!leap)for(const t of solidNear(ps,x,y,126)){const radius=solidRadius(t);
  const d=Math.hypot(x-t.x,y-t.y);if(d<radius){const nx=d>.001?(x-t.x)/d:1,ny=d>.001?(y-t.y)/d:0;x=t.x+nx*radius;y=t.y+ny*radius;const inward=p.vx*nx+p.vy*ny;if(inward<0){p.vx-=inward*nx;p.vy-=inward*ny;}}}
  p.x=x;p.y=y;if(Math.abs(p.vx)>1)p.face=p.vx>0?1:-1;
+}
+/** Stamina: a flat-out sprint empties it in the species' sprint time; resting refills it over its recovery time. */
+function breathe(p:Player,dt:number,now:number){
+ const g=ANIMALS[p.species].gait,speed=Math.hypot(p.vx,p.vy)/UNITS_PER_METRE;
+ if(sprinting(p,now))p.stamina-=100/g.sprintTime*dt;else p.stamina+=100/g.recover*dt*(speed>g.run*.8?.4:1);
+ p.stamina=clamp(p.stamina,0,100);if(p.stamina<=.5)p.exhausted=true;else if(p.stamina>=30)p.exhausted=false;
 }
 const nearestTree=(p:Player,room:Room)=>props(room.seed).filter(t=>t.kind==='tree'&&dist(p,t)<TREE_REACH).sort((a,b)=>dist(a,p)-dist(b,p))[0];
 /** Q: a leopard climbs into (or jumps down from) the nearest acacia. */
@@ -116,6 +162,7 @@ export function useAbility(p:Player,room:Room,now:number){if(now<p.abilityReady|
  if(p.species==='warthog'){const burrow=props(room.seed).filter(t=>t.kind==='burrow'&&dist(t,p)<BURROW_REACH).sort((a,b)=>dist(a,p)-dist(b,p))[0];if(!burrow){notify(p,'Find a burrow first: a dark hole in open ground.',now);return;}p.x=burrow.x;p.y=burrow.y;p.dx=0;p.dy=0;}
  if(p.species==='zebra'){const kicked=room.players.filter(q=>!q.deadUntil&&ANIMALS[q.species].prey.includes('zebra')&&dist(q,p)<KICK_RANGE);for(const q of kicked){q.stunUntil=now+2500;const d=Math.max(1,dist(q,p));q.x=Math.max(25,Math.min(W-25,q.x+(q.x-p.x)/d*20));q.y=Math.max(25,Math.min(H-25,q.y+(q.y-p.y)/d*20));notify(q,'Kicked by a zebra! Stunned.',now);}if(kicked.length){p.score+=4;notify(p,'Kick landed +4',now);}}
  if(p.species==='hyena')p.stamina=100,p.exhausted=false;
+ if(p.species==='impala'){const g=Math.hypot(p.vx,p.vy)||1,h=Math.hypot(p.dx,p.dy)>.1?Math.atan2(p.dy,p.dx):Math.atan2(p.vy,p.vx),v=Math.max(g,LEAP_SPEED*UNITS_PER_METRE);p.vx=Math.cos(h)*v;p.vy=Math.sin(h)*v;}
  p.abilityUntil=now+ANIMALS[p.species].duration*1000;p.abilityReady=now+ANIMALS[p.species].cooldown*1000;if(p.species!=='zebra')notify(p,ANIMALS[p.species].ability+'!',now);}
 export function die(p:Player,room:Room,now:number,cause:string){if(p.deadUntil)return;p.deadUntil=now+2600;p.dx=0;p.dy=0;p.vx=0;p.vy=0;p.perched=false;p.deaths++;notify(p,cause,now);if(!p.bot){room.events.unshift(p.name+' '+cause);room.events=room.events.slice(0,5);}}
 // A kill leaves a carcass for scavengers once the hunter has eaten. Old carcasses dry out.
@@ -158,24 +205,21 @@ export function tick(room:Room,now:number){
  const dt=total/steps,t=Math.min(now,room.ends)-(steps-1-s)*dt*1000;
  for(const p of room.players){
  if(!p.bot&&t-p.lastSeen>8000){p.dx=0;p.dy=0;continue;}
- if(p.deadUntil){if(t>=p.deadUntil)respawn(p,t);continue;}
+ if(p.deadUntil){if(t>=p.deadUntil)respawn(p,t,room);continue;}
  if(p.bot)steer(p,room,ps,t);
  else if(t-p.inputAt>800){p.dx=0;p.dy=0;}
- const tireless=p.species==='hyena'&&p.abilityUntil>t,canMove=!(p.perched||p.species==='warthog'&&p.abilityUntil>t||p.stunUntil>t);
- const sprinting=p.sprint&&!p.exhausted&&Math.hypot(p.dx,p.dy)>.1&&canMove;
- move(p,dt,ps,t);p.stamina=Math.max(0,Math.min(100,p.stamina+(tireless?18:sprinting?-26:18)*dt));
- if(p.stamina<=.5)p.exhausted=true;else if(p.stamina>=25)p.exhausted=false;
+ move(p,dt,ps,t);breathe(p,dt,t);
  p.survivalSeconds+=dt;p.hunger-=dt*.6;
  if(p.hunger<=0){die(p,room,t,'ran out of food.');continue;}
  if(hidden(p,room,t))p.hiddenSeconds+=dt;
- const threat=room.players.some(q=>!q.deadUntil&&ANIMALS[q.species].prey.includes(p.species)&&dist(p,q)<200);
+ const threat=room.players.some(q=>!q.deadUntil&&ANIMALS[q.species].prey.includes(p.species)&&dist(p,q)<THREAT_RANGE);
  if(threat)p.threatAt=t;else if(p.threatAt&&t-p.threatAt>3000){p.escapes++;const points=savannaEvent(room,t).kind==='escape'?10:5;p.score+=points;p.threatAt=0;notify(p,'Escaped a threat +'+points,t);}
  tasks(p,t).forEach((task,i)=>{if(!p.claimed[i]&&task.value>=task.target){p.claimed[i]=true;p.score+=task.points;notify(p,'Task complete +'+task.points,t);}});
  }}room.tick=now;if(now>=room.ends){room.phase='finished';room.players.forEach(p=>{p.dx=0;p.dy=0;p.vx=0;p.vy=0;});room.events.unshift('Round complete. Every life counted.');}}
 // Wildlife behaviour: flee predators (using the species' escape trick), hunt or forage when hungry, otherwise wander.
 function steer(p:Player,room:Room,ps:Prop[],t:number){
  const a=ANIMALS[p.species];
- const danger=room.players.filter(q=>!q.deadUntil&&ANIMALS[q.species].prey.includes(p.species)&&dist(q,p)<200&&!hidden(q,room,t)).sort((x,y)=>dist(x,p)-dist(y,p))[0];
+ const danger=room.players.filter(q=>!q.deadUntil&&ANIMALS[q.species].prey.includes(p.species)&&dist(q,p)<THREAT_RANGE&&!hidden(q,room,t)).sort((x,y)=>dist(x,p)-dist(y,p))[0];
  let goal:{x:number;y:number}|undefined;
  if(p.perched){const below=room.players.some(q=>!q.deadUntil&&a.prey.includes(q.species)&&dist(q,p)<AMBUSH_RANGE);if(below)interact(p,room,t);else if(p.hunger<55||Math.random()<.002)perch(p,room,t);p.dx=0;p.dy=0;return;}
  if(danger){
@@ -188,8 +232,10 @@ function steer(p:Player,room:Room,ps:Prop[],t:number){
   if(!goal&&p.species==='leopard'&&p.hunger>75&&t>p.abilityReady&&nearestTree(p,room)){perch(p,room,t);return;}
   if(!goal){let best=Infinity;for(const f of room.foods){if(f.ready>t||f.until&&f.until<t||!(a.foods as string[]).includes(f.kind))continue;const d=dist(p,f);if(d<best){best=d;goal=f;}}}
  }
- if(!goal){if(!p.targetX||dist(p,{x:p.targetX,y:p.targetY})<60){const q=safePoint(Math.floor(t+p.x));p.targetX=q.x;p.targetY=q.y;}goal={x:p.targetX,y:p.targetY};}
+ if(!goal){if(!p.targetX||dist(p,{x:p.targetX,y:p.targetY})<60){const q=habitat(p.species,rng(Math.floor(t+p.x)));p.targetX=q.x;p.targetY=q.y;}goal={x:p.targetX,y:p.targetY};}
  const d=dist(p,goal);p.dx=d>8?(goal.x-p.x)/Math.max(1,d):0;p.dy=d>8?(goal.y-p.y)/Math.max(1,d):0;
+ // herds, sounders, clans and prides drift back together when they stray
+ if(!danger&&GROUPS[p.species]){const mates=room.players.filter(o=>o!==p&&o.species===p.species&&!o.deadUntil&&dist(o,p)<260);if(mates.length){const cx=mates.reduce((s,o)=>s+o.x,0)/mates.length,cy=mates.reduce((s,o)=>s+o.y,0)/mates.length,c=Math.hypot(cx-p.x,cy-p.y);if(c>70){const w=Math.min(1.2,(c-70)/80);p.dx+=(cx-p.x)/c*w;p.dy+=(cy-p.y)/c*w;const n=Math.hypot(p.dx,p.dy)||1;p.dx/=n;p.dy/=n;}}}
  // Steer around trunks and boulders before collision instead of running into them forever.
  for(const tree of solidNear(ps,p.x,p.y,90)){
   const ox=tree.x-p.x,oy=tree.y-p.y,clearance=solidRadius(tree)+18;
