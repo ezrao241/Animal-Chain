@@ -167,3 +167,20 @@ test('spawning follows habitat: herds near water, warthogs by burrows',()=>{
  const hogs=room.players.filter(p=>p.bot&&p.species==='warthog');assert.ok(hogs.filter(h=>ps.some(b=>b.kind==='burrow'&&Math.hypot(b.x-h.x,b.y-h.y)<200)).length>=hogs.length*.7);
  for(let i=0;i<20;i++){const q=spawnPoint('impala',room,i);assert.ok(!room.players.some(o=>ANIMALS[o.species].prey.includes('impala')&&Math.hypot(o.x-q.x,o.y-q.y)<200),'no spawning under a predator\'s nose');}
 });
+test('responsive steering: reversals plant and push off, sideways turns stay tight, release stops',()=>{
+ const dt=1/60,go=(p,n)=>{for(let i=0;i<n;i++)move(p,dt,[],NOW);};
+ for(const species of SPECIES){
+  const g=ANIMALS[species].gait,mk=(dx,dy,sprint=false)=>{const{player}=fixture(species);Object.assign(player,{dx,dy,sprint,vx:0,vy:0});go(player,240);return player;};
+  // running forward, then reverse: no loop, just a short skid of a couple of metres
+  let p=mk(1,0);const x0=p.x;p.dx=-1;let ahead=0;for(let i=0;i<120;i++){go(p,1);ahead=Math.max(ahead,(p.x-x0)/UNITS_PER_METRE);}
+  assert.ok(ahead<3,species+' reversal skid '+ahead.toFixed(1)+' m');assert.ok(p.vx<0&&Math.abs(p.vy)<1,species+' now running the other way');
+  // flat-out sprint, then a 90 degree turn: the path bends within about 20 m (it used to drift 20-55 m)
+  p=mk(1,0,true);const sx=p.x;p.dx=0;p.dy=1;let n=0;while(!(p.vy>0&&Math.abs(p.vx)<1)&&n<600){go(p,1);n++;}
+  assert.ok((p.x-sx)/UNITS_PER_METRE<20,species+' sprint turn drift');
+  // releasing the keys stops within a second
+  p=mk(1,0);p.dx=0;go(p,60);assert.equal(Math.hypot(p.vx,p.vy),0,species+' stops');
+  // the heavier the animal, the slower the pivot
+  assert.ok(g.turnRate>=6);
+ }
+ assert.ok(ANIMALS.impala.gait.grip>ANIMALS.zebra.gait.grip&&ANIMALS.impala.gait.turnRate>ANIMALS.lion.gait.turnRate);
+});
