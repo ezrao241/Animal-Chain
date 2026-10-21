@@ -38,7 +38,7 @@ let LAYOUT:Prop[]|null=null;
 function layout():Prop[]{
  if(LAYOUT)return LAYOUT;const r=rng(417),out:Prop[]=[];
  const clear=(x:number,y:number,gap:number,kinds:Prop['kind'][])=>out.every(p=>!kinds.includes(p.kind)||dist(p,{x,y})>gap+(p.kind==='water'?p.size:0));
- for(const [x,y,s] of [[1180,860,250],[2900,700,210],[2350,1900,290],[700,2050,200]] as const)out.push({x,y,kind:'water',size:s});
+ for(const [x,y,s] of [[1180,860,170],[2900,700,140],[2350,1900,200],[700,2050,130]] as const)out.push({x,y,kind:'water',size:s});
  const kopjes:{x:number;y:number}[]=[];
  for(let n=0;kopjes.length<14&&n<500;n++){const x=260+r()*(W-520),y=260+r()*(H-520);if(clear(x,y,180,['water'])&&kopjes.every(k=>dist(k,{x,y})>520))kopjes.push({x,y});}
  for(const k of kopjes){const count=4+Math.floor(r()*5);for(let i=0;i<count;i++){const a=r()*Math.PI*2,d=i?35+r()*85:0,size=i?.6+r()*.7:1.3+r()*.5;out.push({x:k.x+Math.cos(a)*d,y:k.y+Math.sin(a)*d,kind:'rock',size});}}

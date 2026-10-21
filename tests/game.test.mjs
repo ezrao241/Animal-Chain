@@ -2,8 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {W,H,ANIMALS,SPECIES,WILDLIFE,newPlayer,newRoom,start,respawn,die,tick,props,interact,savannaEvent,useAbility,perch,hidden,publicRoom,makeFoods,solid,solidRadius,KICK_RANGE,TREE_REACH} from '../lib/game.ts';
 const NOW=1800000000000;
+// an open patch of plain: no thicket (hiding), boulder, tree or water nearby
+const OPEN=(()=>{for(let y=300;y<H-300;y+=50)for(let x=300;x<W-300;x+=50)if(props(417).every(p=>Math.hypot(p.x-x,p.y-y)>(p.kind==='water'?p.size+150:150)))return{x,y};})();
 function fixture(species='lion'){
- const player=newPlayer('test-host','Test Host',NOW,false,species);player.token='test-only-token';player.x=2000;player.y=1400;player.protectedUntil=0;
+ const player=newPlayer('test-host','Test Host',NOW,false,species);player.token='test-only-token';player.x=OPEN.x;player.y=OPEN.y;player.protectedUntil=0;
  const room=newRoom('TESTAB',player,NOW);Object.assign(room,{phase:'playing',started:NOW,ends:NOW+300000,foods:[]});return{room,player};
 }
 const near=(player,species,dx=10)=>{const q=newPlayer('q-'+species,species,NOW,true,species);Object.assign(q,{x:player.x+dx,y:player.y,protectedUntil:0});return q;};

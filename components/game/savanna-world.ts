@@ -10,10 +10,10 @@ const PROPS=props(417),WATERS=PROPS.filter(p=>p.kind==='water'),KOPJES=PROPS.fil
 const smooth=(a:number,b:number,x:number)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t);};
 function rolling(x:number,z:number){return 18*Math.sin(x*.0021+1.3)*Math.cos(z*.0017)+9*Math.sin(x*.0052+z*.0041)+4*Math.sin(x*.013-z*.011);}
 /** surface height of each watering hole (the land around it is levelled to its centre, then dished) */
-export const waterLevel=(w:Prop)=>rolling(w.x,w.y)-7;
+export const waterLevel=(w:Prop)=>rolling(w.x,w.y)-4;
 function height(x:number,z:number){
  let h=rolling(x,z);
- for(const w of WATERS){const d=Math.hypot(x-w.x,z-w.y);if(d<w.size*2.3){const c=rolling(w.x,w.y);h=c+(h-c)*smooth(w.size*1.2,w.size*2.2,d);const t=d/(w.size*1.35);if(t<1)h-=26*(1-t*t)**2;}}
+ for(const w of WATERS){const d=Math.hypot(x-w.x,z-w.y);if(d<w.size*2.3){const c=rolling(w.x,w.y);h=c+(h-c)*smooth(w.size*1.2,w.size*2.2,d);const t=d/(w.size*1.35);if(t<1)h-=12*(1-t*t)**2;}}
  for(const k of KOPJES){const d=Math.hypot(x-k.x,z-k.y);if(d<230)h+=24*(1-smooth(0,230,d));}
  // outside the playable map the land rises into low hills that frame the horizon
  const out=Math.max(-x,x-W,-z,z-H,0);if(out>0)h+=smooth(0,1200,out)*140+Math.sin(x*.004)*Math.cos(z*.005)*30*smooth(0,600,out);
@@ -135,7 +135,7 @@ export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
   per.forEach((items,v)=>{if(!items.length)return;const mesh=add(instanced(v<3?shortGeo[v]:tallGeo,grassMat,items,false));chunks.push({mesh,cx:cx*CH+CH/2,cz:cz*CH+CH/2,full:items.length});});
  }
  // watering holes: faceted water that shimmers
- const waterMat=new THREE.MeshStandardMaterial({color:0x5e9a96,roughness:.08,metalness:.15,flatShading:true,transparent:true,opacity:.9});disposables.push(waterMat);
+ const waterMat=new THREE.MeshStandardMaterial({color:0x4f8f98,roughness:.08,metalness:.15,flatShading:true,transparent:true,opacity:.9});disposables.push(waterMat);
  const waters=WATERS.map(w=>{const geo=new THREE.CircleGeometry(w.size*1.3,22,0,Math.PI*2);geo.rotateX(-Math.PI/2);const nonIndexed=geo.toNonIndexed();geo.dispose();const mesh=add(new THREE.Mesh(nonIndexed,waterMat));mesh.position.set(w.x,waterLevel(w),w.y);mesh.receiveShadow=true;disposables.push(nonIndexed);return{mesh,base:Float32Array.from(nonIndexed.getAttribute('position').array as Float32Array)};});
  // sky dome with a warm hazy horizon, the sun, and a ring of distant blue hills
  const skyGeo=new THREE.SphereGeometry(1,24,12),skyCol:number[]=[],sp=skyGeo.getAttribute('position');
