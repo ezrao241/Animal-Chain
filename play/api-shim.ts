@@ -4,7 +4,7 @@ import {newPlayer, newRoom, publicRoom, start, tick, useAbility, perch, interact
 
 const rooms = new Map<string, Room>();
 // Exposed for the browser QA harness (scripted checks drive and inspect the offline room); harmless in a solo copy.
-(globalThis as any).__animalChainRooms = rooms;
+(globalThis as typeof globalThis & {__animalChainRooms?: typeof rooms}).__animalChainRooms = rooms;
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {status, headers: {'Content-Type': 'application/json'}});
 
 function handle(b: Record<string, unknown>): Response {
