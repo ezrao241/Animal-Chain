@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import { newPlayer,newRoom,publicRoom,start,tick,useAbility,perch,interact,die,Room } from '@/lib/game';
 const json=(data:unknown,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}});
 export async function POST(req:Request){try{
- if(!env.DB)return json({error:'The forest is temporarily unavailable. Please try again.'},503);
+ if(!env.DB)return json({error:'The savanna is temporarily unavailable. Please try again.'},503);
  const b=await req.json() as Record<string,unknown>;const now=Date.now();const action=String(b.action||'');
  if(!['create','join','sync','start','practice','leave','restart'].includes(action))return json({error:'Unknown game action.'},400);
  if(action==='create'){
@@ -36,5 +36,5 @@ export async function POST(req:Request){try{
  }
  }
  const result=await env.DB.prepare('UPDATE rooms SET state=?, version=version+1, updated=? WHERE code=? AND version=?').bind(JSON.stringify(room),now,code,row.version).run();if(result.meta.changes)return json({room:publicRoom(room,now),...credentials});
- }return json({error:'The forest is busy. Reconnecting…'},503);
- }catch(e){console.error('Animal Chain game request failed',e);return json({error:'Could not reach the forest. Your session is saved; try again.'},503);}}
+ }return json({error:'The savanna is busy. Reconnecting…'},503);
+ }catch(e){console.error('Animal Chain game request failed',e);return json({error:'Could not reach the savanna. Your session is saved; try again.'},503);}}

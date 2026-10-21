@@ -1,6 +1,6 @@
 # Animal Chain
 
-Animal Chain is a real-time multiplayer forest survival game for 2–8 players. Each life assigns a different forest animal, and every species has its own food, predators, abilities, and three tasks. Rounds last five minutes and use a room code so players can join from separate devices.
+Animal Chain is a real-time multiplayer African savanna survival game for 2–8 players, drawn in a faceted low-poly style with real animal anatomy. Each life assigns a random animal (lion, leopard, spotted hyena, plains zebra, impala or warthog), and every species has its own food, predators, abilities, and three tasks. Rounds last five minutes and use a room code so players can join from separate devices. The world, animals and food are modelled in code (components/game/faceted.ts, safari-animals.ts, savanna-world.ts), with lighter models swapped in at a distance.
 
 ## Run it locally
 

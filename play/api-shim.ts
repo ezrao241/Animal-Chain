@@ -46,7 +46,7 @@ export function installShim() {
   const real = window.fetch.bind(window);
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-    if (/\/api\/game$/.test(url)) { try { return handle(JSON.parse(String(init?.body || '{}'))); } catch (e) { console.error(e); return json({error: 'Could not reach the forest.'}, 503); } }
+    if (/\/api\/game$/.test(url)) { try { return handle(JSON.parse(String(init?.body || '{}'))); } catch (e) { console.error(e); return json({error: 'Could not reach the savanna.'}, 503); } }
     const name = Object.keys(SPLIT).find(n => url.split(/[?#]/)[0].endsWith('/' + n));
     if (name) {
       const parts = await Promise.all(Array.from({length: SPLIT[name]}, (_, i) => real(`${url}.part${i}.txt`).then(r => r.text()).then(decode)));

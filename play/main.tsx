@@ -5,7 +5,6 @@ import {createRoot} from 'react-dom/client';
 import '../app/globals.css';
 import {installShim} from './api-shim';
 
-(globalThis as any).__ANIMAL_CHAIN_ASSETS = new URL('./', location.href).href;
 installShim();
 const {default: Game} = await import('../app/page');
 createRoot(document.getElementById('root')!).render(<Game/>);
