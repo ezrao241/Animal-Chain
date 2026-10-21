@@ -21,10 +21,26 @@ test('six savanna species, five-minute rounds, two humans and 60 wildlife slots'
  const grazers=WILDLIFE.filter(s=>!ANIMALS[s].prey.length).length;assert.ok(grazers>WILDLIFE.length*.65,'mostly grazers');
 });
 test('predators only hunt prey their size can take',()=>{
- assert.ok(!ANIMALS.leopard.prey.includes('zebra'));assert.ok(!ANIMALS.hyena.prey.includes('zebra'));assert.ok(ANIMALS.lion.prey.includes('zebra'));
+ assert.ok(!ANIMALS.leopard.prey.includes('zebra'));assert.ok(ANIMALS.lion.prey.includes('zebra'));
  for(const s of SPECIES)assert.ok(!ANIMALS[s].prey.includes('lion'));
  const {room,player}=fixture('leopard');const zebra=near(player,'zebra');room.players.push(zebra);interact(player,room,NOW);assert.equal(player.hunts,0);assert.equal(zebra.deadUntil,0);
  const impala=near(player,'impala',12);room.players.push(impala);hunt(player,room,NOW+1000);assert.equal(player.hunts,1);assert.ok(impala.deadUntil);
+});
+test('zebras: a lone hyena cannot take one, a clan of three can; wild lions and clans favour zebra',()=>{
+ const{room,player}=fixture('hyena');const z=near(player,'zebra',14);z.heading=Math.PI;room.players.push(z);
+ hunt(player,room,NOW);assert.equal(player.hunts,0,'one hyena is not enough');assert.match(player.message,/two more hyenas/);
+ const mate=(i,dy)=>{const h=newPlayer('clan'+i,'H',NOW,true,'hyena');Object.assign(h,{x:player.x-10,y:player.y+dy,protectedUntil:0});room.players.push(h);return h;};
+ mate(1,40);hunt(player,room,NOW+1000);assert.equal(player.hunts,0,'two is not a clan');
+ mate(2,-40);hunt(player,room,NOW+2000);assert.equal(player.hunts,1,'three hyenas bring the zebra down');assert.ok(z.deadUntil);
+ // wild lion with an impala and a zebra in view, the zebra a bit further off: it picks the zebra
+ {const{room,player:o}=fixture('zebra');room.players=[];o.x=20;o.y=20;room.players.push(o);start(room,NOW);room.players=[room.players.find(p=>!p.bot),room.players.find(p=>p.bot&&p.species==='lion')];room.players[0].species='zebra';
+  const lion=room.players.find(p=>p.bot&&p.species==='lion');Object.assign(lion,{x:OPEN.x,y:OPEN.y,hunger:50,mood:'patrol',targetId:''});
+  const imp=newPlayer('imp','I',NOW,true,'impala'),zeb=newPlayer('zeb','Z',NOW,true,'zebra');Object.assign(imp,{x:OPEN.x+60,y:OPEN.y,vx:12,protectedUntil:0});Object.assign(zeb,{x:OPEN.x,y:OPEN.y+90,vx:12,protectedUntil:0});
+  room.players.push(imp,zeb);for(const p of room.players)p.lastSeen=Infinity;tick(room,NOW+100);assert.equal(lion.targetId,'zeb');}
+ // a warthog is only worth a lion's chase once the lion is properly hungry
+ for(const [hunger,want] of [[85,''],[60,'hog']]){const{room,player:o}=fixture('zebra');room.players=[];o.x=20;o.y=20;room.players.push(o);start(room,NOW);room.players=[room.players.find(p=>!p.bot),room.players.find(p=>p.bot&&p.species==='lion')];room.players[0].species='zebra';
+  const lion=room.players.find(p=>p.bot&&p.species==='lion');Object.assign(lion,{x:OPEN.x,y:OPEN.y,hunger,mood:'patrol',targetId:''});
+  const hog=newPlayer('hog','W',NOW,true,'warthog');Object.assign(hog,{x:OPEN.x+50,y:OPEN.y,vx:10,protectedUntil:0});room.players.push(hog);for(const p of room.players)p.lastSeen=Infinity;tick(room,NOW+100);assert.equal(lion.targetId,want,'hunger '+hunger);}
 });
 test('a kill leaves a carcass that scavengers can eat',()=>{
  const {room,player}=fixture('lion');const prey=near(player,'warthog');room.players.push(prey);hunt(player,room,NOW);
@@ -104,7 +120,7 @@ test('catches: front only, nothing in between, a windup the prey can answer, one
 test('zebra kick stuns a lion, impala leap and warthog burrow escape a catch',()=>{
  {const{room,player}=fixture('zebra');player.heading=Math.PI;const lion=near(player,'lion',KICK_RANGE-10);room.players.push(lion);useAbility(player,room,NOW);assert.ok(lion.stunUntil>NOW);hunt(lion,room,NOW+100);assert.equal(lion.hunts,0);}
  {const{room,player}=fixture('impala');const lion=near(player,'lion',15);room.players.push(lion);useAbility(player,room,NOW);hunt(lion,room,NOW+200);assert.equal(lion.hunts,0);}
- {const{room,player}=fixture('warthog');const burrow=props(417).find(p=>p.kind==='burrow');Object.assign(player,{x:burrow.x+20,y:burrow.y});useAbility(player,room,NOW);assert.equal(player.x,burrow.x);assert.ok(hidden(player,room,NOW+1000));}
+ {const{room,player}=fixture('warthog');const burrow=props(417).find(p=>p.kind==='burrow');Object.assign(player,{x:burrow.x+20,y:burrow.y});useAbility(player,room,NOW);assert.ok(Math.hypot(player.x-burrow.x,player.y-burrow.y)<=5.01,'backed into the hole');assert.ok(hidden(player,room,NOW+1000));}
 });
 test('leopards climb a trunk, walk out on a bough, turn round, ambush and climb down head first',()=>{
  const{room,player}=fixture('leopard'),ps=props(417),tree=ps.find(p=>p.kind==='tree');Object.assign(player,{x:tree.x+TREE_REACH-5,y:tree.y});
@@ -207,7 +223,9 @@ test('defences have limits: the zebra kick only reaches behind and has a cooldow
 test('every predator/prey matchup: only listed prey, in reach, unprotected and not escaping, can be caught',()=>{
  for(const hunter of SPECIES)for(const prey of SPECIES){if(hunter===prey)continue;
   const{room,player}=fixture(hunter);const q=near(player,prey,15);room.players.push(q);hunt(player,room,NOW);
-  assert.equal(!!q.deadUntil,ANIMALS[hunter].prey.includes(prey),hunter+' vs '+prey);
+  // (a hyena alone can't take a zebra: that needs the clan, tested separately)
+  assert.equal(!!q.deadUntil,ANIMALS[hunter].prey.includes(prey)&&!(hunter==='hyena'&&prey==='zebra'),hunter+' vs '+prey);
+  if(hunter==='hyena'&&prey==='zebra')continue;
   if(!ANIMALS[hunter].prey.includes(prey))continue;
   const{room:r2,player:h2}=fixture(hunter);const shielded=near(h2,prey,15);shielded.protectedUntil=NOW+4000;r2.players.push(shielded);hunt(h2,r2,NOW);assert.equal(shielded.deadUntil,0,'spawn protection '+hunter+' vs '+prey);
   const{room:r3,player:h3}=fixture(hunter);const away=near(h3,prey,ANIMALS[hunter].catchRange+5);r3.players.push(away);hunt(h3,r3,NOW);assert.equal(away.deadUntil,0,'out of reach '+hunter+' vs '+prey);
@@ -250,8 +268,8 @@ test('wildlife over three minutes: stays on the map, keeps moving, no piles, var
  const a=run(),b=run();
  for(const p of a.room.players)assert.ok(p.x>=25&&p.x<=W-25&&p.y>=25&&p.y<=H-25,p.id+' left the map');
  const stationary=a.room.players.filter(p=>a.moved.get(p.id)<50);assert.ok(stationary.length<=4,'stuck animals: '+stationary.map(p=>p.id+':'+p.mood).join(','));
- // (a warthog family may share one burrow: they are underground, not piled up)
- const end=NOW+1800*100;for(const p of a.room.players)for(const q of a.room.players)if(p!==q&&!p.deadUntil&&!q.deadUntil&&!(hidden(p,a.room,end)&&hidden(q,a.room,end)))assert.ok(Math.hypot(p.x-q.x,p.y-q.y)>2,'piled up: '+p.id+' '+q.id);
+ // (a warthog family may share one burrow: one underground is not piled up with one at the mouth)
+ const end=NOW+1800*100;for(const p of a.room.players)for(const q of a.room.players)if(p!==q&&!p.deadUntil&&!q.deadUntil&&!(hidden(p,a.room,end)&&hidden(q,a.room,end))&&![p,q].some(o=>o.species==='warthog'&&o.abilityUntil>end))assert.ok(Math.hypot(p.x-q.x,p.y-q.y)>2,'piled up: '+p.id+' '+q.id);
  for(const m of ['graze','patrol','drink'])assert.ok(a.moods.has(m),'mood seen: '+m+' in '+[...a.moods]);
  assert.deepEqual(a.room.players.map(p=>[Math.round(p.x),Math.round(p.y)]),b.room.players.map(p=>[Math.round(p.x),Math.round(p.y)]),'same seed, same savanna');
  assert.ok(trails().length>=4);

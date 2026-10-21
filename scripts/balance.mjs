@@ -5,9 +5,10 @@
 //   node scripts/balance.mjs [rounds=4]
 // The AI is not a human player, so this measures the rules' economy (what each species can earn and how long it
 // lives under pressure), not how fun a species is in hand.
-import {newPlayer,newRoom,start,tick,sense,props,ANIMALS,SPECIES} from '../lib/game.ts';
+import {newPlayer,newRoom,start,tick,sense,props,ANIMALS,SPECIES,WILDLIFE} from '../lib/game.ts';
 const rounds=Number(process.argv[2]||4),T0=1800000000000,STEP=140;
 const S=Object.fromEntries(SPECIES.map(s=>[s,{lives:0,seconds:0,points:0,deaths:{},firstFood:[],firstPrey:[],chaseGaps:[],missed:0,stuck:0,windows:0,hunts:0,food:0,drinks:0,escapes:0}]));
+const pressure=Object.fromEntries(SPECIES.map(s=>[s,{stalked:0,chased:0}]));
 const median=a=>{if(!a.length)return null;const b=[...a].sort((x,y)=>x-y);return b[Math.floor(b.length/2)];};
 for(let r=0;r<rounds;r++){
  // a human host who sits still out of the way, only so the room can start
@@ -26,6 +27,7 @@ for(let r=0;r<rounds;r++){
    if(L.fed===null&&p.food>L.food){L.fed=(t-L.born)/1000;s.firstFood.push(L.fed);}
    const a=ANIMALS[p.species];
    if(a.prey.length&&L.prey===null&&room.players.some(q=>!q.deadUntil&&a.prey.includes(q.species)&&sense(p,q,room,t,ps))){L.prey=(t-L.born)/1000;s.firstPrey.push(L.prey);}
+   if(a.prey.length&&p.targetId&&(p.mood==='chase'||p.mood==='stalk')&&(p.mood!==L.mood||p.targetId!==L.target)){const q=room.players.find(o=>o.id===p.targetId);if(q)pressure[q.species][p.mood==='chase'?'chased':'stalked']++;}L.target=p.targetId;
    if(p.mood==='chase'&&L.mood!=='chase'){if(L.lastChase)s.chaseGaps.push((t-L.lastChase)/1000);L.lastChase=t;}L.mood=p.mood;
    // stuck: in a 10 s window it wanted to travel (a goal well away) but covered under 2 m
    if(t-L.wt>=10000){s.windows++;const moved=Math.hypot(p.x-L.wx,p.y-L.wy),wants=Math.hypot((p.targetX||p.x)-p.x,(p.targetY||p.y)-p.y)>60;if(wants&&moved<20&&!p.perched)s.stuck++;L.wx=p.x;L.wy=p.y;L.wt=t;}
@@ -36,4 +38,7 @@ for(let r=0;r<rounds;r++){
 const rows=SPECIES.map(sp=>{const s=S[sp];return{species:sp,lives:s.lives,'pts/min':+(s.points/(s.seconds/60)).toFixed(1),'mean life s':+(s.seconds/s.lives).toFixed(0),
  'first food s (median)':median(s.firstFood)?.toFixed(0)??'-','first prey seen s (median)':median(s.firstPrey)?.toFixed(0)??'-','chase gap s (median)':median(s.chaseGaps)?.toFixed(0)??'-',
  'missed per min':+(s.missed/(s.seconds/60)).toFixed(2),'stuck %':+(100*s.stuck/Math.max(1,s.windows)).toFixed(1),deaths:Object.entries(s.deaths).map(([k,v])=>k+': '+v).join('; ')};});
+const slots=Object.fromEntries(SPECIES.map(s=>[s,0]));for(const s of WILDLIFE)slots[s]++;
+console.log('Pressure on prey, per animal per 5-minute round (stalks / chases started on it, deaths by predator):');
+console.table(['zebra','impala','warthog'].map(sp=>{const k=Object.entries(S[sp].deaths).filter(([w])=>/caught/.test(w)).reduce((n,[,v])=>n+v,0);return{species:sp,animals:slots[sp],'stalked per animal':+(pressure[sp].stalked/rounds/slots[sp]).toFixed(2),'chased per animal':+(pressure[sp].chased/rounds/slots[sp]).toFixed(2),'caught per animal':+(k/rounds/slots[sp]).toFixed(2)};}));
 console.table(rows.map(({deaths,...r})=>r));for(const r of rows)console.log(r.species.padEnd(8),r.deaths);
