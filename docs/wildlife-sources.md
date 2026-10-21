@@ -41,6 +41,21 @@ safari redo and are unchanged here.
   above.
 - **Defences.** The zebra kick reaches 4 m and only behind the zebra, has an 8 s cooldown and stuns for 2.5 s. The impala
   leap lasts 0.9 s (a bound of about 10 m) with a 6 s cooldown. The warthog burrow needs a burrow within 4.5 m and lasts 5 s with a 9 s cooldown.
+- **Hunger and thirst.** Food and water are separate meters. Water falls from full to empty in about four minutes;
+  with none left, food burns twice as fast. Food falls faster for grazers (0.6 a second) than for hyenas (0.45),
+  leopards (0.4) and lions (0.35), following the real pattern of grazers feeding most of the day and big carnivores
+  gorging and then fasting, at game speed. An animal can only drink below 60 % water and eat below 90 % food, so a
+  watering hole or a patch of grass can't be farmed for points.
+- **Catches.** Pressing Eat / Hunt next to prey commits a lunge that lands 0.25 s later. The prey must be within 65°
+  of the way the hunter is moving or facing, with no trunk or boulder in between, and still in reach, not leaping and
+  not in a burrow when it lands; a kick in that moment knocks the hunter off balance. The prey sees the lunge coming
+  (its danger warning lights up). A leopard's drop from a bough is checked when it lands, not when it jumps. Real
+  hunts have a commitment moment too, but 0.25 s is a game number chosen to be readable.
+- **Carrion.** The old carcasses scattered on the plains are replaced 2.5 minutes after one is eaten, so they tide a
+  predator over between hunts but can't feed it indefinitely. Fresh kills leave a carcass for 90 s.
+- **Scoring a life.** Species tasks pay once per species per round, however many lives it takes. Staying alive pays
+  10, 20, 30... points for each further minute of the same life, and the menu's New life counts as a death (a 6 s
+  wait, and the next animal starts no better fed or watered), so ending a life early never earns more.
 - **Mud.** Wading through a watering hole or its mud ring slows every animal to 80 %.
 - **Tracks.** Footprints are drawn about four times life size so they read from the follow camera. They fade within 55 s, or
   110 s in mud.

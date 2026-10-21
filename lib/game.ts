@@ -42,7 +42,15 @@ export type Player={id:string;token?:string;name:string;bot:boolean;species:Spec
  strikeBorn?:number;
  /** species tasks already rewarded this round ('zebra:1'): a new life doesn't pay the same task twice */
  done?:string[];
+ /** this round's lives so far, for the death card and the end-of-round recap; lifeStart is the score a life began on */
+ lives?:LifeRecord[];lifeStart?:number;
+ /** food and water carried over a voluntary restart */
+ carry?:{hunger:number;thirst:number};
+ /** whole minutes this life has been paid for staying alive */
+ survived?:number;
  tree?:number;climb?:Climb;ch?:number;side?:number;limb?:number;along?:number;limbDir?:number;goal?:number;mount?:number;climbHold?:number;vh?:number};
+/** one finished life: what it was, how long it lasted, what it earned and how it ended */
+export type LifeRecord={species:Species;seconds:number;points:number;food:number;hunts:number;cause:string};
 export type Room={code:string;host:string;phase:'lobby'|'playing'|'finished';started:number;ends:number;tick:number;players:Player[];foods:Food[];events:string[];seed:number;round:number;practice?:boolean;rs?:number};
 // Computer-controlled wildlife keeps savanna proportions: plenty of grazers, a few predators.
 const WILDLIFE_MIX:Species[]=['impala','zebra','impala','warthog','zebra','impala','hyena','impala','warthog','zebra','lion','impala','warthog','zebra','leopard','impala','warthog','hyena','zebra','impala'];
@@ -158,7 +166,7 @@ export function spawnPoint(species:Species,room?:Room,seed=Math.floor(Math.rando
  let q=habitat(species,r);for(let i=0;i<14&&inSight(room,species,q);i++)q=habitat(species,r);
  return q;
 }
-export function newPlayer(id:string,name:string,now:number,bot=false,species?:Species,room?:Room):Player{const kind=species||SPECIES[Math.floor(Math.random()*6)];const p={id,name,bot,species:kind,...spawnPoint(kind,room,Math.floor(Math.random()*1e9)),dx:0,dy:0,vx:0,vy:0,perched:false,perchHeight:0,actionUntil:0,lastSeen:now,inputAt:now,born:now,protectedUntil:now+4000,deadUntil:0,abilityUntil:0,abilityReady:0,interactReady:0,stunUntil:0,hunger:100,thirst:70+idHash(id+'water')*25,strikeId:'',strikeAt:0,strikeAmbush:false,score:0,deaths:0,food:0,hunts:0,drinks:0,scavenged:0,escapes:0,hiddenSeconds:0,survivalSeconds:0,claimed:[false,false,false],sprint:false,stamina:100,threatAt:0,face:1,message:'A new place in the chain.',messageUntil:now+3000,seq:0,targetX:0,targetY:0,heading:0,mood:'wander' as Mood,alert:0,targetId:'',moodUntil:0,alarmAt:0,calledAt:0,threatX:0,threatY:0,lastThreatAt:0,homeX:0,homeY:0,herd:'',nextDrink:now+40000+idHash(id)*60000,chaseStart:0,thinkAt:0,stuckX:0,stuckY:0,stuckAt:now,unstickUntil:0};p.homeX=p.stuckX=p.x;p.homeY=p.stuckY=p.y;return p;}
+export function newPlayer(id:string,name:string,now:number,bot=false,species?:Species,room?:Room):Player{const kind=species||SPECIES[Math.floor(Math.random()*6)];const p={id,name,bot,species:kind,...spawnPoint(kind,room,Math.floor(Math.random()*1e9)),dx:0,dy:0,vx:0,vy:0,perched:false,perchHeight:0,actionUntil:0,lastSeen:now,inputAt:now,born:now,protectedUntil:now+4000,deadUntil:0,abilityUntil:0,abilityReady:0,interactReady:0,stunUntil:0,hunger:100,survived:0,thirst:70+idHash(id+'water')*25,strikeId:'',strikeAt:0,strikeAmbush:false,score:0,deaths:0,food:0,hunts:0,drinks:0,scavenged:0,escapes:0,hiddenSeconds:0,survivalSeconds:0,claimed:[false,false,false],sprint:false,stamina:100,threatAt:0,face:1,message:'A new place in the chain.',messageUntil:now+3000,seq:0,targetX:0,targetY:0,heading:0,mood:'wander' as Mood,alert:0,targetId:'',moodUntil:0,alarmAt:0,calledAt:0,threatX:0,threatY:0,lastThreatAt:0,homeX:0,homeY:0,herd:'',nextDrink:now+40000+idHash(id)*60000,chaseStart:0,thinkAt:0,stuckX:0,stuckY:0,stuckAt:now,unstickUntil:0};p.homeX=p.stuckX=p.x;p.homeY=p.stuckY=p.y;return p;}
 /** A stable 0..1 number per animal, for per-animal variety (reaction time, flee angle) that tests can reproduce. */
 export function idHash(id:string){let h=2166136261;for(let i=0;i<id.length;i++)h=Math.imul(h^id.charCodeAt(i),16777619);return((h^h>>>15)>>>0)/4294967296;}
 /** Seeded randomness kept in the room, so a round's wildlife decisions replay the same from the same state. */
@@ -171,8 +179,8 @@ export function nextSpecies(p:Pick<Player,'species'|'bag'>):Species{
  if(!p.bag?.length){const bag=[...SPECIES].map(s=>[Math.random(),s] as const).sort((a,b)=>a[0]-b[0]).map(x=>x[1]);if(bag[0]===p.species)bag.push(bag.shift()!);p.bag=bag;}
  return p.bag.shift()!;
 }
-export function respawn(p:Player,now:number,room?:Room){const species=p.bot?(WILDLIFE[Number(p.id.replace('wild-',''))]||p.species):nextSpecies(p);const fresh=newPlayer(p.id,p.bot?ANIMALS[species].name:p.name,now,p.bot,species,room);Object.assign(p,fresh,{bag:p.bag,score:p.score,deaths:p.deaths,token:p.token,lastSeen:p.lastSeen,seq:p.seq,herd:p.herd,homeX:p.homeX,homeY:p.homeY});if(p.bot&&room)rejoinHerd(p,room,now);p.claimed=p.claimed.map((_,i)=>i<2&&!!p.done?.includes(p.species+':'+i));notify(p,'New life. New animal.',now);}
-export function start(room:Room,now:number){room.phase='playing';room.started=now;room.ends=now+300000;room.tick=now;room.round++;room.foods=makeFoods(room.seed);room.players=room.players.filter(p=>!p.bot);for(const p of room.players){const token=p.token,species=nextSpecies(p),bag=p.bag;Object.assign(p,newPlayer(p.id,p.name,now,false,species,room),{token,bag,done:[]});}room.rs=room.seed*977+room.round*131;placeWildlife(room,now);room.events=['Golden graze. Find food, complete tasks, survive.'];}
+export function respawn(p:Player,now:number,room?:Room){const species=p.bot?(WILDLIFE[Number(p.id.replace('wild-',''))]||p.species):nextSpecies(p);const fresh=newPlayer(p.id,p.bot?ANIMALS[species].name:p.name,now,p.bot,species,room);const carry=p.carry;Object.assign(p,fresh,{bag:p.bag,lives:p.lives,lifeStart:p.score,carry:undefined,score:p.score,deaths:p.deaths,token:p.token,lastSeen:p.lastSeen,seq:p.seq,herd:p.herd,homeX:p.homeX,homeY:p.homeY});if(carry){p.hunger=Math.min(p.hunger,Math.max(25,carry.hunger));p.thirst=Math.min(p.thirst??100,Math.max(25,carry.thirst));}if(p.bot&&room)rejoinHerd(p,room,now);p.claimed=p.claimed.map((_,i)=>i<2&&!!p.done?.includes(p.species+':'+i));notify(p,'New life. New animal.',now);}
+export function start(room:Room,now:number){room.phase='playing';room.started=now;room.ends=now+300000;room.tick=now;room.round++;room.foods=makeFoods(room.seed);room.players=room.players.filter(p=>!p.bot);for(const p of room.players){const token=p.token,species=nextSpecies(p),bag=p.bag;Object.assign(p,newPlayer(p.id,p.name,now,false,species,room),{token,bag,done:[],lives:[],lifeStart:0});}room.rs=room.seed*977+room.round*131;placeWildlife(room,now);room.events=['Golden graze. Find food, complete tasks, survive.'];}
 export const leaping=(p:Player,now:number)=>p.species==='impala'&&p.abilityUntil>now;
 const stalking=(p:Player,now:number)=>p.species==='leopard'&&p.abilityUntil>now&&!p.perched;
 const inThicket=(ps:Prop[],x:number,y:number)=>bushNear(ps,x,y,26);
@@ -233,7 +241,10 @@ export function sense(o:Player,t:Player,room:Room,now:number,ps=props(room.seed)
 }
 /** Thirst falls from full to empty in about four minutes, so an animal needs one or two drinks a life; below
  *  THIRSTY it can drink (and scores for it). Real animals drink about daily; this is a game rate. */
-export const THIRST_RATE=100/240,THIRSTY=60;
+export const THIRST_RATE=100/240,THIRSTY=60,FULL=90;
+/** Food runs down per second. Grazers live on poor food and must eat most of the day; big carnivores gorge on a kill
+ *  and can go days between meals, so their meter falls more slowly (game rates, real ordering). */
+export const HUNGER_RATE:Record<Species,number>={lion:.35,leopard:.4,hyena:.45,zebra:.6,impala:.6,warthog:.6};
 export const UNITS_PER_METRE=10,TRUNK_RADIUS=7,POUNCE_RANGE=42,AMBUSH_RANGE=60,KICK_RANGE=40,FOOD_RANGE=18,BURROW_REACH=45,TREE_REACH=40,WATER_REACH=30,THREAT_RANGE=300,LEAP_SPEED=11,STALK_SPEED=1;
 const wrap=(a:number)=>Math.atan2(Math.sin(a),Math.cos(a)),clamp=(v:number,a:number,b:number)=>Math.max(a,Math.min(b,v));
 /** True while the animal is running flat out on its stamina (Charge and Tireless sprint for free). */
@@ -454,7 +465,12 @@ export function useAbility(p:Player,room:Room,now:number){if(now<p.abilityReady|
  if(p.species==='hyena')p.stamina=100,p.exhausted=false;
  if(p.species==='impala'){const g=Math.hypot(p.vx,p.vy)||1,h=Math.hypot(p.dx,p.dy)>.1?Math.atan2(p.dy,p.dx):Math.atan2(p.vy,p.vx),v=Math.max(g,LEAP_SPEED*UNITS_PER_METRE);p.vx=Math.cos(h)*v;p.vy=Math.sin(h)*v;}
  p.abilityUntil=now+ANIMALS[p.species].duration*1000;p.abilityReady=now+ANIMALS[p.species].cooldown*1000;if(p.species!=='zebra')notify(p,ANIMALS[p.species].ability+'!',now);}
-export function die(p:Player,room:Room,now:number,cause:string){if(p.deadUntil)return;p.deadUntil=now+2600;p.dx=0;p.dy=0;p.vx=0;p.vy=0;endClimb(p);p.strikeId='';p.strikeAt=0;p.strikeAmbush=false;p.deaths++;notify(p,cause,now);if(!p.bot){room.events.unshift(p.name+' '+cause);room.events=room.events.slice(0,5);}}
+export const RESTART_CAUSE='started a new life.';
+/** The menu's New life: allowed, but it is a death like any other (a longer wait, and the next animal starts no
+ *  better fed or watered than this one was), so throwing a life away is never a shortcut to food or a better spot. */
+export function restartLife(p:Player,room:Room,now:number){if(p.deadUntil)return;p.carry={hunger:p.hunger,thirst:p.thirst??100};die(p,room,now,RESTART_CAUSE);p.deadUntil=now+6000;}
+export function die(p:Player,room:Room,now:number,cause:string){if(cause===RESTART_CAUSE&&!p.carry){restartLife(p,room,now);return;}if(p.deadUntil)return;
+ if(!p.bot)(p.lives??=[]).push({species:p.species,seconds:Math.round(p.survivalSeconds),points:p.score-(p.lifeStart??0),food:p.food,hunts:p.hunts,cause});p.deadUntil=now+2600;p.dx=0;p.dy=0;p.vx=0;p.vy=0;endClimb(p);p.strikeId='';p.strikeAt=0;p.strikeAmbush=false;p.deaths++;notify(p,cause,now);if(!p.bot){room.events.unshift(p.name+' '+cause);room.events=room.events.slice(0,5);}}
 // A kill leaves a carcass for scavengers once the hunter has eaten. Old carcasses dry out.
 function dropCarcass(room:Room,x:number,y:number,now:number){room.foods=room.foods.filter(f=>!f.until||f.until>now);if(room.foods.length>620)return;const id=Math.max(0,...room.foods.map(f=>f.id))+1;room.foods.push({id,x,y,kind:'carrion',ready:now+5000,until:now+90000});}
 export function interact(p:Player,room:Room,now:number){if(p.deadUntil||now<p.interactReady||p.strikeId)return;if((p.stunUntil??0)>now){notify(p,'Still reeling from the kick.',now);return;}p.interactReady=now+650;p.actionUntil=now+500;
@@ -468,11 +484,13 @@ export function interact(p:Player,room:Room,now:number){if(p.deadUntil||now<p.in
  // is a leap from the bough that is checked when it lands.
  if(victims.length&&!ambush){const ps=props(room.seed),q=victims.find(q=>inFront(p,q)&&!contactBlocked(ps,p,q));
   if(!q){notify(p,'Missed: face your prey, with nothing in the way.',now);return;}
-  p.strikeId=q.id;p.strikeAt=now+STRIKE_WINDUP;p.strikeAmbush=false;p.strikeBorn=p.born;p.heading=Math.atan2(q.y-p.y,q.x-p.x);return;}
+  p.strikeId=q.id;p.strikeAt=now+STRIKE_WINDUP;p.strikeAmbush=false;p.strikeBorn=p.born;q.threatAt=now;notify(p,'Lunge!',now);notify(q,'Lunge! '+a.name+' right on you',now);p.heading=Math.atan2(q.y-p.y,q.x-p.x);return;}
  if(victims[0]&&ambush){const q=victims[0];dropOnto(p,props(room.seed),q);p.strikeId=q.id;p.strikeAt=0;p.strikeAmbush=true;p.strikeBorn=p.born;return;}
  if(ambush){notify(p,'No prey below. Wait for it to come closer.',now);return;}
  const f=nearest(room.foods,p,FOOD_RANGE,f=>f.ready<=now&&(!f.until||f.until>now)&&(a.foods as string[]).includes(f.kind));
- if(f){if(f.until)f.until=now;else f.ready=now+18000;p.food++;if(f.kind==='carrion')p.scavenged++;p.hunger=Math.min(100,p.hunger+(f.kind==='carrion'?35:28));const points=(savannaEvent(room,now).kind==='forage'?5:3)+(f.kind==='carrion'&&p.species==='hyena'?2:0);p.score+=points;notify(p,(f.kind==='carrion'?'Scavenged ':f.kind==='roots'?'Dug up roots ':'Food found ')+'+'+points,now);return;}
+ // a full animal can't keep eating for points (the same rule as water)
+ if(f&&p.hunger>=FULL){notify(p,'Not hungry yet.',now);return;}
+ if(f){if(f.until)f.until=now;else f.ready=now+(f.kind==='carrion'?CARRION_REGROW:18000);p.food++;if(f.kind==='carrion')p.scavenged++;p.hunger=Math.min(100,p.hunger+(f.kind==='carrion'?35:28));const points=(savannaEvent(room,now).kind==='forage'?5:3)+(f.kind==='carrion'&&p.species==='hyena'?2:0);p.score+=points;notify(p,(f.kind==='carrion'?'Scavenged ':f.kind==='roots'?'Dug up roots ':'Food found ')+'+'+points,now);return;}
  if(nearWater(props(room.seed),p.x,p.y,WATER_REACH)){
   // water refills thirst (not food) and only scores when the animal really needed it
   if((p.thirst??100)>=THIRSTY){notify(p,'Not thirsty yet.',now);return;}
@@ -493,16 +511,37 @@ export function resolveStrike(p:Player,room:Room,now:number){
  const points=(savannaEvent(room,now).kind==='hunt'?15:10)+(ambush?3:0);p.score+=points;notify(p,(ambush?'Ambush! ':'Successful hunt ')+'+'+points,now);
 }
 export const STRIKE_WINDUP=250;
+/** The first-seconds coaching line for each animal: what to do, in the order a new player needs it. */
+export const COACH:Record<Species,string>={
+ lion:'Turn on Tracking to find prey. Creep in close, Charge, face it and Eat / Hunt.',
+ leopard:'Turn on Tracking to find prey. Stalk in close, or Climb tree and Eat / Hunt to drop on prey below.',
+ hyena:'Follow circling vultures to carcasses. Tireless lets you run down a warthog or impala.',
+ zebra:'Eat to graze and drink when Water runs low. Stay with the herd; Kick stuns a predator right behind you.',
+ impala:'Eat to graze. If something charges, sprint and Leap just before it lunges.',
+ warthog:'Eat to dig up roots. Keep a burrow close: Burrow hides you when danger comes.'};
+/** Why a life ended, in a sentence a player can learn from. */
+export function deathLesson(cause:string,species:Species){
+ if(/lion/.test(cause))return species==='zebra'?'Lions tire after a short sprint. Keep it behind you and kick.':'Lions sprint hard but briefly. Break line of sight, jink, or outlast the charge.';
+ if(/leopard/.test(cause))return 'Leopards ambush from cover and from acacia boughs. Watch the trees and use Tracking (F).';
+ if(/hyena/.test(cause))return 'Hyenas run for kilometres. Use your burst early and get to cover or a burrow.';
+ if(/food/.test(cause))return ANIMALS[species].prey.length?'Hunger ran out. Carcasses (under circling vultures) tide you over between hunts.':'Hunger ran out. Eat whenever the Food meter drops below 90%.';
+ if(/new life/.test(cause))return 'You chose a fresh start. Points you earned stay with you.';
+ return 'Every life is a fresh start in the chain.';
+}
+/** an old carcass on the plains, once picked clean, is replaced by another only after a few minutes: carrion tides a
+ *  predator over between hunts but can't feed it for good (grass and roots regrow in 18 s) */
+export const CARRION_REGROW=150000;
 type Task={label:string;value:number;target:number;points:number};
 export function tasks(p:Player,now:number):Task[]{
- const survive={label:'Survive this life for 60 seconds',value:Math.floor(p.survivalSeconds),target:60,points:40};
+ // staying alive pays more the longer a life lasts (10, 20, 30... a minute), so ending a life early never pays
+ const k=p.survived??0,survive={label:k?`Stay alive to ${k+1} minutes`:'Survive this life for 60 seconds',value:Math.floor(p.survivalSeconds)-60*k,target:60,points:10*(k+1)};
  const hunts=(target:number)=>({label:`Complete ${target} hunt${target>1?'s':''}`,value:p.hunts,target,points:30});
  const graze=(label:string)=>({label,value:p.food,target:4,points:30});
  const drink={label:'Drink at a watering hole',value:p.drinks,target:1,points:25};
  const hide=(label:string)=>({label,value:Math.floor(p.hiddenSeconds),target:8,points:25});
  const second:Record<Species,[Task,Task]>={
-  lion:[hunts(2),drink],
-  leopard:[hunts(2),hide('Stay hidden for 8 seconds')],
+  lion:[hunts(1),drink],
+  leopard:[hunts(1),hide('Stay hidden for 8 seconds')],
   hyena:[hunts(1),{label:'Scavenge 3 carcasses',value:p.scavenged,target:3,points:25}],
   zebra:[graze('Graze 4 times'),drink],
   impala:[graze('Eat 4 food items'),{label:'Escape 2 predators',value:p.escapes,target:2,points:25}],
@@ -526,7 +565,7 @@ export function tick(room:Room,now:number){
  move(p,dt,ps,t);breathe(p,dt,t);
  p.survivalSeconds+=dt;p.thirst=Math.max(0,(p.thirst??100)-dt*THIRST_RATE);
  // food runs down at its own pace; a parched animal burns through it twice as fast
- p.hunger-=dt*.6*(p.thirst<=0?2:1);
+ p.hunger-=dt*HUNGER_RATE[p.species]*(p.thirst<=0?2:1);
  if(p.strikeId&&p.strikeAt&&t>=p.strikeAt)resolveStrike(p,room,t);
  if(p.hunger<=0){die(p,room,t,'ran out of food.');continue;}
  if(hidden(p,room,t)||stalking(p,t)&&(inThicket(ps,p.x,p.y)||inTallGrass(ps,p.x,p.y)))p.hiddenSeconds+=dt;
@@ -534,7 +573,7 @@ export function tick(room:Room,now:number){
  // predator within 15 m is running at you), not merely that one is somewhere nearby.
  const threat=room.players.some(q=>!q.deadUntil&&ANIMALS[q.species].prey.includes(p.species)&&(q.bot?q.mood==='chase'&&q.targetId===p.id:dist(p,q)<150&&((p.x-q.x)*(q.vx||0)+(p.y-q.y)*(q.vy||0))/Math.max(1,dist(p,q))>40));
  if(threat)p.threatAt=t;else if(p.threatAt&&t-p.threatAt>3000){p.escapes++;const points=savannaEvent(room,t).kind==='escape'?10:5;p.score+=points;p.threatAt=0;notify(p,'Escaped a threat +'+points,t);}
- tasks(p,t).forEach((task,i)=>{if(!p.claimed[i]&&task.value>=task.target){p.claimed[i]=true;if(i<2&&!p.bot)(p.done??=[]).push(p.species+':'+i);p.score+=task.points;notify(p,'Task complete +'+task.points,t);}});
+ tasks(p,t).forEach((task,i)=>{if(i===2){if(task.value>=task.target){p.survived=(p.survived??0)+1;p.score+=task.points;notify(p,'Still alive +'+task.points,t);}return;}if(!p.claimed[i]&&task.value>=task.target){p.claimed[i]=true;if(i<2&&!p.bot)(p.done??=[]).push(p.species+':'+i);p.score+=task.points;notify(p,'Task complete +'+task.points,t);}});
  }}room.tick=now;if(now>=room.ends){room.phase='finished';room.players.forEach(p=>{p.dx=0;p.dy=0;p.vx=0;p.vy=0;});room.events.unshift('Round complete. Every life counted.');}}
 // ---------------------------------------------------------------- wildlife
 // (an alias, so the linter's React-hook naming rule doesn't mistake the ability for a hook)
@@ -677,4 +716,4 @@ function steer(p:Player,room:Room,ps:Prop[],t:number,dt:number,humans:Player[]){
  if(t<p.unstickUntil){const dx=p.dx;p.dx=-p.dy*slide;p.dy=dx*slide;}
  if(p.hunger<90||!a.prey.length)interact(p,room,t);
 }
-export function publicRoom(room:Room,now:number){return{...room,players:room.players.map(({token,bag,strikeId,strikeBorn,done,...p})=>({...p,online:p.bot||now-p.lastSeen<8000,concealed:hidden(p,room,now)&&!p.perched})),serverTime:now};}
+export function publicRoom(room:Room,now:number){return{...room,players:room.players.map(({token,bag,strikeId,strikeBorn,done,carry,...p})=>({...p,online:p.bot||now-p.lastSeen<8000,concealed:hidden(p,room,now)&&!p.perched})),serverTime:now};}
