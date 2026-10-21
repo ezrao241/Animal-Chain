@@ -227,3 +227,10 @@ test('responsive steering: reversals plant and push off, sideways turns stay tig
  }
  assert.ok(ANIMALS.impala.gait.grip>ANIMALS.zebra.gait.grip&&ANIMALS.impala.gait.turnRate>ANIMALS.lion.gait.turnRate);
 });
+test('species are dealt fairly: every animal once in each run of six lives, never the same twice in a row',()=>{
+ const {room,player}=fixture();start(room,NOW);const seen=[player.species];
+ for(let i=0;i<59;i++){die(player,room,NOW,'test');respawn(player,NOW+2600,room);seen.push(player.species);}
+ for(let i=1;i<seen.length;i++)assert.notEqual(seen[i],seen[i-1]);
+ for(const s of SPECIES){const n=seen.filter(x=>x===s).length;assert.ok(n>=9&&n<=11,s+' came up '+n+' times in 60 lives');}
+ assert.equal(publicRoom(room,NOW).players.some(p=>'bag' in p),false,'upcoming animals stay secret');
+});

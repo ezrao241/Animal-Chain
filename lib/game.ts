@@ -32,6 +32,8 @@ export type Player={id:string;token?:string;name:string;bot:boolean;species:Spec
  /** climbing (see climbStep): which prop, the state, height on the trunk and the face climbed, the limb, how far out
   *  along it and which way the animal faces on it, the limb it is heading for (-1 = down), the mount progress, and
   *  vertical speed while jumping down. Optional so rooms saved before climbing existed still load. */
+ /** the species still to come for a human player, so every animal comes up once in each run of six lives */
+ bag?:Species[];
  tree?:number;climb?:Climb;ch?:number;side?:number;limb?:number;along?:number;limbDir?:number;goal?:number;mount?:number;climbHold?:number;vh?:number};
 export type Room={code:string;host:string;phase:'lobby'|'playing'|'finished';started:number;ends:number;tick:number;players:Player[];foods:Food[];events:string[];seed:number;round:number;practice?:boolean;rs?:number};
 // Computer-controlled wildlife keeps savanna proportions: plenty of grazers, a few predators.
@@ -152,8 +154,14 @@ export function idHash(id:string){let h=2166136261;for(let i=0;i<id.length;i++)h
 export function roll(room:Room){const r=rng(room.rs??=room.seed*977+room.round*131)();room.rs=(room.rs+0x9E3779B9)|0;return r;}
 export function newRoom(code:string,host:Player,now:number):Room{return{code,host:host.id,phase:'lobby',started:0,ends:0,tick:now,players:[host],foods:makeFoods(417),events:['Welcome to the Golden Plains.'],seed:417,round:0};}
 export function notify(p:Player,message:string,now:number){p.message=message;p.messageUntil=now+2500;}
-export function respawn(p:Player,now:number,room?:Room){const choices=SPECIES.filter(s=>s!==p.species);const species=p.bot?(WILDLIFE[Number(p.id.replace('wild-',''))]||p.species):choices[Math.floor(Math.random()*choices.length)];const fresh=newPlayer(p.id,p.bot?ANIMALS[species].name:p.name,now,p.bot,species,room);Object.assign(p,fresh,{score:p.score,deaths:p.deaths,token:p.token,lastSeen:p.lastSeen,seq:p.seq,herd:p.herd,homeX:p.homeX,homeY:p.homeY});if(p.bot&&room)rejoinHerd(p,room,now);notify(p,'New life. New animal.',now);}
-export function start(room:Room,now:number){room.phase='playing';room.started=now;room.ends=now+300000;room.tick=now;room.round++;room.foods=makeFoods(room.seed);room.players=room.players.filter(p=>!p.bot);for(const p of room.players){const token=p.token,choices=SPECIES.filter(s=>s!==p.species);Object.assign(p,newPlayer(p.id,p.name,now,false,choices[Math.floor(Math.random()*choices.length)],room),{token});}room.rs=room.seed*977+room.round*131;placeWildlife(room,now);room.events=['Golden graze. Find food, complete tasks, survive.'];}
+/** A human's next animal, dealt from a shuffled bag of all six: each species comes up once every six lives (a fresh bag
+ *  never starts with the animal just played), instead of independent draws that can leave one out for a long time. */
+export function nextSpecies(p:Pick<Player,'species'|'bag'>):Species{
+ if(!p.bag?.length){const bag=[...SPECIES].map(s=>[Math.random(),s] as const).sort((a,b)=>a[0]-b[0]).map(x=>x[1]);if(bag[0]===p.species)bag.push(bag.shift()!);p.bag=bag;}
+ return p.bag.shift()!;
+}
+export function respawn(p:Player,now:number,room?:Room){const species=p.bot?(WILDLIFE[Number(p.id.replace('wild-',''))]||p.species):nextSpecies(p);const fresh=newPlayer(p.id,p.bot?ANIMALS[species].name:p.name,now,p.bot,species,room);Object.assign(p,fresh,{bag:p.bag,score:p.score,deaths:p.deaths,token:p.token,lastSeen:p.lastSeen,seq:p.seq,herd:p.herd,homeX:p.homeX,homeY:p.homeY});if(p.bot&&room)rejoinHerd(p,room,now);notify(p,'New life. New animal.',now);}
+export function start(room:Room,now:number){room.phase='playing';room.started=now;room.ends=now+300000;room.tick=now;room.round++;room.foods=makeFoods(room.seed);room.players=room.players.filter(p=>!p.bot);for(const p of room.players){const token=p.token,species=nextSpecies(p),bag=p.bag;Object.assign(p,newPlayer(p.id,p.name,now,false,species,room),{token,bag});}room.rs=room.seed*977+room.round*131;placeWildlife(room,now);room.events=['Golden graze. Find food, complete tasks, survive.'];}
 export const leaping=(p:Player,now:number)=>p.species==='impala'&&p.abilityUntil>now;
 const stalking=(p:Player,now:number)=>p.species==='leopard'&&p.abilityUntil>now&&!p.perched;
 const inThicket=(ps:Prop[],x:number,y:number)=>bushNear(ps,x,y,26);
@@ -613,4 +621,4 @@ function steer(p:Player,room:Room,ps:Prop[],t:number,dt:number,humans:Player[]){
  if(t<p.unstickUntil){const dx=p.dx;p.dx=-p.dy*slide;p.dy=dx*slide;}
  if(p.hunger<90||!a.prey.length)interact(p,room,t);
 }
-export function publicRoom(room:Room,now:number){return{...room,players:room.players.map(({token,...p})=>({...p,online:p.bot||now-p.lastSeen<8000,concealed:hidden(p,room,now)&&!p.perched})),serverTime:now};}
+export function publicRoom(room:Room,now:number){return{...room,players:room.players.map(({token,bag,...p})=>({...p,online:p.bot||now-p.lastSeen<8000,concealed:hidden(p,room,now)&&!p.perched})),serverTime:now};}
