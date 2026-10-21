@@ -25,8 +25,8 @@ export default function WorldScene({room,me,input,preview=false,onPerformance,on
   renderer.setPixelRatio(pixelRatio);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.12;renderer.shadowMap.enabled=false;renderer.shadowMap.type=THREE.PCFSoftShadowMap;if(renderer instanceof THREE.WebGLRenderer)renderer.shadowMap.autoUpdate=false;
   const canvas=renderer.domElement;canvas.setAttribute('aria-label',preview?'Live Golden Plains savanna preview with animated animals':'3D Golden Plains savanna. WASD moves relative to camera. Drag to look. Shift sprints, E interacts, Space uses ability, F toggles instincts, R centers camera.');canvas.tabIndex=preview?-1:0;element.appendChild(canvas);
   const overlay=document.createElement('canvas');overlay.className='world-labels';element.appendChild(overlay);const ctx=overlay.getContext('2d')!;
-  const scene=new THREE.Scene();scene.background=new THREE.Color(0xf1d7a4);scene.fog=new THREE.Fog(0xead2a0,340,800);const camera=new THREE.PerspectiveCamera(61,1,1.8,1000);
-  scene.add(new THREE.HemisphereLight(0xb9d3f0,0x9a7a48,1.35));const sun=new THREE.DirectionalLight(0xffd7a0,3.1);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);Object.assign(sun.shadow.camera,{left:-400,right:400,top:400,bottom:-400,near:10,far:1700});sun.shadow.bias=-.0003;sun.shadow.normalBias=1.5;sun.shadow.camera.updateProjectionMatrix();scene.add(sun,sun.target);
+  const scene=new THREE.Scene();scene.background=new THREE.Color(0xead8b2);scene.fog=new THREE.Fog(0xe8d5ae,340,800);const camera=new THREE.PerspectiveCamera(61,1,1.8,1000);
+  scene.add(new THREE.HemisphereLight(0xc2daf2,0xa98a52,1.4));const sun=new THREE.DirectionalLight(0xffd49a,3.2);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);Object.assign(sun.shadow.camera,{left:-400,right:400,top:400,bottom:-400,near:10,far:1700});sun.shadow.bias=-.0003;sun.shadow.normalBias=1.5;sun.shadow.camera.updateProjectionMatrix();scene.add(sun,sun.target);
   const rim=new THREE.DirectionalLight(0x9fc0e6,.55);rim.position.set(400,200,500);scene.add(rim);
   const savanna=createSavanna(scene,lightweight),ps=props(417),previewFoods=makeFoods(417),food=new FoodField(scene),traces=new SafariTraces(scene,groundY,lightweight);
   const rigs=new Map<string,SafariRig>(),positions=new Map<string,Player>(),shadows=new Map<string,THREE.Mesh>(),shadowGeo=new THREE.CircleGeometry(1,20),shadowMat=new THREE.MeshBasicMaterial({color:0x0b1913,transparent:true,opacity:.22,depthWrite:false});
@@ -55,7 +55,7 @@ export default function WorldScene({room,me,input,preview=false,onPerformance,on
    if(r?.code!==soundRoomCode){animalStates.clear();soundRoomCode=r?.code||'';}
    const tier=lightweight||preview?'performance':mode==='auto'?autoTier:mode;
    const lowBudget=tier==='performance'&&mode!=='high'&&lightweight;
-   if(tier!==activeTier){activeTier=tier;pixelRatio=lightweight?0.7:Math.min(window.devicePixelRatio||1,qualityCaps[tier] ?? 1.12);renderer.setPixelRatio(pixelRatio);renderer.shadowMap.enabled=!lightweight&&tier==='high';drawRange=lightweight?520:tier==='high'?1050:tier==='performance'?620:800;if(scene.fog instanceof THREE.Fog){scene.fog.near=drawRange*.4;scene.fog.far=drawRange;}camera.far=drawRange+180;resize();}
+   if(tier!==activeTier){activeTier=tier;pixelRatio=lightweight?0.7:Math.min(window.devicePixelRatio||1,qualityCaps[tier] ?? 1.12);renderer.setPixelRatio(pixelRatio);renderer.shadowMap.enabled=!lightweight&&tier==='high';savanna.realShadows(renderer.shadowMap.enabled);drawRange=lightweight?520:tier==='high'?1050:tier==='performance'?620:800;if(scene.fog instanceof THREE.Fog){scene.fog.near=drawRange*.4;scene.fog.far=drawRange;}camera.far=drawRange+180;resize();}
    if(!preview&&m&&r?.phase==='playing'){
     for(const p of players){
      const previous=animalStates.get(p.id);
