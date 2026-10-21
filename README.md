@@ -18,11 +18,13 @@ pnpm build
 pnpm start
 ```
 
-The game code lives in `app/`, `components/game/`, and `lib/game.ts`. The gameplay tests are in `tests/game.test.mjs` and can be run with:
+The game code lives in `app/`, `components/game/`, and `lib/game.ts`. The gameplay tests are in `tests/game.test.mjs` (rules, awareness, wildlife behaviour) and `tests/route.test.mjs` (the multiplayer handler against an in-memory database). Run them with:
 
 ```bash
-node --test tests/game.test.mjs
+node --experimental-strip-types --test tests/game.test.mjs tests/route.test.mjs
 ```
+
+`docs/wildlife-sources.md` records which behaviours come from wildlife references and which are game rules.
 
 The browser automatically uses a lighter compatibility renderer when WebGL is unavailable. The current build also reduces distant scenery, batches animal meshes, lowers CPU terrain detail, and adapts draw distance and resolution to keep movement responsive on slower devices. Nearby animals vocalize during calls, actions, abilities, and deaths using lightweight synthesized Web Audio effects; use the speaker button to mute them.
 

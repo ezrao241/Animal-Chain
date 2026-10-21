@@ -2,11 +2,11 @@
 // colliders the server uses and the acacias, kopjes, thickets, burrows and watering holes the player sees always agree.
 // Terrain is a faceted height grid; groundY() interpolates the same triangles, so animals stand exactly on the facets.
 import * as THREE from 'three';
-import {W,H,props,type Prop} from '@/lib/game';
+import {W,H,props,trailDistance,GRASS_PATCH,type Prop} from '@/lib/game';
 import {Model,hex,hash,facetMaterial} from './faceted';
 
 const S=40,X0=-1600,Z0=-1600,NX=Math.ceil((W+3200)/S)+1,NZ=Math.ceil((H+3200)/S)+1;
-const PROPS=props(417),WATERS=PROPS.filter(p=>p.kind==='water'),KOPJES=PROPS.filter(p=>p.kind==='rock'&&p.size>=1.3),BURROWS=PROPS.filter(p=>p.kind==='burrow');
+const PROPS=props(417),WATERS=PROPS.filter(p=>p.kind==='water'),KOPJES=PROPS.filter(p=>p.kind==='rock'&&p.size>=1.3),BURROWS=PROPS.filter(p=>p.kind==='burrow'),PATCHES=PROPS.filter(p=>p.kind==='tallgrass');
 const smooth=(a:number,b:number,x:number)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t);};
 function rolling(x:number,z:number){return 18*Math.sin(x*.0021+1.3)*Math.cos(z*.0017)+9*Math.sin(x*.0052+z*.0041)+4*Math.sin(x*.013-z*.011);}
 /** surface height of each watering hole (the land around it is levelled to its centre, then dished) */
@@ -29,11 +29,14 @@ export function groundY(x:number,z:number){
 }
 const GRASS=[0xd2ad5a,0xc9a14c,0xdcbb6c,0xbf9645,0xd6b062],DRY=0xb48a48,GREEN=0x9c9a4c,MUD=0x76603e,ROCKY=0xa69a82;
 function groundColour(x:number,z:number,r:number){
- let c=hex(GRASS[Math.floor(r*GRASS.length)]);
+ const c=hex(GRASS[Math.floor(r*GRASS.length)]);
  const n=Math.sin(x*.0031+Math.sin(z*.0023)*2)*Math.cos(z*.0027);c.lerp(hex(DRY),Math.max(0,n)*.45);
  for(const w of WATERS){const d=Math.hypot(x-w.x,z-w.y);if(d<w.size*2.4)c.lerp(hex(GREEN),(1-smooth(w.size*1.2,w.size*2.4,d))*.75);if(d<w.size*1.25)c.lerp(hex(MUD),1-smooth(w.size*.95,w.size*1.25,d));}
  for(const k of KOPJES){const d=Math.hypot(x-k.x,z-k.y);if(d<170)c.lerp(hex(ROCKY),(1-smooth(60,170,d))*.6);}
  for(const b of BURROWS)if(Math.hypot(x-b.x,z-b.y)<40)c.lerp(hex(0x8a6a44),.5);
+ // tall-grass swales read a little greener-gold from above; game trails are worn pale and dusty
+ for(const g of PATCHES)if(Math.hypot(x-g.x,z-g.y)<g.size*GRASS_PATCH)c.lerp(hex(0xb59a46),.35);
+ if(x>0&&z>0&&x<W&&z<H&&trailDistance(x,z)<24)c.lerp(hex(0xd8bf88),.55);
  if(x<0||z<0||x>W||z>H)c.lerp(hex(0xb99a62),.25);
  return c;
 }
@@ -75,16 +78,20 @@ function tuft(seed:number,tall:boolean){
   pos.push(bx-px,0,bz-pz,bx+px,0,bz+pz,tx,h,tz);const base=hex(0xa98a48),tip=hex(hash(seed,b,6)>.3?0xf0dc98:0xe2c271);col.push(base.r,base.g,base.b,base.r,base.g,base.b,tip.r,tip.g,tip.b);}
  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(pos.map((_,i)=>i%3===1?1:0),3));g.scale(10,10,10);return g;
 }
-/** Grass bends in the wind: the higher a vertex, the further it sways. */
-function windy(material:THREE.MeshStandardMaterial,time:{value:number}){
- material.onBeforeCompile=shader=>{shader.uniforms.uTime=time;shader.vertexShader='uniform float uTime;\n'+shader.vertexShader.replace('#include <begin_vertex>',`#include <begin_vertex>
+/** Grass bends in one shared breeze: every tuft leans downwind, and gusts roll across the plain in the wind's direction
+ *  (the bend is turned into each instance's own frame, so rotated tufts still lean the same way). */
+function windy(material:THREE.MeshStandardMaterial,time:{value:number},wind:{value:THREE.Vector2},cam:{value:THREE.Vector3}){
+ material.onBeforeCompile=shader=>{shader.uniforms.uTime=time;shader.uniforms.uWind=wind;shader.uniforms.uCam=cam;shader.vertexShader='uniform float uTime;\nuniform vec2 uWind;\nuniform vec3 uCam;\n'+shader.vertexShader.replace('#include <begin_vertex>',`#include <begin_vertex>
   #ifdef USE_INSTANCING
-  vec3 iPos=instanceMatrix[3].xyz;
+  vec3 iPos=instanceMatrix[3].xyz;vec3 lw=normalize((vec4(uWind.x,0.,uWind.y,0.)*instanceMatrix).xyz+vec3(1e-5));
   #else
-  vec3 iPos=vec3(0.);
+  vec3 iPos=vec3(0.);vec3 lw=vec3(uWind.x,0.,uWind.y);
   #endif
-  float sway=sin(uTime*1.7+iPos.x*.013+iPos.z*.011)*.5+sin(uTime*2.9+iPos.x*.031)*.25;
-  transformed.x+=sway*transformed.y*.16;transformed.z+=sway*transformed.y*.07;`);};
+  float along=dot(iPos.xz,uWind);
+  float gust=.55+.45*sin(along*.011-uTime*1.6)+.15*sin(along*.037-uTime*2.7+iPos.x*.002);
+  transformed.xz+=lw.xz*gust*transformed.y*.17;
+  // tufts right in front of the lens sink into the ground so they never wall off the view
+  transformed*=smoothstep(35.,95.,distance(iPos.xz,uCam.xz));`);};
  return material;
 }
 
@@ -95,7 +102,7 @@ function instanced(geometry:THREE.BufferGeometry,material:THREE.Material,items:P
  mesh.count=items.length;mesh.castShadow=shadow;mesh.receiveShadow=true;mesh.computeBoundingSphere();return mesh;
 }
 
-export type Savanna={update(time:number,x:number,z:number,range:number,cameraFar:number,camera:THREE.Vector3):void;dispose():void};
+export type Savanna={update(time:number,x:number,z:number,range:number,cameraFar:number,camera:THREE.Vector3,wind?:{x:number;y:number}):void;dispose():void};
 export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
  const disposables:{dispose():void}[]=[],add=<T extends THREE.Object3D>(o:T)=>{scene.add(o);return o;};
  const ground=add(terrain());disposables.push(ground.geometry,ground.material as THREE.Material);
@@ -120,10 +127,10 @@ export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
  add(instanced(holeGeo,holeMat,BURROWS.map((b,i)=>({x:b.x,y:groundY(b.x,b.y)+.6,z:b.y,rot:r(i,8)*6.28,scale:1})),false));
  add(instanced(lipGeo,new THREE.MeshStandardMaterial({color:0x8a6844,flatShading:true,roughness:1}),BURROWS.map((b,i)=>({x:b.x,y:groundY(b.x,b.y)+.3,z:b.y,rot:r(i,8)*6.28,scale:1,sy:.6}))));
  // grass: tufts scattered over the plains in chunks, so distant chunks can be skipped
- const time={value:0},grassMat=windy(new THREE.MeshStandardMaterial({vertexColors:true,roughness:.95,side:THREE.DoubleSide}),time);disposables.push(grassMat);
+ const time={value:0},breeze={value:new THREE.Vector2(1,0)},lens={value:new THREE.Vector3()},grassMat=windy(new THREE.MeshStandardMaterial({vertexColors:true,roughness:.95,side:THREE.DoubleSide}),time,breeze,lens);disposables.push(grassMat);
  const shortGeo=[tuft(1,false),tuft(2,false),tuft(3,false)],tallGeo=tuft(4,true);disposables.push(...shortGeo,tallGeo);
  const CH=400,chunks:{mesh:THREE.InstancedMesh;cx:number;cz:number;full:number}[]=[];
- const blocked=(x:number,z:number)=>WATERS.some(w=>Math.hypot(x-w.x,z-w.y)<w.size*1.05)||rocks.some(t=>Math.hypot(x-t.x,z-t.y)<t.size*30)||BURROWS.some(b=>Math.hypot(x-b.x,z-b.y)<14);
+ const blocked=(x:number,z:number)=>WATERS.some(w=>Math.hypot(x-w.x,z-w.y)<w.size*1.05)||rocks.some(t=>Math.hypot(x-t.x,z-t.y)<t.size*30)||BURROWS.some(b=>Math.hypot(x-b.x,z-b.y)<14)||trailDistance(x,z)<10;
  const density=lightweight?.35:1;
  for(let cz=-1;cz<Math.ceil(H/CH)+1;cz++)for(let cx=-1;cx<Math.ceil(W/CH)+1;cx++){
   const per:Placed[][]=[[],[],[],[]],count=Math.floor(520*density*(cx<0||cz<0||cx*CH>=W||cz*CH>=H?.5:1));
@@ -131,6 +138,8 @@ export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
    // denser, lusher grass towards water; thinner on kopje slopes
    const lush=WATERS.some(w=>Math.hypot(x-w.x,z-w.y)<w.size*2.2);if(!lush&&hash(x,z,7)<.25)continue;
    per[i%3].push({x,y:groundY(x,z)-1,z,rot:hash(x,z,2)*6.28,scale:.8+hash(x,z,3)*.7});}
+  // tall-grass patches: dense stands about 1.2 m high (the cover that hides animals shorter than a metre)
+  for(const g of PATCHES)if(Math.floor(g.x/CH)===cx&&Math.floor(g.y/CH)===cz){const rad=g.size*GRASS_PATCH,n=Math.floor(rad*rad*Math.PI/(lightweight?320:150));for(let k=0;k<n;k++){const a=hash(g.x,k,11)*6.283,d=Math.sqrt(hash(g.y,k,12))*rad,x=g.x+Math.cos(a)*d,z=g.y+Math.sin(a)*d;if(blocked(x,z))continue;per[3].push({x,y:groundY(x,z)-1,z,rot:hash(k,g.x,13)*6.28,scale:.85+hash(k,g.y,14)*.35});}}
   for(const b of bushes)if(Math.floor(b.x/CH)===cx&&Math.floor(b.y/CH)===cz)for(let k=0;k<12;k++){const a=k/12*6.28+hash(b.x,k,1),d=(6+hash(b.y,k,2)*18)*b.size;per[3].push({x:b.x+Math.cos(a)*d,y:groundY(b.x,b.y)-1,z:b.y+Math.sin(a)*d,rot:a,scale:b.size*(1+hash(k,b.x,3)*.5)});}
   per.forEach((items,v)=>{if(!items.length)return;const mesh=add(instanced(v<3?shortGeo[v]:tallGeo,grassMat,items,false));chunks.push({mesh,cx:cx*CH+CH/2,cz:cz*CH+CH/2,full:items.length});});
  }
@@ -149,8 +158,8 @@ export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
  const hillMat=new THREE.MeshBasicMaterial({vertexColors:true,fog:false,side:THREE.DoubleSide,depthWrite:false});const hills=add(new THREE.Mesh(hillGeo,hillMat));hills.renderOrder=-1;disposables.push(hillGeo,hillMat);
  let lastWater=0;
  return{
-  update(t,x,z,range,far,cam){
-   time.value=t;
+  update(t,x,z,range,far,cam,wind){
+   time.value=t;lens.value.copy(cam);if(wind)breeze.value.set(wind.x,wind.y);
    const radius=far*.92;sky.position.copy(cam);sky.scale.setScalar(radius);hills.position.set(cam.x,cam.y-radius*.04,cam.z);hills.scale.set(radius*.97,radius,radius*.97);
    sunDisc.position.copy(cam).addScaledVector(sunDir,radius*.95);sunDisc.scale.setScalar(radius);sunDisc.lookAt(cam);
    // grass thins out with distance (instances are in random order, so drawing fewer keeps an even spread)

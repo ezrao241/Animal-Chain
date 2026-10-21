@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { newPlayer,newRoom,publicRoom,start,tick,useAbility,perch,interact,die,Room } from '@/lib/game';
+import { newPlayer,newRoom,publicRoom,start,tick,useAbility,perch,interact,die,type Room } from '@/lib/game';
 const json=(data:unknown,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}});
 export async function POST(req:Request){try{
  if(!env.DB)return json({error:'The savanna is temporarily unavailable. Please try again.'},503);

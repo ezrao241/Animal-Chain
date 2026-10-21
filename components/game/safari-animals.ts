@@ -256,15 +256,17 @@ export function makeSafariAnimal(species:Species):SafariRig{
  return{root,model,j,meshes,species,phase:Math.random(),turn:0,born:0,altitude:0,seed:Math.random()*100,blink:0};
 }
 
-export type SafariPose={speed:number;time:number;dt:number;ability:number;action:boolean;perched:boolean;altitude:number;stunned:boolean};
+/** mood cues: alert = head high, ears forward, watching a threat; grazing = head down at the grass; crouch = a stalking
+ *  hunter low to the ground; resting = lying up in the shade */
+export type SafariPose={speed:number;time:number;dt:number;ability:number;action:boolean;perched:boolean;altitude:number;stunned:boolean;alert?:boolean;grazing?:boolean;crouch?:boolean;resting?:boolean};
 const damp=(a:number,b:number,k:number,dt:number)=>a+(b-a)*(1-Math.exp(-k*dt));
 /** Pose the joint hierarchy for this frame. speed is in game units per second; ability is the 0..1 progress of an active ability, or -1. */
 export function animateSafari(r:SafariRig,p:SafariPose){
  const s=SPECS[r.species],a=ANIMALS[r.species],v=p.speed/10,dt=p.dt,j=r.j,moving=smooth(.15,.8,v),gallop=smooth(2.4,5.2,v);
  const strideLen=s.stride*(1+gallop*1.4);r.phase=(r.phase+dt*v/strideLen)%1;const phi=r.phase*Math.PI*2;
  const amp=Math.min(1,v/1.4)*(.32+.22*gallop),ab=p.ability,active=ab>=0;
- const stalk=r.species==='leopard'&&active,kick=r.species==='zebra'&&active?Math.sin(Math.min(1,ab)*Math.PI):0,leap=r.species==='impala'&&active?Math.sin(Math.min(1,ab)*Math.PI):0,burrow=r.species==='warthog'&&active;
- const graze=p.action&&v<1&&!a.prey.length,lunge=p.action&&!!a.prey.length;
+ const stalk=r.species==='leopard'&&active||!!p.crouch&&!!a.prey.length,kick=r.species==='zebra'&&active?Math.sin(Math.min(1,ab)*Math.PI):0,leap=r.species==='impala'&&active?Math.sin(Math.min(1,ab)*Math.PI):0,burrow=r.species==='warthog'&&active;
+ const graze=(p.action||!!p.grazing)&&v<1&&!a.prey.length&&!p.alert,lunge=p.action&&!!a.prey.length,resting=!!p.resting&&v<.5,alert=!!p.alert&&v<1;
  // legs: walk is a lateral sequence, faster gaits swing the front and hind pairs together
  const walkOff={FR:.75,FL:.25,HR:.5,HL:0},runOff={FR:.6,FL:.5,HR:.1,HL:0};
  for(const [id,front] of LEGS){
@@ -274,26 +276,26 @@ export function animateSafari(r:SafariRig,p:SafariPose){
   if(p.perched){a0=front?1.25:-1.2;a1=front?-.2:-.6;a2=front?-1.1:1.3;}
   if(kick&&!front){a0=-1.15*kick;a1=.35*kick;a2=.4*kick;}
   if(leap){a0=front?.9*leap:-.95*leap;a1=front?0:-.2*leap;a2=front?-1.3*leap:.3*leap;}
-  if(burrow){a0=front?.6:-.7;a1=front?-.4:-.6;a2=front?-.4:.9;}
+  if(burrow||resting){a0=front?.6:-.7;a1=front?-.4:-.6;a2=front?-.4:.9;}
   if(graze&&r.species==='warthog'&&front){a0=-.15;a1=1.5;a2=-1.6;}
   j['leg'+id+'0'].rotation.z=damp(j['leg'+id+'0'].rotation.z,a0,24,dt);j['leg'+id+'1'].rotation.z=damp(j['leg'+id+'1'].rotation.z,a1,24,dt);j['leg'+id+'2'].rotation.z=damp(j['leg'+id+'2'].rotation.z,a2,24,dt);
  }
  const body=j.body,rest=body.userData.rest as THREE.Vector3,size=a.size;
  const bob=Math.abs(Math.sin(phi*2))*(.012+.05*gallop)*moving*size,breathe=Math.sin(p.time*2.1+r.seed)*.004*size;
- let lower=0;if(stalk)lower=.16*size;if(p.perched)lower=.22*size;if(burrow)lower=.55*size;if(graze&&r.species==='warthog')lower=.12*size;
+ let lower=0;if(stalk)lower=.16*size;if(p.perched)lower=.22*size;if(burrow)lower=.55*size;if(resting)lower=.42*size;if(graze&&r.species==='warthog')lower=.12*size;
  body.position.y=damp(body.position.y,rest.y+bob+breathe-lower+leap*.9,leap?30:14,dt);
  body.rotation.z=damp(body.rotation.z,Math.sin(phi)*.07*gallop-kick*.28+(lunge?.12:0)+(graze&&r.species==='warthog'?-.18:0)+leap*.12,14,dt);
  body.rotation.x=damp(body.rotation.x,Math.sin(phi)*.025*moving*(1-gallop),10,dt);
  // neck and head: grazing drops the head to the grass, idle animals look around, runners stretch forward
  const look=Math.sin(p.time*.37+r.seed)*.5+Math.sin(p.time*.13+r.seed*2)*.3;
- const neckZ=graze?(r.species==='zebra'?-1.05:r.species==='impala'?-1.15:-.35):stalk?-.35:p.perched?-.25:-.22*gallop+Math.sin(phi*2)*.04*moving*(1-gallop);
+ const neckZ=alert?.3:resting?-.1:graze?(r.species==='zebra'?-1.05:r.species==='impala'?-1.15:-.35):stalk?-.35:p.perched?-.25:-.22*gallop+Math.sin(phi*2)*.04*moving*(1-gallop);
  j.neck.rotation.z=damp(j.neck.rotation.z,neckZ,6,dt);
  j.head.rotation.z=damp(j.head.rotation.z,graze?-.35:gallop*.12+(p.stunned?Math.sin(p.time*9)*.12:0),6,dt);
- j.head.rotation.y=damp(j.head.rotation.y,(1-moving)*(graze?0:look*.45)+(p.stunned?Math.sin(p.time*7)*.3:0),3,dt);
- j.neck.rotation.y=damp(j.neck.rotation.y,(1-moving)*(graze?0:look*.25),3,dt);
+ j.head.rotation.y=damp(j.head.rotation.y,(1-moving)*(graze||alert?0:look*.45)+(p.stunned?Math.sin(p.time*7)*.3:0),3,dt);
+ j.neck.rotation.y=damp(j.neck.rotation.y,(1-moving)*(graze||alert?0:look*.25),3,dt);
  // ears flick now and then; tails swish (a running warthog carries its tail straight up)
  const flick=Math.max(0,Math.sin(p.time*1.3+r.seed*5)-.92)*8;
- j.earR.rotation.x=damp(j.earR.rotation.x,flick*.5,20,dt);j.earL.rotation.x=damp(j.earL.rotation.x,-Math.max(0,Math.sin(p.time*1.1+r.seed*3)-.93)*4,20,dt);
+ j.earR.rotation.x=damp(j.earR.rotation.x,alert?-.25:flick*.5,20,dt);if(alert)j.earL.rotation.x=damp(j.earL.rotation.x,.25,20,dt);else j.earL.rotation.x=damp(j.earL.rotation.x,-Math.max(0,Math.sin(p.time*1.1+r.seed*3)-.93)*4,20,dt);
  const tailUp=r.species==='warthog'?smooth(.5,2.5,v)*1.9:r.species==='lion'||r.species==='leopard'?gallop*.9:gallop*.5;
  j.tail1.rotation.z=damp(j.tail1.rotation.z,tailUp+(p.perched?-.9:0),8,dt);j.tail1.rotation.y=Math.sin(p.time*1.6+r.seed)*.28*(1-gallop);
  j.tail2.rotation.z=damp(j.tail2.rotation.z,(r.species==='leopard'?.25:0)+(r.species==='warthog'?tailUp*.3:0),8,dt);j.tail2.rotation.y=Math.sin(p.time*1.6+r.seed-.8)*.35*(1-gallop);
