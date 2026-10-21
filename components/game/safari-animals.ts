@@ -6,6 +6,7 @@ import {Model,Ring,V,Coat,hex,cellDistance,facetMaterial} from './faceted';
 import {ANIMALS,type Species} from '@/lib/game';
 import {nearestBark,type Segment} from '@/lib/acacia';
 import {createRenderer,SoftwareRenderer} from './software-renderer';
+import {animalModel} from './animal-models';
 
 type Leg={name:string;hip:V;knee:V;ankle:V;ground:V;radii:[number,number,number,number];above:{c:V;r:number};foot:{c:V;r:V};hoof?:boolean;front:boolean};
 type Spec={
@@ -204,7 +205,7 @@ const warthog:Spec={
  camera:{distance:42,min:22,max:100,head:6.5,lift:4,lookAhead:9,lookY:1,clearance:2.5,near:.12,shadow:[9,5]},
 };
 
-const SPECS:Record<Species,Spec>={lion,leopard,hyena,zebra,impala,warthog};
+export const SPECS:Record<Species,Spec>={lion,leopard,hyena,zebra,impala,warthog};
 export const cameraProfile=(s:Species):CameraProfile=>SPECS[s].camera;
 
 // ---------------------------------------------------------------- assembly
@@ -247,18 +248,30 @@ function build(species:Species,lod=0):Built{
 
 export type SafariRig={root:THREE.Group;model:THREE.Group;j:Record<string,THREE.Group>;meshes:THREE.Mesh[];species:Species;phase:number;turn:number;born:number;altitude:number;seed:number;blink:number;
  /** climbing: 0..1 weight of the tree pose, the limb-cycle phase, and the smoothed body pose the renderer keeps */
- climbWeight:number;climbPhase:number;pitch:number;climb?:{x:number;y:number;h:number;yaw:number;pitch:number;speed:number;still:number;on:'trunk'|'limb'|'air'}};
+ climbWeight:number;climbPhase:number;pitch:number;
+ /** the Blender-made skinned body (near and far cuts, hair) when this species has one; meshes is then empty */
+ skins?:{near:THREE.SkinnedMesh;far:THREE.SkinnedMesh;hair:THREE.SkinnedMesh|null};climb?:{x:number;y:number;h:number;yaw:number;pitch:number;speed:number;still:number;on:'trunk'|'limb'|'air'}};
 let sharedMaterial:THREE.MeshStandardMaterial|null=null;
 export const animalMaterial=()=>sharedMaterial||=facetMaterial();
-export function makeSafariAnimal(species:Species):SafariRig{
+/** procedural forces the code-built faceted body (the software renderer cannot skin) */
+export function makeSafariAnimal(species:Species,procedural=false):SafariRig{
  const b=build(species),root=new THREE.Group(),model=new THREE.Group(),j:Record<string,THREE.Group>={},meshes:THREE.Mesh[]=[];
  model.scale.setScalar(10);root.add(model);
  for(const joint of b.joints){const g=new THREE.Group();g.name=joint.name;const parent=joint.parent?b.joints.find(x=>x.name===joint.parent)!.pivot:[0,0,0];g.position.set(joint.pivot[0]-parent[0],joint.pivot[1]-parent[1],joint.pivot[2]-parent[2]);g.userData.rest=g.position.clone();(joint.parent?j[joint.parent]:model).add(g);j[joint.name]=g;}
- const far=build(species,1);
- for(const [part,geometry] of b.geometries){const mesh=new THREE.Mesh(geometry,animalMaterial());mesh.userData.far=far.geometries.get(part);mesh.castShadow=true;mesh.receiveShadow=true;j[b.partJoint.get(part)!].add(mesh);meshes.push(mesh);}
+ const made=procedural?undefined:animalModel(species);let skins:SafariRig['skins'];
+ if(made){
+  // bind the Blender skin to this rig's own joints in their rest pose
+  const skin=(geometry:THREE.BufferGeometry,material:THREE.Material)=>{const mesh=new THREE.SkinnedMesh(geometry,material);mesh.castShadow=true;mesh.receiveShadow=true;mesh.frustumCulled=false;model.add(mesh);return mesh;};
+  skins={near:skin(made.near,made.coat),far:skin(made.far,made.coat),hair:made.hair&&made.hairMaterial?skin(made.hair,made.hairMaterial):null};
+  skins.far.visible=false;root.updateMatrixWorld(true);const skeleton=new THREE.Skeleton(made.bones.map(n=>j[n] as unknown as THREE.Bone));
+  for(const mesh of [skins.near,skins.far,skins.hair])mesh?.bind(skeleton);
+ }else{
+  const far=build(species,1);
+  for(const [part,geometry] of b.geometries){const mesh=new THREE.Mesh(geometry,animalMaterial());mesh.userData.far=far.geometries.get(part);mesh.castShadow=true;mesh.receiveShadow=true;j[b.partJoint.get(part)!].add(mesh);meshes.push(mesh);}
+ }
  // remember each leg's rest geometry for the foot-placement solver: the foot segment from ankle to the ground point
  for(const [id,front,side] of LEGS){const L=front?SPECS[species].front:SPECS[species].hind;j['leg'+id+'2'].userData.toe=new THREE.Vector3(L.ground[0]-L.ankle[0],L.ground[1]-L.ankle[1],(L.ground[2]-L.ankle[2])*side);j['leg'+id+'0'].userData.side=side;}
- return{root,model,j,meshes,species,phase:Math.random(),turn:0,born:0,altitude:0,seed:Math.random()*100,blink:0,climbWeight:0,climbPhase:0,pitch:0};
+ return{root,model,j,meshes,skins,species,phase:Math.random(),turn:0,born:0,altitude:0,seed:Math.random()*100,blink:0,climbWeight:0,climbPhase:0,pitch:0};
 }
 
 /** mood cues: alert = head high, ears forward, watching a threat; grazing = head down at the grass; crouch = a stalking

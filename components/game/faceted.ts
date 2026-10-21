@@ -2,6 +2,9 @@
 // planes read as deliberate, hand-cut facets (the Cell to Singularity look) rather than a smooth mesh at low resolution.
 // Every triangle gets its own colour from a coat function, so markings (spots, stripes, a mane) follow the facets.
 import * as THREE from 'three';
+import {toCreasedNormals} from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+/** Surfaces are shaded smoothly across gentle angles and keep a crease only at sharp edges (natural, not faceted). */
+const CREASE=Math.PI*.42;
 
 export type V=[number,number,number];
 /** A cross-section: centre, lateral half-width (rz) and half-depth in the path's own vertical plane (ry).
@@ -78,10 +81,10 @@ export class Model{
   };
   for(const t of this.tris)split(t,t.sub,t.part);
   const out=new Map<string,THREE.BufferGeometry>();
-  for(const [part,b] of parts){const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(b.p,3));g.setAttribute('color',new THREE.Float32BufferAttribute(b.c,3));g.computeVertexNormals();g.computeBoundingSphere();out.set(part,g);}
+  for(const [part,b] of parts){const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(b.p,3));g.setAttribute('color',new THREE.Float32BufferAttribute(b.c,3));const smooth=toCreasedNormals(g,CREASE);g.dispose();smooth.computeBoundingSphere();out.set(part,smooth);}
   return out;
  }
 }
 export const hex=(h:number)=>new THREE.Color(h);
-/** Shared look for everything faceted: flat shading, colour in the vertices, a soft matte finish. */
-export const facetMaterial=()=>new THREE.MeshStandardMaterial({vertexColors:true,flatShading:true,roughness:.86,metalness:0});
+/** Shared look for everything built with this kit: colour in the vertices, smooth shading, a soft matte finish. */
+export const facetMaterial=()=>new THREE.MeshStandardMaterial({vertexColors:true,roughness:.86,metalness:0});

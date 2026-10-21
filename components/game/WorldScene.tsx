@@ -6,9 +6,10 @@ import {cameraInput,ANIMALS,SPECIES,Species,Room,Player,W,H,props,makeFoods,move
 import {climberPose,climberFeet} from './climb-pose';
 import {SafariTraces} from './safari-traces';
 import {makeSafariAnimal,animateSafari,SafariRig,animalPortrait,cameraProfile} from './safari-animals';
-import {createSavanna,groundY,SUN_DIRECTION} from './savanna-world';
+import {createSavanna,groundY,SUN_DIRECTION,loadSavannaModels} from './savanna-world';
 import {FoodField} from './safari-food';
 import {AnimalBatches} from './animal-batches';
+import {animalModel,loadAnimalModels} from './animal-models';
 import type {AnimalSoundEvent} from '@/lib/animal-sounds';
 export type GraphicsMode='auto'|'performance'|'high';
 export type PerformanceStats={fps:number;renderMs:number;renderer:string;quality:string;drawCalls:number};
@@ -16,10 +17,13 @@ export type WorldRoom=Omit<Room,'players'>&{serverTime:number;_received?:number;
 // moveYaw is the camera yaw that movement is read against. It is latched while a direction is held, so the camera can
 // swing round behind a turning animal without the held key suddenly meaning a different way.
 export type WorldInput={dx:number;dy:number;interact:boolean;ability:boolean;perch:boolean;sprint:boolean;cameraYaw:number;moveYaw?:number;instinct?:boolean;recenter?:boolean;graphics?:GraphicsMode};
-export function ModelPortrait({species,size=70}:{species:Species;size?:number}){const [src,setSrc]=useState('');useEffect(()=>{setSrc(animalPortrait(species));},[species]);return src?<img className="portrait" src={src} alt={ANIMALS[species].name} width={size} height={size}/>:<span className="portrait-loading" style={{width:size,height:size}} aria-label={ANIMALS[species].name}>{ANIMALS[species].name.slice(0,1)}</span>;}
+export function ModelPortrait({species,size=70}:{species:Species;size?:number}){const [src,setSrc]=useState('');useEffect(()=>{let live=true;void loadAnimalModels().then(()=>{if(live)setSrc(animalPortrait(species));});return()=>{live=false;};},[species]);return src?<img className="portrait" src={src} alt={ANIMALS[species].name} width={size} height={size}/>:<span className="portrait-loading" style={{width:size,height:size}} aria-label={ANIMALS[species].name}>{ANIMALS[species].name.slice(0,1)}</span>;}
 export default function WorldScene({room,me,input,preview=false,onPerformance,onAnimalSound}:{room:WorldRoom|null;me:Player|undefined;input:React.RefObject<WorldInput>;preview?:boolean;onPerformance?:(stats:PerformanceStats)=>void;onAnimalSound?:(species:Species,event:AnimalSoundEvent,volume:number,pan:number)=>void}){
  const host=useRef<HTMLDivElement>(null),latest=useRef({room,me,onPerformance,onAnimalSound});latest.current={room,me,onPerformance,onAnimalSound};const [failure,setFailure]=useState(''),[software,setSoftware]=useState(false);
- useEffect(()=>{
+ // the scene starts once the Blender-made models are in (they are small and load during the menu); if any fail, those
+ // things keep their procedural look
+ useEffect(()=>{let stop:(()=>void)|undefined,dead=false;void Promise.all([loadAnimalModels(),loadSavannaModels()]).then(()=>{if(!dead)stop=start();});return()=>{dead=true;stop?.();};
+ function start(){
   if(!host.current)return;const element=host.current;let renderer:THREE.WebGLRenderer|SoftwareRenderer;
   try{renderer=createRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});}catch{setFailure('3D rendering is unavailable. Enable graphics acceleration and reload.');return;}
   const lightweight=renderer instanceof SoftwareRenderer;setSoftware(lightweight);let pixelRatio=lightweight?.7:1;
@@ -81,7 +85,7 @@ export default function WorldScene({room,me,input,preview=false,onPerformance,on
    for(const [id,rig]of rigs)if(!ids.has(id)){scene.remove(rig.root);rigs.delete(id);positions.delete(id);const shadow=shadows.get(id);if(shadow)scene.remove(shadow);shadows.delete(id);}
    for(const p of players){
     const own=p.id===m?.id;let rig=rigs.get(p.id);
-    if(!rig||rig.species!==p.species){if(rig)scene.remove(rig.root);rig=makeSafariAnimal(p.species);rig.born=p.born;rig.turn=own?Math.PI/2:0;rigs.set(p.id,rig);positions.set(p.id,{...p});if(!animalBatches)scene.add(rig.root);if(!shadows.has(p.id)){const shadow=new THREE.Mesh(shadowGeo,shadowMat);shadow.rotation.x=-Math.PI/2;scene.add(shadow);shadows.set(p.id,shadow);}}
+    if(!rig||rig.species!==p.species||!rig.skins&&!lightweight&&animalModel(p.species)){if(rig)scene.remove(rig.root);rig=makeSafariAnimal(p.species,lightweight);rig.born=p.born;rig.turn=own?Math.PI/2:0;rigs.set(p.id,rig);positions.set(p.id,{...p});if(!animalBatches)scene.add(rig.root);if(!shadows.has(p.id)){const shadow=new THREE.Mesh(shadowGeo,shadowMat);shadow.rotation.x=-Math.PI/2;scene.add(shadow);shadows.set(p.id,shadow);}}
     const position=positions.get(p.id)!;if(position.born!==p.born||Math.hypot(position.x-p.x,position.y-p.y)>220){Object.assign(position,p);rig.altitude=0;}
     const concealed=(p as Player&{concealed?:boolean}).concealed;rig.root.visible=!p.deadUntil&&(!concealed||own)&&(own||!m||dist(m,p)<drawRange-60);const shadow=shadows.get(p.id)!;shadow.visible=rig.root.visible;
     if(!rig.root.visible)continue;let vx=p.vx||0,vy=p.vy||0;
@@ -145,6 +149,6 @@ export default function WorldScene({room,me,input,preview=false,onPerformance,on
   };
   renderer.setAnimationLoop(render);
   return()=>{observer.disconnect();renderer.setAnimationLoop(null);canvas.removeEventListener('pointerdown',down);canvas.removeEventListener('pointermove',drag);canvas.removeEventListener('pointerup',up);canvas.removeEventListener('pointercancel',up);canvas.removeEventListener('wheel',wheel);animalBatches?.dispose();savanna.dispose();traces.dispose();food.dispose();shadowGeo.dispose();shadowMat.dispose();renderer.dispose();renderer.forceContextLoss();canvas.remove();overlay.remove();};
- },[preview,input]);
+ }},[preview,input]);
  return <div ref={host} className="world-scene">{failure&&<div className="graphics-error" role="alert">{failure}</div>}{software&&!preview&&<span className="render-mode">Compatibility graphics</span>}</div>;
 }
