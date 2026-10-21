@@ -29,12 +29,12 @@ test('predators only hunt prey their size can take',()=>{
 test('a kill leaves a carcass that scavengers can eat',()=>{
  const {room,player}=fixture('lion');const prey=near(player,'warthog');room.players.push(prey);hunt(player,room,NOW);
  const carcass=room.foods.find(f=>f.kind==='carrion');assert.ok(carcass);
- const hyena=newPlayer('h','H',NOW,true,'hyena');Object.assign(hyena,{x:carcass.x,y:carcass.y,protectedUntil:0});room.players.push(hyena);
+ const hyena=newPlayer('h','H',NOW,true,'hyena');Object.assign(hyena,{x:carcass.x,y:carcass.y,protectedUntil:0,hunger:50});room.players.push(hyena);
  interact(hyena,room,NOW+1000);assert.equal(hyena.scavenged,0,'not ready while the hunter feeds');
  interact(hyena,room,NOW+6000);assert.equal(hyena.scavenged,1);assert.equal(hyena.score,5+2,"golden graze bonus plus the hyena scavenging bonus");
 });
 test('phase bonuses are real scoring',()=>{
- for(const [elapsed,points]of [[0,5],[100000,3],[200000,3]]){const{room,player}=fixture('zebra');room.foods=[{id:1,x:player.x,y:player.y,kind:'grass',ready:0}];interact(player,room,NOW+elapsed);assert.equal(player.score,points);}
+ for(const [elapsed,points]of [[0,5],[100000,3],[200000,3]]){const{room,player}=fixture('zebra');player.hunger=50;room.foods=[{id:1,x:player.x,y:player.y,kind:'grass',ready:0}];interact(player,room,NOW+elapsed);assert.equal(player.score,points);}
  for(const [elapsed,points]of [[0,10],[100000,15],[200000,10]]){const{room,player}=fixture('lion');const victim=near(player,'impala');room.players.push(victim);hunt(player,room,NOW+elapsed);assert.equal(player.score,points);}
  assert.deepEqual([0,100000,200000,300000].map(t=>savannaEvent({started:NOW},NOW+t).kind),['forage','hunt','escape','escape']);
 });
@@ -43,7 +43,9 @@ test('water: drinking at full thirst scores nothing, never stands in for food, a
  const water=props(417).find(p=>p.kind==='water');
  const{room,player}=fixture('zebra');Object.assign(player,{x:water.x+water.size+5,y:water.y,thirst:100,hunger:50});
  for(let i=0;i<40;i++)interact(player,room,NOW+i*1000);
- assert.equal(player.score,0,'forty presses at a full drink: no points');assert.equal(player.drinks,0);assert.equal(player.hunger,50,'water is not food');
+ assert.equal(player.score,0,'forty presses at a full drink: no points');
+ // the same for food: a full animal standing on grass can't graze for points
+ {const{room:r2,player:z}=fixture('zebra');r2.foods=[{id:1,x:z.x,y:z.y,kind:'grass',ready:0}];z.hunger=95;for(let i=0;i<30;i++)interact(z,r2,NOW+i*20000);assert.equal(z.score,0);assert.equal(z.food,0);z.hunger=50;interact(z,r2,NOW+700000);assert.equal(z.food,1);}assert.equal(player.drinks,0);assert.equal(player.hunger,50,'water is not food');
  player.thirst=30;for(let i=40;i<80;i++)interact(player,room,NOW+i*1000);
  assert.equal(player.drinks,1,'one real drink');assert.equal(player.score,2);assert.equal(player.thirst,100);assert.equal(player.hunger,50);
  // thirst falls in the round, and an animal with none left burns its food twice as fast
@@ -59,7 +61,19 @@ test('restarting does not re-pay a task: each species task pays once a round, an
  for(let life=0;life<4;life++){die(player,room,t,'started a new life.');player.bag=['zebra'];respawn(player,t+=2600,room);room.tick=t;assert.equal(player.species,'zebra');
   assert.ok(player.thirst>=70,'a fresh animal has drunk recently: '+player.thirst);atWater();interact(player,room,t+=700);tick(room,t+=100);}
  assert.equal(player.score,first+4*2,'only the drinks themselves score again');assert.ok(player.claimed[1],'the HUD shows the task as done');
- start(room,t+=1000);assert.deepEqual(player.done,[],'a new round starts fresh');
+ // a voluntary new life is a real death: a longer wait, and no free refill of food or water
+ Object.assign(player,{hunger:30,thirst:40});die(player,room,t,'started a new life.');assert.ok(player.deadUntil-t>=6000);respawn(player,player.deadUntil,room);
+ assert.equal(player.hunger,30);assert.equal(player.thirst,40);assert.equal(player.lives.at(-1).cause,'started a new life.');
+ start(room,t+=10000);assert.deepEqual(player.done,[],'a new round starts fresh');assert.deepEqual(player.lives,[]);
+});
+test('staying alive pays more the longer a life lasts, so throwing lives away never pays',()=>{
+ const run=(seconds,restartEvery)=>{const{room,player}=fixture('zebra');room.foods=[];let t=NOW,born=NOW;
+  for(let i=1;i<=seconds*10;i++){t=NOW+i*100;Object.assign(player,{lastSeen:t,inputAt:t,hunger:100,thirst:100,protectedUntil:Infinity});
+   if(restartEvery&&!player.deadUntil&&t-born>=restartEvery*1000){die(player,room,t,'started a new life.');player.bag=['zebra'];}
+   const was=player.deadUntil;tick(room,t);if(was&&!player.deadUntil)born=t;}
+  return player.score;};
+ assert.equal(run(181),10+20+30,'three minutes alive: 10 + 20 + 30');
+ assert.ok(run(181,61)<run(181),'restarting after each paid minute earns less than living on: '+run(181,61));
 });
 test('catches: front only, nothing in between, a windup the prey can answer, one catch per press',()=>{
  // prey behind the hunter
