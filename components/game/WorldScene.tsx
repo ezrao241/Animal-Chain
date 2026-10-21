@@ -25,8 +25,8 @@ export default function WorldScene({room,me,input,preview=false,onPerformance,on
   renderer.setPixelRatio(pixelRatio);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.12;renderer.shadowMap.enabled=false;renderer.shadowMap.type=THREE.PCFSoftShadowMap;if(renderer instanceof THREE.WebGLRenderer)renderer.shadowMap.autoUpdate=false;
   const canvas=renderer.domElement;canvas.setAttribute('aria-label',preview?'Live Golden Plains savanna preview with animated animals':'3D Golden Plains savanna. WASD moves relative to camera. Drag to look. Shift sprints, E interacts, Space uses ability, F toggles instincts, R centers camera.');canvas.tabIndex=preview?-1:0;element.appendChild(canvas);
   const overlay=document.createElement('canvas');overlay.className='world-labels';element.appendChild(overlay);const ctx=overlay.getContext('2d')!;
-  const scene=new THREE.Scene();scene.background=new THREE.Color(0xf1d7a4);scene.fog=new THREE.Fog(0xead2a0,340,800);const camera=new THREE.PerspectiveCamera(61,1,1.8,1000);
-  scene.add(new THREE.HemisphereLight(0xb9d3f0,0x9a7a48,1.35));const sun=new THREE.DirectionalLight(0xffd7a0,3.1);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);Object.assign(sun.shadow.camera,{left:-400,right:400,top:400,bottom:-400,near:10,far:1700});sun.shadow.bias=-.0003;sun.shadow.normalBias=1.5;sun.shadow.camera.updateProjectionMatrix();scene.add(sun,sun.target);
+  const scene=new THREE.Scene();scene.background=new THREE.Color(0xead8b2);scene.fog=new THREE.Fog(0xe8d5ae,340,800);const camera=new THREE.PerspectiveCamera(61,1,1.8,1000);
+  scene.add(new THREE.HemisphereLight(0xc2daf2,0xa98a52,1.4));const sun=new THREE.DirectionalLight(0xffd49a,3.2);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);Object.assign(sun.shadow.camera,{left:-400,right:400,top:400,bottom:-400,near:10,far:1700});sun.shadow.bias=-.0003;sun.shadow.normalBias=1.5;sun.shadow.camera.updateProjectionMatrix();scene.add(sun,sun.target);
   const rim=new THREE.DirectionalLight(0x9fc0e6,.55);rim.position.set(400,200,500);scene.add(rim);
   const savanna=createSavanna(scene,lightweight),ps=props(417),previewFoods=makeFoods(417),food=new FoodField(scene),traces=new SafariTraces(scene,groundY,lightweight);
   const rigs=new Map<string,SafariRig>(),positions=new Map<string,Player>(),shadows=new Map<string,THREE.Mesh>(),shadowGeo=new THREE.CircleGeometry(1,20),shadowMat=new THREE.MeshBasicMaterial({color:0x0b1913,transparent:true,opacity:.22,depthWrite:false});
@@ -55,7 +55,7 @@ export default function WorldScene({room,me,input,preview=false,onPerformance,on
    if(r?.code!==soundRoomCode){animalStates.clear();soundRoomCode=r?.code||'';}
    const tier=lightweight||preview?'performance':mode==='auto'?autoTier:mode;
    const lowBudget=tier==='performance'&&mode!=='high'&&lightweight;
-   if(tier!==activeTier){activeTier=tier;pixelRatio=lightweight?0.7:Math.min(window.devicePixelRatio||1,qualityCaps[tier] ?? 1.12);renderer.setPixelRatio(pixelRatio);renderer.shadowMap.enabled=!lightweight&&tier==='high';drawRange=lightweight?520:tier==='high'?1050:tier==='performance'?620:800;if(scene.fog instanceof THREE.Fog){scene.fog.near=drawRange*.4;scene.fog.far=drawRange;}camera.far=drawRange+180;resize();}
+   if(tier!==activeTier){activeTier=tier;pixelRatio=lightweight?0.7:Math.min(window.devicePixelRatio||1,qualityCaps[tier] ?? 1.12);renderer.setPixelRatio(pixelRatio);renderer.shadowMap.enabled=!lightweight&&tier==='high';savanna.realShadows(renderer.shadowMap.enabled);drawRange=lightweight?520:tier==='high'?1050:tier==='performance'?620:800;if(scene.fog instanceof THREE.Fog){scene.fog.near=drawRange*.4;scene.fog.far=drawRange;}camera.far=drawRange+180;resize();}
    if(!preview&&m&&r?.phase==='playing'){
     for(const p of players){
      const previous=animalStates.get(p.id);
@@ -92,9 +92,11 @@ export default function WorldScene({room,me,input,preview=false,onPerformance,on
     }else{const k=1-Math.exp(-12*dt);position.x+=(p.x+vx*lag-position.x)*k;position.y+=(p.y+vy*lag-position.y)*k;}
     const speed=Math.hypot(vx,vy);
     // Facing is separate from movement: the body swings toward where the animal is being steered (the input), or
-    // along its motion when there is no input (a wild animal on watch turns to the threat), eased but capped at the species' turnRate so a 180 is a quick pivot.
+    // along its motion when there is no input, eased but capped at the species' turnRate so a 180 is a quick pivot.
     {const steer=own&&r?.phase==='playing'?position:p,steering=Math.hypot(steer.dx,steer.dy)>.1&&!p.perched;
-     const watch=!own&&p.mood==='watch';if(steering||speed>3||watch){const direction=steering?-Math.atan2(steer.dy,steer.dx):speed>3?-Math.atan2(vy,vx):-(p.heading||0),delta=Math.atan2(Math.sin(direction-rig.turn),Math.cos(direction-rig.turn)),max=ANIMALS[p.species].gait.turnRate*dt;rig.turn+=THREE.MathUtils.clamp(delta*(1-Math.exp(-(steering||speed>3?14:4)*dt)),-max,max);}}
+     if(steering||speed>3){const direction=steering?-Math.atan2(steer.dy,steer.dx):-Math.atan2(vy,vx),delta=Math.atan2(Math.sin(direction-rig.turn),Math.cos(direction-rig.turn)),max=ANIMALS[p.species].gait.turnRate*dt;rig.turn+=THREE.MathUtils.clamp(delta*(1-Math.exp(-14*dt)),-max,max);}
+      // a watchful animal standing still turns to face what it is watching
+      else if(!own&&p.mood==='watch'){const delta=Math.atan2(Math.sin(-(p.heading||0)-rig.turn),Math.cos(-(p.heading||0)-rig.turn));rig.turn+=delta*(1-Math.exp(-4*dt));}}
     rig.altitude=THREE.MathUtils.damp(rig.altitude,p.perched?p.perchHeight:0,6,dt);rig.root.rotation.y=rig.turn;rig.root.position.set(position.x,groundY(position.x,position.y)+rig.altitude,position.y);
     {const a=ANIMALS[p.species],start=p.abilityUntil-a.duration*1000;animateSafari(rig,{speed:p.perched?0:speed,time,dt,ability:p.abilityUntil>now?THREE.MathUtils.clamp((now-start)/(a.duration*1000),0,1):-1,action:p.actionUntil>now,perched:!!p.perched,altitude:rig.altitude,stunned:(p.stunUntil||0)>now,alert:p.mood==='watch',grazing:headDown(p,now),crouch:p.mood==='stalk',resting:p.mood==='rest'});}
     shadow.position.set(position.x+3,groundY(position.x,position.y)+.6,position.y+2);{const sp=cameraProfile(p.species);shadow.scale.set(sp.shadow[0],sp.shadow[1],1);shadow.rotation.z=rig.turn;}
