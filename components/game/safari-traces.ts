@@ -4,7 +4,7 @@
 // Everything here is decoration driven by the shared state: no trace reveals anything the room state doesn't, and a
 // footprint is only ever left where an animal really walked.
 import * as THREE from 'three';
-import {ANIMALS,props,trails,inTallGrass,REAL_SPEED,type Species,type Prop} from '@/lib/game';
+import {ANIMALS,props,trails,inTallGrass,walkPace,type Species,type Prop} from '@/lib/game';
 import {Model,hex,hash,facetMaterial} from './faceted';
 
 type Kind='cat'|'hyena'|'hoof'|'cloven'|'pig';
@@ -96,7 +96,7 @@ export class SafariTraces{
   for(const a of animals){
    if(!a.onGround||Math.hypot(a.x-focus.x,a.z-focus.z)>900){this.walkers.delete(a.id);continue;}
    let w=this.walkers.get(a.id);if(!w){this.walkers.set(a.id,w={x:a.x,z:a.z,side:1});continue;}
-   const speed=Math.hypot(a.vx,a.vy),step=PRINT_SIZE[a.species]*10*(speed>ANIMALS[a.species].speed*REAL_SPEED*1.05?4:2.4),moved=Math.hypot(a.x-w.x,a.z-w.z);
+   const speed=Math.hypot(a.vx,a.vy),step=PRINT_SIZE[a.species]*10*(speed>walkPace(a.species)*1.05?4:2.4),moved=Math.hypot(a.x-w.x,a.z-w.z);
    if(moved>220){w.x=a.x;w.z=a.z;continue;}// respawn or teleport: no track across the gap
    if(moved<step)continue;
    const dx=(a.x-w.x)/moved,dz=(a.z-w.z)/moved;w.x=a.x;w.z=a.z;w.side=-w.side;
@@ -107,7 +107,7 @@ export class SafariTraces{
    if(this.prints.length>this.max*2.5)this.prints.splice(0,this.prints.length-this.max*2.5);
    // dust only off dry, open ground at a run; tall grass rustles and throws up seed flecks instead
    if(!a.visible||Math.hypot(a.x-focus.x,a.z-focus.z)>520)continue;
-   const lush=this.waters.some(o=>Math.hypot(a.x-o.x,a.z-o.y)<o.size*2.1),grass=inTallGrass(this.ps,a.x,a.z),fast=speed>ANIMALS[a.species].speed*REAL_SPEED*1.05;
+   const lush=this.waters.some(o=>Math.hypot(a.x-o.x,a.z-o.y)<o.size*2.1),grass=inTallGrass(this.ps,a.x,a.z),fast=speed>walkPace(a.species)*1.05;
    if(grass&&speed>12)for(let k=0;k<2;k++)this.puff(x+(Math.random()-.5)*8,this.ground(x,z)+8+Math.random()*6,z+(Math.random()-.5)*8,now,hex(0xe8cf86),.7,14);
    else if(fast&&!lush&&!mud)for(let k=0;k<2;k++)this.puff(a.x-dx*(10+k*6)+(Math.random()-.5)*6,this.ground(a.x,a.z)+2,a.z-dz*(10+k*6)+(Math.random()-.5)*6,now,hex(0xeadbb4),3.5+ANIMALS[a.species].size*3,4);
   }

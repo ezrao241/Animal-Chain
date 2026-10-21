@@ -40,7 +40,7 @@ safari redo and are unchanged here.
   away. After a failed chase they rest in shade. These are game numbers inspired by the short lion charge described
   above.
 - **Defences.** The zebra kick reaches 4 m and only behind the zebra, has an 8 s cooldown and stuns for 2.5 s. The impala
-  leap lasts 1.2 s with a 6 s cooldown. The warthog burrow needs a burrow within 4.5 m and lasts 5 s with a 9 s cooldown.
+  leap lasts 0.9 s (a bound of about 10 m) with a 6 s cooldown. The warthog burrow needs a burrow within 4.5 m and lasts 5 s with a 9 s cooldown.
 - **Mud.** Wading through a watering hole or its mud ring slows every animal to 80 %.
 - **Tracks.** Footprints are drawn about four times life size so they read from the follow camera. They fade within 55 s, or
   110 s in mud.

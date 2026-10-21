@@ -262,15 +262,18 @@ export type SafariPose={speed:number;time:number;dt:number;ability:number;action
 const damp=(a:number,b:number,k:number,dt:number)=>a+(b-a)*(1-Math.exp(-k*dt));
 /** Pose the joint hierarchy for this frame. speed is in game units per second; ability is the 0..1 progress of an active ability, or -1. */
 export function animateSafari(r:SafariRig,p:SafariPose){
- const s=SPECS[r.species],a=ANIMALS[r.species],v=p.speed/10,dt=p.dt,j=r.j,moving=smooth(.15,.8,v),gallop=smooth(2.4,5.2,v);
- const strideLen=s.stride*(1+gallop*1.4);r.phase=(r.phase+dt*v/strideLen)%1;const phi=r.phase*Math.PI*2;
- const amp=Math.min(1,v/1.4)*(.32+.22*gallop),ab=p.ability,active=ab>=0;
+ const s=SPECS[r.species],a=ANIMALS[r.species],g=a.gait,v=p.speed/10,dt=p.dt,j=r.j,moving=smooth(.15,.8,v);
+ // gait by the species' own transition speeds: walk, trot (not for big cats), then canter/gallop
+ const gallop=smooth(g.gallop-1,g.gallop+1,v),trot=g.trot===Infinity?0:smooth(g.trot-.4,g.trot+.4,v)*(1-gallop),walk=1-trot-gallop;
+ // longer strides as the gait opens up; a full gallop settles at about 2.6 strides a second, as real quadrupeds do
+ const strideLen=Math.max(s.stride*(1+trot*.5+gallop*.9),v/2.6);r.phase=(r.phase+dt*v/strideLen)%1;const phi=r.phase*Math.PI*2;
+ const amp=Math.min(1,v/1.4)*(.3+.1*trot+.26*gallop),ab=p.ability,active=ab>=0;
  const stalk=r.species==='leopard'&&active||!!p.crouch&&!!a.prey.length,kick=r.species==='zebra'&&active?Math.sin(Math.min(1,ab)*Math.PI):0,leap=r.species==='impala'&&active?Math.sin(Math.min(1,ab)*Math.PI):0,burrow=r.species==='warthog'&&active;
  const graze=(p.action||!!p.grazing)&&v<1&&!a.prey.length&&!p.alert,lunge=p.action&&!!a.prey.length,resting=!!p.resting&&v<.5,alert=!!p.alert&&v<1;
  // legs: walk is a lateral sequence, faster gaits swing the front and hind pairs together
- const walkOff={FR:.75,FL:.25,HR:.5,HL:0},runOff={FR:.6,FL:.5,HR:.1,HL:0};
+ const walkOff={FR:.75,FL:.25,HR:.5,HL:0},trotOff={FR:.5,FL:0,HR:0,HL:.5},runOff={FR:.6,FL:.5,HR:.1,HL:0};
  for(const [id,front] of LEGS){
-  const off=walkOff[id]*(1-gallop)+runOff[id]*gallop,t=phi+off*Math.PI*2,swing=Math.sin(t),lift=Math.max(0,Math.cos(t))*amp*1.5;
+  const off=walkOff[id]*walk+trotOff[id]*trot+runOff[id]*gallop,t=phi+off*Math.PI*2,swing=Math.sin(t),lift=Math.max(0,Math.cos(t))*amp*1.5;
   let a0=amp*swing,a1=front?lift*.45:-lift*.55,a2=front?-lift*1.3:lift*.9;
   if(stalk){a0+=front?.25:-.3;a1+=front?.55:-.75;a2+=front?-.6:.7;}
   if(p.perched){a0=front?1.25:-1.2;a1=front?-.2:-.6;a2=front?-1.1:1.3;}
@@ -281,9 +284,9 @@ export function animateSafari(r:SafariRig,p:SafariPose){
   j['leg'+id+'0'].rotation.z=damp(j['leg'+id+'0'].rotation.z,a0,24,dt);j['leg'+id+'1'].rotation.z=damp(j['leg'+id+'1'].rotation.z,a1,24,dt);j['leg'+id+'2'].rotation.z=damp(j['leg'+id+'2'].rotation.z,a2,24,dt);
  }
  const body=j.body,rest=body.userData.rest as THREE.Vector3,size=a.size;
- const bob=Math.abs(Math.sin(phi*2))*(.012+.05*gallop)*moving*size,breathe=Math.sin(p.time*2.1+r.seed)*.004*size;
+ const bob=Math.abs(Math.sin(phi*2))*(.012+.025*trot+.05*gallop)*moving*size,breathe=Math.sin(p.time*2.1+r.seed)*.004*size;
  let lower=0;if(stalk)lower=.16*size;if(p.perched)lower=.22*size;if(burrow)lower=.55*size;if(resting)lower=.42*size;if(graze&&r.species==='warthog')lower=.12*size;
- body.position.y=damp(body.position.y,rest.y+bob+breathe-lower+leap*.9,leap?30:14,dt);
+ body.position.y=damp(body.position.y,rest.y+bob+breathe-lower+leap*3,leap?30:14,dt);
  body.rotation.z=damp(body.rotation.z,Math.sin(phi)*.07*gallop-kick*.28+(lunge?.12:0)+(graze&&r.species==='warthog'?-.18:0)+leap*.12,14,dt);
  body.rotation.x=damp(body.rotation.x,Math.sin(phi)*.025*moving*(1-gallop),10,dt);
  // neck and head: grazing drops the head to the grass, idle animals look around, runners stretch forward

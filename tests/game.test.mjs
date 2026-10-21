@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {W,H,ANIMALS,SPECIES,WILDLIFE,newPlayer,newRoom,start,respawn,die,tick,props,interact,savannaEvent,useAbility,perch,hidden,publicRoom,makeFoods,solid,solidRadius,KICK_RANGE,TREE_REACH} from '../lib/game.ts';
+import {move,UNITS_PER_METRE,spawnPoint,W,H,ANIMALS,SPECIES,WILDLIFE,newPlayer,newRoom,start,respawn,die,tick,props,interact,savannaEvent,useAbility,perch,hidden,publicRoom,makeFoods,solid,solidRadius,KICK_RANGE,TREE_REACH} from '../lib/game.ts';
 const NOW=1800000000000;
 // an open patch of plain: no thicket (hiding), boulder, tree or water nearby
 const OPEN=(()=>{for(let y=300;y<H-300;y+=50)for(let x=300;x<W-300;x+=50)if(props(417).every(p=>Math.hypot(p.x-x,p.y-y)>(p.kind==='water'?p.size+150:p.kind==='tallgrass'?p.size*100+150:150)))return{x,y};})();
@@ -120,12 +120,12 @@ test('herds scatter readably: alarm spreads with individual reaction times and f
 test('predators need an opportunity: a still animal goes unnoticed, a chase gives up instead of crossing the map',()=>{
  const{room,lion}=herdScene();room.players=[lion];lion.hunger=40;
  const prey=newPlayer('human','Human',NOW,false,'impala');Object.assign(prey,{protectedUntil:0,lastSeen:NOW+1e9,inputAt:NOW+1e9});const w=wind(room);
- Object.assign(prey,{x:Math.min(W-300,Math.max(300,lion.x)),y:Math.min(H-300,Math.max(300,lion.y))});Object.assign(lion,{x:prey.x-w.x*180,y:prey.y-w.y*180});// lion upwind: the impala's scent drifts away from it
+ Object.assign(prey,{x:Math.min(W-300,Math.max(300,lion.x)),y:Math.min(H-300,Math.max(300,lion.y))});Object.assign(lion,{x:prey.x-w.x*140,y:prey.y-w.y*140});// lion upwind: the impala's scent drifts away from it
  if(sightBlocked(ps,lion,prey)||inTallGrass(ps,prey.x,prey.y))return;
  room.players.push(prey);
- for(let i=1;i<=20;i++)tick(room,NOW+i*100);assert.equal(lion.targetId,'','a still impala 18 m away is not detected');
+ for(let i=1;i<=20;i++)tick(room,NOW+i*100);assert.equal(lion.targetId,'','a still impala 14 m away is not detected');
  // the impala bolts away from the lion: the lion notices, charges, and gives up within its chase limit
- Object.assign(lion,{x:prey.x-w.x*180,y:prey.y-w.y*180,vx:0,vy:0});
+ Object.assign(lion,{x:prey.x-w.x*140,y:prey.y-w.y*140,vx:0,vy:0});
  let charged=0,gaveUp=0;for(let i=21;i<=200;i++){prey.dx=w.x;prey.dy=w.y;prey.sprint=true;prey.inputAt=NOW+i*100;tick(room,NOW+i*100);if(lion.mood==='chase'&&!charged)charged=i;if(charged&&lion.mood==='rest'&&!gaveUp)gaveUp=i;if(prey.deadUntil)break;}
  assert.ok(charged,'the lion reacts to the running impala');
  if(!prey.deadUntil)assert.ok(gaveUp&&(gaveUp-charged)*100<=CHASE.lion.give+600,'chase abandoned after '+((gaveUp-charged)*100)+' ms');
@@ -147,4 +147,23 @@ test('wildlife over three minutes: stays on the map, keeps moving, no piles, var
  for(const m of ['graze','patrol','drink'])assert.ok(a.moods.has(m),'mood seen: '+m+' in '+[...a.moods]);
  assert.deepEqual(a.room.players.map(p=>[Math.round(p.x),Math.round(p.y)]),b.room.players.map(p=>[Math.round(p.x),Math.round(p.y)]),'same seed, same savanna');
  assert.ok(trails().length>=4);
+});
+test('real locomotion: lions sprint briefly, hyenas run for kilometres, impala bound 10 m',()=>{
+ const run=(species,seconds,sprint=true)=>{const{room,player}=fixture(species);Object.assign(player,{dx:1,dy:0,sprint});let top=0,start=player.x;for(let t=1;t<=seconds*20;t++){const now=NOW+t*50;Object.assign(player,{dx:1,dy:0,sprint,inputAt:now,lastSeen:now,hunger:100,protectedUntil:Infinity});room.players=[player];tick(room,now);top=Math.max(top,Math.hypot(player.vx,player.vy)/UNITS_PER_METRE);}return{top,player,metres:(player.x-start)/UNITS_PER_METRE};};
+ const lion=run('lion',4);assert.ok(lion.top>20&&lion.top<=22.01,'lion tops out near 80 km/h: '+lion.top);
+ const lionLong=run('lion',14),hyenaLong=run('hyena',14);assert.ok(lionLong.player.exhausted||lionLong.player.stamina<40,'a lion is spent after a short sprint');assert.ok(hyenaLong.player.stamina>60,'a hyena barely tires');
+ const zebra=run('zebra',3,false);assert.ok(Math.abs(zebra.top-7)<.1,'cruising zebra');
+ const{room,player}=fixture('impala');Object.assign(player,{dx:1,dy:0});const x0=player.x;useAbility(player,room,NOW);for(let t=0;t<18;t++)move(player,.05,[],NOW+t*50);
+ assert.ok(Math.abs((player.x-x0)/UNITS_PER_METRE-10)<1.5,'impala bound is about 10 m: '+(player.x-x0)/10);
+});
+test('turning: a galloping zebra swings wide, an impala jinks tight',()=>{
+ const radius=species=>{const{player}=fixture(species);Object.assign(player,{dx:1,dy:0,sprint:false});for(let t=0;t<200;t++)move(player,.05,[],NOW+t*50);player.dx=0;player.dy=1;const start=Math.atan2(player.vy,player.vx);let t=0;while(Math.atan2(player.vy,player.vx)-start<Math.PI/2-.01&&t<400){move(player,.05,[],NOW+t*50);t++;}return Math.hypot(player.vx,player.vy)/UNITS_PER_METRE*(t*.05)/(Math.PI/2);};
+ assert.ok(radius('zebra')>radius('impala'));
+});
+test('spawning follows habitat: herds near water, warthogs by burrows',()=>{
+ const ps=props(417),{room}=fixture();start(room,NOW);
+ const zebras=room.players.filter(p=>p.bot&&p.species==='zebra');assert.ok(zebras.filter(z=>ps.some(w=>w.kind==='water'&&Math.hypot(w.x-z.x,w.y-z.y)<w.size+600)).length>=zebras.length*.8);
+ assert.ok(zebras.filter(z=>zebras.some(o=>o!==z&&Math.hypot(o.x-z.x,o.y-z.y)<200)).length>=zebras.length*.8,'zebras come in herds');
+ const hogs=room.players.filter(p=>p.bot&&p.species==='warthog');assert.ok(hogs.filter(h=>ps.some(b=>b.kind==='burrow'&&Math.hypot(b.x-h.x,b.y-h.y)<200)).length>=hogs.length*.7);
+ for(let i=0;i<20;i++){const q=spawnPoint('impala',room,i);assert.ok(!room.players.some(o=>ANIMALS[o.species].prey.includes('impala')&&Math.hypot(o.x-q.x,o.y-q.y)<200),'no spawning under a predator\'s nose');}
 });
