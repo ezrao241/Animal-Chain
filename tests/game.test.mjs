@@ -38,6 +38,55 @@ test('phase bonuses are real scoring',()=>{
  for(const [elapsed,points]of [[0,10],[100000,15],[200000,10]]){const{room,player}=fixture('lion');const victim=near(player,'impala');room.players.push(victim);hunt(player,room,NOW+elapsed);assert.equal(player.score,points);}
  assert.deepEqual([0,100000,200000,300000].map(t=>savannaEvent({started:NOW},NOW+t).kind),['forage','hunt','escape','escape']);
 });
+// ---- the outside review's exploits, reproduced and kept fixed
+test('water: drinking at full thirst scores nothing, never stands in for food, and thirst runs down on its own',()=>{
+ const water=props(417).find(p=>p.kind==='water');
+ const{room,player}=fixture('zebra');Object.assign(player,{x:water.x+water.size+5,y:water.y,thirst:100,hunger:50});
+ for(let i=0;i<40;i++)interact(player,room,NOW+i*1000);
+ assert.equal(player.score,0,'forty presses at a full drink: no points');assert.equal(player.drinks,0);assert.equal(player.hunger,50,'water is not food');
+ player.thirst=30;for(let i=40;i<80;i++)interact(player,room,NOW+i*1000);
+ assert.equal(player.drinks,1,'one real drink');assert.equal(player.score,2);assert.equal(player.thirst,100);assert.equal(player.hunger,50);
+ // thirst falls in the round, and an animal with none left burns its food twice as fast
+ const a=fixture('impala'),b=fixture('impala');Object.assign(a.player,{thirst:60});Object.assign(b.player,{thirst:0});
+ for(let i=1;i<=100;i++){for(const f of [a,b]){Object.assign(f.player,{protectedUntil:Infinity,lastSeen:NOW+i*100});tick(f.room,NOW+i*100);}}
+ assert.ok(Math.abs(a.player.thirst-(60-1000/240))<.01,'thirst falls about 4 in 10 s: '+a.player.thirst);
+ assert.ok(Math.abs((100-b.player.hunger)-2*(100-a.player.hunger))<.2,'parched hunger drain is double');
+});
+test('restarting does not re-pay a task: each species task pays once a round, and a new animal is not thirsty yet',()=>{
+ const water=props(417).find(p=>p.kind==='water'),{room,player}=fixture('zebra');
+ const atWater=()=>Object.assign(player,{x:water.x+water.size+5,y:water.y,thirst:30,lastSeen:Infinity,protectedUntil:Infinity});
+ let t=NOW;atWater();interact(player,room,t);tick(room,t+=100);const first=player.score;assert.equal(first,2+25,'drink and the drink task');
+ for(let life=0;life<4;life++){die(player,room,t,'started a new life.');player.bag=['zebra'];respawn(player,t+=2600,room);room.tick=t;assert.equal(player.species,'zebra');
+  assert.ok(player.thirst>=70,'a fresh animal has drunk recently: '+player.thirst);atWater();interact(player,room,t+=700);tick(room,t+=100);}
+ assert.equal(player.score,first+4*2,'only the drinks themselves score again');assert.ok(player.claimed[1],'the HUD shows the task as done');
+ start(room,t+=1000);assert.deepEqual(player.done,[],'a new round starts fresh');
+});
+test('catches: front only, nothing in between, a windup the prey can answer, one catch per press',()=>{
+ // prey behind the hunter
+ {const{room,player}=fixture('lion');const q=near(player,'impala',-12);room.players.push(q);hunt(player,room,NOW);assert.equal(player.hunts,0,'no catching what is behind you');assert.match(player.message,/Missed/);}
+ // facing it works, and only the press commits: the kill lands STRIKE_WINDUP later
+ {const{room,player}=fixture('lion');const q=near(player,'impala',12);room.players.push(q);interact(player,room,NOW);assert.equal(player.hunts,0);assert.equal(q.deadUntil,0,'nothing happens on the press itself');
+  interact(player,room,NOW+10);interact(player,room,NOW+700);resolveStrike(player,room,NOW+STRIKE_WINDUP);assert.equal(player.hunts,1);assert.equal(player.score,10,'mashing E is still one catch');
+  hunt(player,room,NOW+2000);assert.equal(player.hunts,1,'no second kill of the same body');}
+ // across an acacia trunk
+ {const{room,player}=fixture('lion'),tree=props(417).find(p=>p.kind==='tree');Object.assign(player,{x:tree.x-12,y:tree.y,heading:0});const q=near(player,'impala',24);room.players.push(q);
+  hunt(player,room,NOW);assert.equal(player.hunts,0,'no catch through wood');}
+ // the prey leaps during the windup
+ {const{room,player}=fixture('lion');const q=near(player,'impala',15);room.players.push(q);interact(player,room,NOW);assert.ok(player.strikeId);useAbility(q,room,NOW+100);resolveStrike(player,room,NOW+STRIKE_WINDUP);assert.equal(player.hunts,0,'an impala that leaps in time gets away');assert.ok(q.threatAt>0);}
+ // a zebra kicks during the windup (the lion is behind it), and a stunned lion can't start another
+ {const{room,player}=fixture('lion');const z=near(player,'zebra',14);z.heading=0;room.players.push(z);interact(player,room,NOW);assert.ok(player.strikeId);useAbility(z,room,NOW+100);assert.ok(player.stunUntil>NOW);
+  resolveStrike(player,room,NOW+STRIKE_WINDUP);assert.equal(player.hunts,0);hunt(player,room,NOW+700);assert.equal(player.hunts,0,'stunned');}
+ // the prey runs out of reach before the lunge lands
+ {const{room,player}=fixture('lion');const q=near(player,'impala',20);room.players.push(q);interact(player,room,NOW);q.x+=40;resolveStrike(player,room,NOW+STRIKE_WINDUP);assert.equal(player.hunts,0);assert.equal(q.deadUntil,0);}
+ // the hunter dies or starts a new life mid-lunge
+ {const{room,player}=fixture('lion');const q=near(player,'impala',12);room.players.push(q);interact(player,room,NOW);die(player,room,NOW+50,'test');respawn(player,NOW+100,room);
+  Object.assign(player,{species:'lion',x:q.x-12,y:q.y,protectedUntil:0});for(let i=1;i<=5;i++)tick(room,NOW+100+i*100);assert.equal(player.hunts,0,'a strike never carries into a new life');assert.equal(q.deadUntil,0);}
+ // resolution happens in the room's own tick, so the server decides
+ {const{room,player}=fixture('lion');const q=near(player,'impala',12);q.bot=false;room.players.push(q);interact(player,room,NOW);for(let i=1;i<=4;i++){q.inputAt=player.inputAt=NOW+i*100;tick(room,NOW+i*100);}assert.equal(player.hunts,1);assert.ok(q.deadUntil);}
+ // a leopard's leap misses if the prey has moved by the time it lands
+ {const{room,player}=fixture('leopard'),ps=props(417),tree=ps.find(p=>p.kind==='tree');Object.assign(player,{x:tree.x+TREE_REACH-5,y:tree.y});let t=NOW;perch(player,room,t);for(let i=0;i<120;i++){move(player,.05,ps,t);t+=50;}assert.equal(player.climb,'limb');
+  const q=near(player,'impala',30);room.players.push(q);interact(player,room,t);assert.equal(player.climb,'drop');q.x+=120;for(let i=0;i<40&&player.climb;i++){move(player,.05,ps,t);t+=50;}resolveStrike(player,room,player.strikeAt||t);assert.equal(player.hunts,0);assert.equal(q.deadUntil,0);}
+});
 test('zebra kick stuns a lion, impala leap and warthog burrow escape a catch',()=>{
  {const{room,player}=fixture('zebra');player.heading=Math.PI;const lion=near(player,'lion',KICK_RANGE-10);room.players.push(lion);useAbility(player,room,NOW);assert.ok(lion.stunUntil>NOW);hunt(lion,room,NOW+100);assert.equal(lion.hunts,0);}
  {const{room,player}=fixture('impala');const lion=near(player,'lion',15);room.players.push(lion);useAbility(player,room,NOW);hunt(lion,room,NOW+200);assert.equal(lion.hunts,0);}
