@@ -9,6 +9,7 @@ import {makeSafariAnimal,animateSafari,SafariRig,animalPortrait,cameraProfile} f
 import {createSavanna,groundY,SUN_DIRECTION} from './savanna-world';
 import {FoodField} from './safari-food';
 import {AnimalBatches} from './animal-batches';
+import {MenuCinema} from './menu-cinema';
 import type {AnimalSoundEvent} from '@/lib/animal-sounds';
 export type GraphicsMode='auto'|'performance'|'high';
 export type PerformanceStats={fps:number;renderMs:number;renderer:string;quality:string;drawCalls:number};
@@ -17,8 +18,9 @@ export type WorldRoom=Omit<Room,'players'>&{serverTime:number;_received?:number;
 // swing round behind a turning animal without the held key suddenly meaning a different way.
 export type WorldInput={dx:number;dy:number;interact:boolean;ability:boolean;perch:boolean;sprint:boolean;cameraYaw:number;moveYaw?:number;instinct?:boolean;recenter?:boolean;graphics?:GraphicsMode};
 export function ModelPortrait({species,size=70}:{species:Species;size?:number}){const [src,setSrc]=useState('');useEffect(()=>{setSrc(animalPortrait(species));},[species]);return src?<img className="portrait" src={src} alt={ANIMALS[species].name} width={size} height={size}/>:<span className="portrait-loading" style={{width:size,height:size}} aria-label={ANIMALS[species].name}>{ANIMALS[species].name.slice(0,1)}</span>;}
-export default function WorldScene({room,me,input,preview=false,onPerformance,onAnimalSound}:{room:WorldRoom|null;me:Player|undefined;input:React.RefObject<WorldInput>;preview?:boolean;onPerformance?:(stats:PerformanceStats)=>void;onAnimalSound?:(species:Species,event:AnimalSoundEvent,volume:number,pan:number)=>void}){
- const host=useRef<HTMLDivElement>(null),latest=useRef({room,me,onPerformance,onAnimalSound});latest.current={room,me,onPerformance,onAnimalSound};const [failure,setFailure]=useState(''),[software,setSoftware]=useState(false);
+// preview is the home screen backdrop: focus holds its camera on one species, onShot reports which species is on screen
+export default function WorldScene({room,me,input,preview=false,focus=null,onShot,onPerformance,onAnimalSound}:{room:WorldRoom|null;me:Player|undefined;input:React.RefObject<WorldInput>;preview?:boolean;focus?:Species|null;onShot?:(species:Species|null)=>void;onPerformance?:(stats:PerformanceStats)=>void;onAnimalSound?:(species:Species,event:AnimalSoundEvent,volume:number,pan:number)=>void}){
+ const host=useRef<HTMLDivElement>(null),latest=useRef({room,me,focus,onShot,onPerformance,onAnimalSound});latest.current={room,me,focus,onShot,onPerformance,onAnimalSound};const [failure,setFailure]=useState(''),[software,setSoftware]=useState(false);
  useEffect(()=>{
   if(!host.current)return;const element=host.current;let renderer:THREE.WebGLRenderer|SoftwareRenderer;
   try{renderer=createRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});}catch{setFailure('3D rendering is unavailable. Enable graphics acceleration and reload.');return;}
@@ -33,7 +35,9 @@ export default function WorldScene({room,me,input,preview=false,onPerformance,on
   const rigs=new Map<string,SafariRig>(),positions=new Map<string,Player>(),shadows=new Map<string,THREE.Mesh>(),shadowGeo=new THREE.CircleGeometry(1,20),shadowMat=new THREE.MeshBasicMaterial({color:0x0b1913,transparent:true,opacity:.22,depthWrite:false});
   const animalBatches=lightweight?null:new AnimalBatches(scene);
   const solidNearCamera=(x:number,z:number,range:number)=>solidNear(ps,x,z,range).filter(t=>Math.abs(t.x-x)<range&&Math.abs(t.y-z)<range);
-  const demo=SPECIES.map((s,i)=>{const p=newPlayer('preview-'+s,ANIMALS[s].name,Date.now(),true,s);p.x=1560+(i%3)*70;p.y=780+Math.floor(i/3)*80;p.protectedUntil=0;return p;});
+  const cinema=preview?new MenuCinema():null,demo=cinema?.players||[];let shownShot:Species|null|undefined;
+  // the menu backdrop is graded to late golden hour: lower, redder sun, cooler sky fill and a warm haze
+  if(preview){sun.color.set(0xffa65c);sun.intensity=3.4;rim.color.set(0x8f9be0);rim.intensity=.7;renderer.toneMappingExposure=1.02;scene.traverse(o=>{if(o instanceof THREE.HemisphereLight){o.color.set(0xb7b9e0);o.groundColor.set(0x9a6a3e);o.intensity=1.15;}});savanna.dusk();scene.background=new THREE.Color(0xd9a77a);(scene.fog as THREE.Fog).color.set(0xd8a47a);}
   let width=0,height=0,last=performance.now(),lastPreviewFrame=0,yaw=0,pitch=.24,distance=155,dragging=false,lastX=0,lastY=0,ownHeading=Math.PI/2,first=true,ownBorn=0,frameCost=16,dragPointer=-1,lastLook=-1e9,latchKey='',moveYaw=0;
   const follow=new THREE.Vector3(1600,20,820),target=new THREE.Vector3(),projected=new THREE.Vector3(),view=new THREE.Vector3();
   const qualityCaps={high:1.5,balanced:1.12,performance:.78};
@@ -52,7 +56,7 @@ export default function WorldScene({room,me,input,preview=false,onPerformance,on
    if(preview)lastPreviewFrame=ms;
    const dt=Math.min(.075,Math.max(0,(ms-last)/1000));last=ms;if(!width||!height)return;
    const mode=input.current.graphics||'auto';
-   const time=ms/1000,{room:r,me:m}=latest.current,now=r?Date.now()+r.serverTime-(r._received||Date.now())+(r._transitMs||0):Date.now(),lag=r?Math.min(.3,Math.max(0,(now-r.serverTime)/1000)):0,players=r?.players||demo,ids=new Set(players.map(p=>p.id));
+   const time=ms/1000,{room:r,me:m}=latest.current;cinema?.animate(time);const now=r?Date.now()+r.serverTime-(r._received||Date.now())+(r._transitMs||0):Date.now(),lag=r?Math.min(.3,Math.max(0,(now-r.serverTime)/1000)):0,players=r?.players||demo,ids=new Set(players.map(p=>p.id));
    if(r?.code!==soundRoomCode){animalStates.clear();soundRoomCode=r?.code||'';}
    const tier=lightweight||preview?'performance':mode==='auto'?autoTier:mode;
    const lowBudget=tier==='performance'&&mode!=='high'&&lightweight;
@@ -84,8 +88,10 @@ export default function WorldScene({room,me,input,preview=false,onPerformance,on
     if(!rig||rig.species!==p.species){if(rig)scene.remove(rig.root);rig=makeSafariAnimal(p.species);rig.born=p.born;rig.turn=own?Math.PI/2:0;rigs.set(p.id,rig);positions.set(p.id,{...p});if(!animalBatches)scene.add(rig.root);if(!shadows.has(p.id)){const shadow=new THREE.Mesh(shadowGeo,shadowMat);shadow.rotation.x=-Math.PI/2;scene.add(shadow);shadows.set(p.id,shadow);}}
     const position=positions.get(p.id)!;if(position.born!==p.born||Math.hypot(position.x-p.x,position.y-p.y)>220){Object.assign(position,p);rig.altitude=0;}
     const concealed=(p as Player&{concealed?:boolean}).concealed;rig.root.visible=!p.deadUntil&&(!concealed||own)&&(own||!m||dist(m,p)<drawRange-60);const shadow=shadows.get(p.id)!;shadow.visible=rig.root.visible;
+    // the menu camera tours a herd at close range: anyone wandering right up to the lens steps out of the shot
+    if(preview&&Math.hypot(position.x-camera.position.x,position.y-camera.position.z)<30)rig.root.visible=shadow.visible=false;
     if(!rig.root.visible)continue;let vx=p.vx||0,vy=p.vy||0;
-    if(preview){const i=SPECIES.indexOf(p.species);position.x=p.x+Math.sin(time*.3+i)*26;position.y=p.y+Math.cos(time*.3+i)*20;vx=Math.cos(time*.3+i)*40;vy=-Math.sin(time*.3+i)*25;}
+    if(preview){position.x=p.x;position.y=p.y;position.vx=vx;position.vy=vy;}
     else if(own&&r?.phase==='playing'){
      Object.assign(position,{species:p.species,perched:p.perched,abilityUntil:p.abilityUntil,deadUntil:p.deadUntil,stunUntil:p.stunUntil,stamina:p.stamina,exhausted:p.exhausted,...input.current,...cameraInput(input.current.dx,input.current.dy,input.current.moveYaw??input.current.cameraYaw)});
      if(p.perched){position.x=THREE.MathUtils.damp(position.x,p.x,10,dt);position.y=THREE.MathUtils.damp(position.y,p.y,10,dt);position.vx=position.vy=0;}
@@ -109,16 +115,16 @@ export default function WorldScene({room,me,input,preview=false,onPerformance,on
     shadow.position.set(position.x+3,groundY(position.x,position.y)+.6,position.y+2);{const sp=cameraProfile(p.species);shadow.scale.set(sp.shadow[0],sp.shadow[1],1);shadow.rotation.z=rig.turn;}
     if(own){ownHeading=rig.turn;const headHeight=cameraProfile(p.species).head;target.set(position.x,rig.root.position.y+headHeight,position.y);if(first||ownBorn!==p.born){follow.copy(target);ownBorn=p.born;first=false;yaw=rig.turn-Math.PI/2;pitch=.24;}follow.lerp(target,1-Math.exp(-9*dt));}
    }
-   if(preview){follow.set(1640,40,860);yaw=-.6+Math.sin(time*.08)*.18;distance=width<760?250:190;pitch=.16;}
    if(input.current.recenter){yaw=ownHeading-Math.PI/2;pitch=.24;input.current.recenter=false;}
    // the camera eases round behind a moving animal (quick turns and flight included) unless the player looked around
    // in the last second and a half
    else if(!preview&&m&&!m.perched&&!dragging&&ms-lastLook>1500){const own=positions.get(m.id),sp=own?Math.hypot(own.vx||0,own.vy||0):0;if(sp>20){const want=ownHeading-Math.PI/2,delta=Math.atan2(Math.sin(want-yaw),Math.cos(want-yaw));yaw+=delta*(1-Math.exp(-(m.sprint?2.6:1.6)*dt));}}if(!preview)input.current.cameraYaw=yaw;
+   if(cinema){follow.copy(cinema.frame(camera,time,dt,latest.current.focus??null,groundY,width/height,positions));if(cinema.shot!==shownShot){shownShot=cinema.shot;latest.current.onShot?.(shownShot);}}else{
    const prof=!preview&&m?cameraProfile(m.species):undefined;if(camera.near!==(prof?.near??1.8)){camera.near=prof?.near??1.8;camera.updateProjectionMatrix();}let actualDistance=(prof?prof.distance*distance/155:distance)*(width<650?.91:1);const forwardX=Math.sin(yaw),forwardZ=Math.cos(yaw);
    for(const t of solidNearCamera(follow.x,follow.z,actualDistance+40)){const dx=t.x-follow.x,dz=t.y-follow.z,along=dx*forwardX+dz*forwardZ,side=Math.abs(dx*forwardZ-dz*forwardX);if(t.kind==='rock'&&along>(prof?3:24)&&along<actualDistance&&side<solidRadius(t)*.9)actualDistance=prof?Math.max(prof.min,along-solidRadius(t)):Math.max(55,along-22);}
    const boost=m?.sprint&&!m.exhausted&&m.stamina>2&&Math.hypot(m.vx,m.vy)>ANIMALS[m.species].gait.run*10+5?1:0,nextFov=THREE.MathUtils.damp(camera.fov,61+boost*5,5,dt);if(Math.abs(nextFov-camera.fov)>.01){camera.fov=nextFov;camera.updateProjectionMatrix();}
    camera.position.set(follow.x+forwardX*Math.cos(pitch)*actualDistance,Math.max(groundY(follow.x+forwardX*actualDistance,follow.z+forwardZ*actualDistance)+(prof?prof.clearance:12),follow.y+Math.sin(pitch)*actualDistance+(prof?prof.lift:13)),follow.z+forwardZ*Math.cos(pitch)*actualDistance);
-   {const la=prof?prof.lookAhead:32;camera.lookAt(follow.x-forwardX*la,follow.y+(prof?prof.lookY:6),follow.z-forwardZ*la);}sun.position.set(follow.x+SUN_DIRECTION.x*700,follow.y+SUN_DIRECTION.y*700,follow.z+SUN_DIRECTION.z*700);sun.target.position.set(follow.x,follow.y,follow.z);const breeze=wind(r||{seed:417,round:0});savanna.update(time,follow.x,follow.z,drawRange,camera.far,camera.position,breeze);
+   {const la=prof?prof.lookAhead:32;camera.lookAt(follow.x-forwardX*la,follow.y+(prof?prof.lookY:6),follow.z-forwardZ*la);}}sun.position.set(follow.x+SUN_DIRECTION.x*700,follow.y+SUN_DIRECTION.y*700,follow.z+SUN_DIRECTION.z*700);sun.target.position.set(follow.x,follow.y,follow.z);const breeze=wind(r||{seed:417,round:0});savanna.update(time,follow.x,follow.z,drawRange,camera.far,camera.position,breeze);
    traces.update(players.map(p=>{const pos=positions.get(p.id)||p,rig=rigs.get(p.id);return{id:p.id+':'+p.born,species:p.species,x:pos.x,z:pos.y,vx:pos.vx||0,vy:pos.vy||0,heading:p.heading||0,visible:!!rig?.root.visible,moving:true,quiet:p.species==='leopard'&&p.abilityUntil>now,onGround:!p.deadUntil&&!p.perched&&!(p.species==='warthog'&&p.abilityUntil>now)};}),r?.foods||[],now,{x:follow.x,z:follow.z},breeze);animalBatches?.update(rigs.values(),camera,!renderer.shadowMap.enabled);
    if(renderer instanceof THREE.WebGLRenderer&&renderer.shadowMap.enabled&&ms-lastShadow>100){renderer.shadowMap.needsUpdate=true;lastShadow=ms;}
    food.update(r?.foods||previewFoods,now,m||null,lightweight?240:360,groundY,kind=>!!m&&(ANIMALS[m.species].foods as string[]).includes(kind),f=>input.current.instinct!==false||(!!m&&dist(m,f)<75));

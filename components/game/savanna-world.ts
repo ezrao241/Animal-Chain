@@ -175,7 +175,7 @@ function pool(size:number,seed:number){
  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));g.computeVertexNormals();return g;
 }
 
-export type Savanna={update(time:number,x:number,z:number,range:number,cameraFar:number,camera:THREE.Vector3,wind?:{x:number;y:number}):void;realShadows(on:boolean):void;dispose():void};
+export type Savanna={update(time:number,x:number,z:number,range:number,cameraFar:number,camera:THREE.Vector3,wind?:{x:number;y:number}):void;realShadows(on:boolean):void;dusk():void;dispose():void};
 export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
  const disposables:{dispose():void}[]=[],add=<T extends THREE.Object3D>(o:T)=>{scene.add(o);return o;};
  const facet=facetMaterial();disposables.push(facet);
@@ -267,6 +267,12 @@ export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
    if(t-lastWater>.08){lastWater=t;for(const w of waters){const pos=w.mesh.geometry.getAttribute('position') as THREE.BufferAttribute,a=pos.array as Float32Array;for(let i=0;i<a.length;i+=3){const px=w.base[i],pz=w.base[i+2],edge=Math.hypot(px,pz)>1?1:0;a[i+1]=edge*Math.sin(t*1.3+px*.05+pz*.07)*.5;}pos.needsUpdate=true;w.mesh.geometry.computeVertexNormals();}}
   },
   realShadows(on){shade.visible=!on;},
+  // the home screen's late golden hour: an ember horizon under a deepening violet sky, rose-lit clouds, dusky hills
+  dusk(){
+   const col=skyGeo.getAttribute('color') as THREE.BufferAttribute;
+   for(let i=0;i<sp.count;i++){sv.fromBufferAttribute(sp,i);const y=sv.y,c=hex(0xffb36a).lerp(hex(0xf08a5c),smooth(.0,.1,y)).lerp(hex(0xa8607a),smooth(.08,.32,y)).lerp(hex(0x4a3f78),smooth(.3,.7,y)).lerp(hex(0x1f2450),smooth(.7,1,y));c.lerp(hex(0xffe0a8),smooth(.75,1,sv.normalize().dot(SUN))*.75);col.setXYZ(i,c.r,c.g,c.b);}
+   col.needsUpdate=true;cloudMat.color.set(0xffb9a0);hillMat.color.set(0x8a6f86);sunMat.color.set(0xffe2a6);haloMat.color.set(0xffb070);haloMat.opacity=.45;
+  },
   dispose(){disposables.forEach(d=>d.dispose());},
  };
 }
