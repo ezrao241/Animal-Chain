@@ -38,7 +38,7 @@ export function savannaEvent(room:Pick<Room,'started'>,now:number){const stage=M
  {name:'DUSK RUN',detail:'Escape a predator for double points',kind:'escape',next:room.started+300000}
  ][stage];}
 export function cameraInput(dx:number,dy:number,yaw=0){return{dx:dx*Math.cos(yaw)+dy*Math.sin(yaw),dy:-dx*Math.sin(yaw)+dy*Math.cos(yaw)};}
-export const dist=(a:{x:number;y:number},b:{x:number;y:number})=>Math.hypot(a.x-b.x,a.y-b.y);
+export const dist=(a:{x:number;y:number},b:{x:number;y:number})=>{const dx=a.x-b.x,dy=a.y-b.y;return Math.sqrt(dx*dx+dy*dy);};
 export function rng(seed:number){let a=seed;return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
 
 // Savanna layout, generated once from a fixed seed so server, offline build and renderer agree:
@@ -80,7 +80,7 @@ function layout():Prop[]{
 /** radius of a tall-grass patch in game units */
 export const GRASS_PATCH=100;
 /** True inside a patch of tall grass (about 1.2 m high: it hides animals shorter than a metre at the shoulder). */
-export const inTallGrass=(ps:Prop[],x:number,y:number)=>ps.some(t=>t.kind==='tallgrass'&&Math.hypot(x-t.x,y-t.y)<t.size*GRASS_PATCH);
+export const inTallGrass=(ps:Prop[],x:number,y:number)=>ofKind(ps,'tallgrass').some(t=>Math.hypot(x-t.x,y-t.y)<t.size*GRASS_PATCH);
 let TRAILS:[number,number,number,number][]|null=null;
 /** Game trails: worn paths from each watering hole to its two nearest kopjes and to the nearest other watering hole. */
 export function trails(){
@@ -92,6 +92,9 @@ export function trails(){
 /** distance from (x, y) to the nearest game trail */
 export function trailDistance(x:number,y:number){let best=Infinity;for(const [ax,ay,bx,by] of trails()){const vx=bx-ax,vy=by-ay,t=Math.max(0,Math.min(1,((x-ax)*vx+(y-ay)*vy)/(vx*vx+vy*vy)));best=Math.min(best,Math.hypot(x-ax-vx*t,y-ay-vy*t));}return best;}
 export function props(seed:number):Prop[]{return layout();}
+const kindCache=new WeakMap<Prop[],Partial<Record<Prop['kind'],Prop[]>>>();
+/** The props of one kind, in table order (cached per table: the hot per-step checks only look at the few they need). */
+export function ofKind(ps:Prop[],kind:Prop['kind']):Prop[]{let k=kindCache.get(ps);if(!k)kindCache.set(ps,k={});return k[kind]??=ps.filter(t=>t.kind===kind);}
 export const solid=(t:Prop)=>t.kind==='tree'||t.kind==='rock';
 /** collision radius of a solid prop in game units: a boulder by its size, an acacia by its trunk */
 export const solidRadius=(t:Prop)=>t.kind==='rock'?t.size*32:TRUNK_RADIUS;
@@ -105,7 +108,7 @@ const bushCache=new WeakMap<Prop[],Map<number,Prop[]>>();
 function bushNear(ps:Prop[],x:number,y:number,range:number){let g=bushCache.get(ps);if(!g){g=new Map();for(const t of ps)if(t.kind==='bush'){const k=cellKey(Math.floor(t.x/CELL),Math.floor(t.y/CELL));let c=g.get(k);if(!c)g.set(k,c=[]);c.push(t);}bushCache.set(ps,g);}const cx=Math.floor(x/CELL),cy=Math.floor(y/CELL);for(let j=cy-1;j<=cy+1;j++)for(let i=cx-1;i<=cx+1;i++){const c=g.get(cellKey(i,j));if(c)for(const t of c)if(Math.hypot(x-t.x,y-t.y)<range*t.size)return true;}return false;}
 /** Solid props (acacias, boulders) within `range` units of (x, y), plus a few just outside it, in table order. */
 export function solidNear(ps:Prop[],x:number,y:number,range:number):Prop[]{const g=solidGrid(ps),ids:number[]=[];const x0=Math.floor((x-range)/CELL),x1=Math.floor((x+range)/CELL),y0=Math.floor((y-range)/CELL),y1=Math.floor((y+range)/CELL);for(let cy=y0;cy<=y1;cy++)for(let cx=x0;cx<=x1;cx++){const c=g.get(cellKey(cx,cy));if(c)ids.push(...c);}return ids.sort((a,b)=>a-b).map(i=>ps[i]);}
-export const nearWater=(ps:Prop[],x:number,y:number,margin=0)=>ps.some(t=>t.kind==='water'&&dist(t,{x,y})<t.size+margin);
+export const nearWater=(ps:Prop[],x:number,y:number,margin=0)=>ofKind(ps,'water').some(t=>Math.hypot(t.x-x,t.y-y)<t.size+margin);
 const blocked=(ps:Prop[],x:number,y:number,gap:number)=>ps.some(t=>solid(t)&&dist(t,{x,y})<solidRadius(t)+gap)||nearWater(ps,x,y,gap*.5);
 // Food: fresh grass on open ground, acacia browse under trees, roots and bulbs, and old carcasses.
 export function makeFoods(seed:number):Food[]{const r=rng(seed+111),ps=props(seed),trees=ps.filter(t=>t.kind==='tree');return Array.from({length:560},(_,id)=>{const kind=(['grass','grass','browse','roots','grass','carrion','roots','browse','grass','grass'] as const)[id%10];let x=0,y=0;for(let n=0;n<35;n++){if(kind==='browse'){const t=trees[Math.floor(r()*trees.length)],a=r()*Math.PI*2,d=25+r()*35;x=t.x+Math.cos(a)*d;y=t.y+Math.sin(a)*d;}else{x=65+r()*(W-130);y=65+r()*(H-130);}if(!blocked(ps,x,y,30))break;}return{id,x,y,kind,ready:0};});}
@@ -214,7 +217,7 @@ export function move(p:Player,dt:number,ps:Prop[],now:number){
  // a partly pushed stick (or a grazing herd's slow drift) moves between a walk and the normal run
  let target=!input&&!charge?0:stalk?STALK_SPEED:(p.sprint||charge)&&(free||!p.exhausted&&p.stamina>0)?g.sprint:Math.max(g.walk,g.run*Math.min(1,Math.hypot(p.dx,p.dy)));
  // game rule: wading through a watering hole or its mud ring slows every animal a little
- if(ps.some(t=>t.kind==='water'&&Math.hypot(p.x-t.x,p.y-t.y)<t.size*1.25))target*=.8;
+ if(ofKind(ps,'water').some(t=>Math.hypot(p.x-t.x,p.y-t.y)<t.size*1.25))target*=.8;
  const dir=input?Math.atan2(p.dy,p.dx):Math.atan2(vy,vx),wx=Math.cos(dir)*target,wy=Math.sin(dir)*target;
  if(leap){const k=Math.max(speed,LEAP_SPEED)/Math.max(speed,.001);if(speed>.001){vx*=k;vy*=k;}}
  else if(speed<.05){const ex=wx-vx,ey=wy-vy,e=Math.hypot(ex,ey),k=e>g.accel*dt?g.accel*dt/e:1;vx+=ex*k;vy+=ey*k;}
@@ -236,7 +239,10 @@ function breathe(p:Player,dt:number,now:number){
  if(sprinting(p,now))p.stamina-=100/g.sprintTime*dt;else p.stamina+=100/g.recover*dt*(speed>g.run*.8?.4:1);
  p.stamina=clamp(p.stamina,0,100);if(p.stamina<=.5)p.exhausted=true;else if(p.stamina>=30)p.exhausted=false;
 }
-const nearestTree=(p:Player,room:Room)=>props(room.seed).filter(t=>t.kind==='tree'&&dist(p,t)<TREE_REACH).sort((a,b)=>dist(a,p)-dist(b,p))[0];
+/** The nearest item within `within` units of p, the first one on a tie (what a filter, stable sort and [0] gave). */
+function nearest<T extends {x:number;y:number}>(list:readonly T[],p:{x:number;y:number},within:number,ok:(t:T)=>boolean=()=>true):T|undefined{
+ let best:T|undefined,bd=within*within;for(const t of list){const dx=t.x-p.x,dy=t.y-p.y,d=dx*dx+dy*dy;if(d<bd&&ok(t)){bd=d;best=t;}}return best;}
+const nearestTree=(p:Player,room:Room)=>nearest(ofKind(props(room.seed),'tree'),p,TREE_REACH);
 /** Q: a leopard climbs into (or jumps down from) the nearest acacia. */
 export function perch(p:Player,room:Room,now:number){
  if(p.species!=='leopard'||p.deadUntil)return;
@@ -264,7 +270,7 @@ export function interact(p:Player,room:Room,now:number){if(p.deadUntil||now<p.in
  const victims=room.players.filter(q=>q.id!==p.id&&!q.deadUntil&&q.protectedUntil<now&&a.prey.includes(q.species)&&!hidden(q,room,now)&&!leaping(q,now)&&dist(p,q)<reach);victims.sort((x,y)=>dist(p,x)-dist(p,y));
  if(victims[0]){const q=victims[0];if(ambush){p.perched=false;p.perchHeight=0;}p.x=q.x-(q.x-p.x)*.3;p.y=q.y-(q.y-p.y)*.3;die(q,room,now,'was caught by a '+a.name.toLowerCase()+'.');dropCarcass(room,q.x,q.y,now);p.hunger=Math.min(100,p.hunger+45);p.hunts++;p.food++;const points=(savannaEvent(room,now).kind==='hunt'?15:10)+(ambush?3:0);p.score+=points;notify(p,(ambush?'Ambush! ':'Successful hunt ')+'+'+points,now);return;}
  if(ambush){notify(p,'No prey below. Wait for it to come closer.',now);return;}
- const f=room.foods.filter(f=>f.ready<=now&&(!f.until||f.until>now)&&(a.foods as string[]).includes(f.kind)&&dist(p,f)<FOOD_RANGE).sort((x,y)=>dist(p,x)-dist(p,y))[0];
+ const f=nearest(room.foods,p,FOOD_RANGE,f=>f.ready<=now&&(!f.until||f.until>now)&&(a.foods as string[]).includes(f.kind));
  if(f){if(f.until)f.until=now;else f.ready=now+18000;p.food++;if(f.kind==='carrion')p.scavenged++;p.hunger=Math.min(100,p.hunger+(f.kind==='carrion'?35:28));const points=(savannaEvent(room,now).kind==='forage'?5:3)+(f.kind==='carrion'&&p.species==='hyena'?2:0);p.score+=points;notify(p,(f.kind==='carrion'?'Scavenged ':f.kind==='roots'?'Dug up roots ':'Food found ')+'+'+points,now);return;}
  if(nearWater(props(room.seed),p.x,p.y,WATER_REACH)){p.drinks++;p.hunger=Math.min(100,p.hunger+6);p.score+=2;notify(p,'A long drink +2',now);return;}
  if(!p.bot)notify(p,'Move closer to your food, water or suitable prey.',now);
@@ -372,7 +378,8 @@ function grazer(p:Player,room:Room,ps:Prop[],t:number,think:number):Plan{
  }
  if(dist(p,centre)>170)return{goal:centre,pace:.55};
  const range=p.hunger<60?600:260;let food:Food|undefined,fd=range;
- for(const f of room.foods){if(f.ready>t||f.until&&f.until<t||!(ANIMALS[p.species].foods as string[]).includes(f.kind))continue;const d=dist(p,f);if(d<fd&&(p.hunger<60||dist(f,centre)<300)){fd=d;food=f;}}
+ const eats=ANIMALS[p.species].foods as string[],hungry=p.hunger<60;fd*=fd;
+ for(const f of room.foods){const dx=f.x-p.x,dy=f.y-p.y,d=dx*dx+dy*dy;if(d>=fd||f.ready>t||f.until&&f.until<t||!eats.includes(f.kind))continue;if(hungry||dist(f,centre)<300){fd=d;food=f;}}
  p.mood='graze';
  if(food)return{goal:food,pace:headDown(p,t)?.15:.35};
  if(!p.targetX||dist(p,{x:p.targetX,y:p.targetY})<40){const a=roll(room)*Math.PI*2,d=roll(room)*160;p.targetX=Math.max(80,Math.min(W-80,centre.x+Math.cos(a)*d));p.targetY=Math.max(80,Math.min(H-80,centre.y+Math.sin(a)*d));}
@@ -384,7 +391,7 @@ function grazer(p:Player,room:Room,ps:Prop[],t:number,think:number):Plan{
 export const CHASE={lion:{start:150,give:5000,walk:.35},leopard:{start:110,give:4000,walk:.3},hyena:{start:230,give:12000,walk:.55}} as const;
 function hunter(p:Player,room:Room,ps:Prop[],t:number):Plan{
  const a=ANIMALS[p.species],c=CHASE[p.species as keyof typeof CHASE];
- if(p.mood==='rest'&&t<p.moodUntil){const tree=ps.filter(o=>o.kind==='tree'&&dist(o,p)<500).sort((x,y)=>dist(x,p)-dist(y,p))[0];return{goal:tree?{x:tree.x+22,y:tree.y+6}:undefined,pace:.3};}
+ if(p.mood==='rest'&&t<p.moodUntil){const tree=nearest(ofKind(ps,'tree'),p,500);return{goal:tree?{x:tree.x+22,y:tree.y+6}:undefined,pace:.3};}
  let q=p.targetId?room.players.find(o=>o.id===p.targetId):undefined;
  if(q&&(q.deadUntil||hidden(q,room,t)))q=undefined;
  if(q){if(sense(p,q,room,t,ps))p.lastThreatAt=t;else if(t-p.lastThreatAt>2500)q=undefined;}
@@ -394,7 +401,7 @@ function hunter(p:Player,room:Room,ps:Prop[],t:number):Plan{
   if(p.species==='leopard'&&p.hunger>75&&t>p.abilityReady&&nearestTree(p,room)){perch(p,room,t);return{pace:0};}
   if(p.hunger>=85){p.mood='rest';p.moodUntil=t+8000;return{pace:0};}
   // circling vultures give a carcass away from far off: scavengers head for any within 70 m
-  const carcass=room.foods.filter(f=>f.kind==='carrion'&&f.ready<=t&&(!f.until||f.until>t)&&dist(f,p)<700).sort((x,y)=>dist(x,p)-dist(y,p))[0];
+  const carcass=nearest(room.foods,p,700,f=>f.kind==='carrion'&&f.ready<=t&&(!f.until||f.until>t));
   if(carcass)return{goal:carcass,pace:.6};
   p.mood='patrol';
   if(!p.targetX||dist(p,{x:p.targetX,y:p.targetY})<50){const w=ps.filter(o=>o.kind==='water');const r=roll(room);if(r<.4){const o=w[Math.floor(roll(room)*w.length)],ang=roll(room)*Math.PI*2;p.targetX=o.x+Math.cos(ang)*(o.size+90);p.targetY=o.y+Math.sin(ang)*(o.size+90);}else{const ang=roll(room)*Math.PI*2,d=150+roll(room)*350;p.targetX=Math.max(80,Math.min(W-80,p.homeX+Math.cos(ang)*d));p.targetY=Math.max(80,Math.min(H-80,p.homeY+Math.sin(ang)*d));}}
