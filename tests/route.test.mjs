@@ -15,6 +15,12 @@ const save=(code,room)=>{const row=db.rows.get(code);db.rows.set(code,{...row,st
 const edit=(code,fn)=>{const room=state(code);fn(room);save(code,room);return room;};
 const find=(room,id)=>room.players.find(p=>p.id===id);
 let aid=1;const press=(kind,born)=>[{id:++aid,kind,born,age:0}];
+const {props,solidNear,nearWater,hidden}=await import('../lib/game.ts');
+// a patch of open ground (no thicket to hide a still animal, no trunk or boulder, no water) for scripted encounters, so they
+// don't depend on where the round happened to spawn the players
+function openGround(){const ps=props(417);for(let y=400;y<2400;y+=37)for(let x=400;x<3600;x+=53){const still={species:'impala',x,y,dx:0,dy:0,vx:0,vy:0};
+ if(!solidNear(ps,x,y,90).length&&!nearWater(ps,x,y,80)&&!hidden(still,{seed:417},0)&&!hidden({...still,x:x+12},{seed:417},0))return{x,y};}throw new Error('no open ground');}
+const meet=room=>(L,I)=>{const g=openGround();Object.assign(L,{x:g.x,y:g.y});Object.assign(I,{x:g.x+12,y:g.y});for(const p of room.players)if(p.bot&&Math.hypot(p.x-g.x,p.y-g.y)<200)p.x=(p.x+1500)%3900+50;};
 async function lobby(n){const host=await call({action:'create',name:'Host'});const guests=[];for(let i=1;i<n;i++)guests.push(await call({action:'join',name:'Guest'+i,code:host.room.code}));return{host,guests,code:host.room.code};}
 
 test('two players: start, simultaneous syncs, stale input, an encounter and a respawn stay consistent',async()=>{
@@ -32,7 +38,7 @@ test('two players: start, simultaneous syncs, stale input, an encounter and a re
  // taken out of the guest's species bag as if it had been dealt, so the respawn below can't legitimately deal it again.
  const room=edit(code,room=>{const L=find(room,host.id),I=find(room,guest.id);
   Object.assign(L,{species:'lion',protectedUntil:0,deadUntil:0,heading:0,vx:0,vy:0,dx:0,dy:0,abilityUntil:0,climb:''});Object.assign(I,{species:'impala',protectedUntil:0,deadUntil:0,x:L.x+12,y:L.y,vx:0,vy:0,abilityUntil:0,bag:(I.bag||[]).filter(s=>s!=='impala')});
-  for(const p of room.players)if(p.bot&&Math.hypot(p.x-L.x,p.y-L.y)<200)p.x=(p.x+1500)%3900+50;});
+  meet(room)(L,I);});
  const lionBorn=find(room,host.id).born;
  await Promise.all([call({action:'sync',...auth(host),seq:6000,dx:0,dy:0,actions:press('interact',lionBorn)}),call({action:'sync',...auth(guest),seq:6001,dx:0,dy:0})]);
  // the lunge lands a quarter of a second after the press
@@ -142,11 +148,20 @@ test('a quiet sync is answered without a simulation step or database write; anyt
 test('a lunge committed before a new life never lands after it',async()=>{
  const {host,guests:[guest],code}=await lobby(2);await call({action:'start',...auth(host)});
  const room=edit(code,room=>{const L=find(room,host.id),I=find(room,guest.id);
-  Object.assign(L,{species:'lion',protectedUntil:0,deadUntil:0,heading:0,vx:0,vy:0,dx:0,dy:0,abilityUntil:0,climb:''});Object.assign(I,{species:'impala',protectedUntil:0,deadUntil:0,x:L.x+12,y:L.y,vx:0,vy:0,heading:0,abilityUntil:0});
-  for(const p of room.players)if(p.bot&&Math.hypot(p.x-L.x,p.y-L.y)<200)p.x=(p.x+1500)%3900+50;});
+  Object.assign(L,{species:'lion',protectedUntil:0,deadUntil:0,heading:0,vx:0,vy:0,dx:0,dy:0,abilityUntil:0,climb:''});Object.assign(I,{species:'impala',protectedUntil:0,deadUntil:0,vx:0,vy:0,heading:0,abilityUntil:0});
+  meet(room)(L,I);});
  await call({action:'sync',...auth(host),seq:1,actions:press('interact',find(room,host.id).born)});
  assert.ok(find(state(code),host.id).strikeAt,'the lunge is committed');
  await call({action:'restart',...auth(host)});
  await wait(STRIKE_WINDUP+60);await call({action:'sync',...auth(guest),seq:2});
  const after=state(code);assert.equal(find(after,guest.id).deadUntil,0,'the impala survives');assert.equal(find(after,host.id).hunts,0);
+});
+
+test('the client rebuilds exactly the server food table from the seed layout and the changes it is sent',async()=>{
+ const {expandFoods}=await import('../lib/net.ts');
+ const host=await call({action:'create',name:'Solo'});const code=host.room.code;await call({action:'practice',...auth(host)});
+ const now=Date.now();edit(code,room=>{room.foods[3].ready=now+9000;room.foods[15].until=now+1000;room.foods.push({id:room.foods.length,x:500,y:600,kind:'carrion',ready:now+5000,until:now+90000});});
+ const view=(await call({action:'sync',...auth(host),seq:1})).room,server=state(code).foods.filter(f=>!(f.until&&f.until<=view.serverTime&&f.id>=560));
+ const client=expandFoods(view);const live=fs=>fs.map(f=>({...f,ready:f.ready>view.serverTime?f.ready:0}));
+ assert.deepEqual(live(client),live(server));
 });

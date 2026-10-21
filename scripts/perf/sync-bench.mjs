@@ -1,5 +1,6 @@
 // Multiplayer sync cost through the real route (app/api/game/route.ts) and the in-memory D1 stand-in, on a simulated clock:
-// N players each poll 'sync' every 140 ms (the client's in-round rate), staggered, for S seconds of a round.
+// N players each poll 'sync' every 140 ms (the client's in-round rate), staggered, for S seconds of a round, steering like
+// a keyboard player (one of eight directions, changed every 1.2 s, sprinting some of the time).
 // Prints per-request response bytes, stored state bytes, D1 reads/writes and server CPU per request.
 //   node scripts/perf/sync-bench.mjs [players=8] [seconds=30]
 import {register} from 'node:module';
@@ -16,8 +17,8 @@ const reads0=db.reads,writes0=db.writes;let requests=0,bytes=0,cpu=0,worst=0,seq
 const end=clock+seconds*1000,next=sessions.map((_,i)=>clock+Math.round(i*140/players));
 while(true){
  const i=next.indexOf(Math.min(...next));if(next[i]>=end)break;clock=next[i];next[i]+=140;
- const a=clock/2500+i;const t=performance.now();
- const r=await call({action:'sync',...sessions[i],seq:++seq,dx:Math.cos(a),dy:Math.sin(a),sprint:Math.sin(clock/7000+i)>.3});
+ const a=Math.round((Math.floor(clock/1200)*2.4+i)%8)*Math.PI/4;const t=performance.now();
+ const r=await call({action:'sync',...sessions[i],seq:++seq,dx:Math.round(Math.cos(a)*1e3)/1e3,dy:Math.round(Math.sin(a)*1e3)/1e3,sprint:Math.floor(clock/3000+i)%3===0});
  const ms=performance.now()-t;cpu+=ms;worst=Math.max(worst,ms);requests++;bytes+=r.bytes;
 }
 const state=Buffer.byteLength(db.rows.get(code).state);

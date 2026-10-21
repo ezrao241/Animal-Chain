@@ -1,7 +1,7 @@
 // Room sessions shared by the multiplayer route (app/api/game/route.ts, rooms in D1) and the offline shim (play/api-shim.ts,
 // rooms in memory): lobby membership and host succession, one-shot actions that run at most once, and what each player is
 // sent. Rules stay in lib/game.ts; this file only decides who may do what, when, and who may see what.
-import {newPlayer,start,tick,useAbility,perch,interact,die,hidden,makeFoods,type Room,type Player,type Food} from './game.ts';
+import {newPlayer,start,tick,useAbility as startAbility,perch,interact,die,hidden,makeFoods,type Room,type Player,type Food} from './game.ts';
 
 export const ONLINE_MS=8000,        // a human who hasn't synced for this long is shown as away (tick() also freezes their input)
  HOST_GRACE_MS=10000,               // an away host keeps the room this long (a reload or a tunnel), then an online player takes over
@@ -39,7 +39,7 @@ export function applyActions(p:Player,room:Room,list:unknown,now:number){
  for(const a of actions){
   if(a.id<=(p.act??0))continue;p.act=a.id;acted=true;
   if(room.phase!=='playing'||p.deadUntil||a.born!==p.born||(Number(a.age)||0)>ACTION_MAX_AGE)continue;
-  if(a.kind==='ability')useAbility(p,room,now);else if(a.kind==='perch')perch(p,room,now);else interact(p,room,now);
+  if(a.kind==='ability')startAbility(p,room,now);else if(a.kind==='perch')perch(p,room,now);else interact(p,room,now);
  }
  return acted;
 }
@@ -97,9 +97,13 @@ function quiet(p:Player,seenBefore:number,room:Room,b:Record<string,unknown>,now
 // Fields only the server (and the animal's own player) may see: credentials, input, AI plans and targets, task progress,
 // private messages. Everything else describes what any animal on the plains could observe.
 const SERVER_ONLY=['token','bag','seq','act','inputAt','lastSeen','strikeId','strikeBorn'] as const;
-const OWNER_ONLY=['dx','dy','targetX','targetY','targetId','threatX','threatY','lastThreatAt','threatAt','homeX','homeY','nextDrink','chaseStart','thinkAt','stuckX','stuckY','stuckAt','unstickUntil','moodUntil','alarmAt','message','messageUntil','hunger','thirst','claimed','food','hunts','drinks','scavenged','escapes','hiddenSeconds','survivalSeconds'] as const;
+const OWNER_ONLY=['dx','dy','targetX','targetY','targetId','threatX','threatY','lastThreatAt','threatAt','homeX','homeY','nextDrink','chaseStart','thinkAt','stuckX','stuckY','stuckAt','unstickUntil','moodUntil','alarmAt','message','messageUntil','hunger','thirst','claimed','food','hunts','drinks','scavenged','escapes','hiddenSeconds','survivalSeconds','abilityReady','interactReady'] as const;
+// Beyond FAR_VIEW (past the largest draw range, sound and sense ranges) an animal is never drawn or heard; it is sent with just
+// what its tracks need (components/game/safari-traces.ts), about a quarter of the size.
+export const FAR_VIEW=1150;
+const FAR_FIELDS=['id','bot','species','x','y','vx','vy','heading','born','deadUntil','abilityUntil','perched','climb','online','concealed'] as const;
 export type ViewPlayer=Omit<Player,typeof SERVER_ONLY[number]>&{online:boolean;concealed:boolean};
-export type RosterEntry={id:string;name:string;score:number;deaths:number;online:boolean};
+export type RosterEntry={id:string;name:string;species:Player['species'];score:number;deaths:number;online:boolean};
 export type RoomView=Omit<Room,'players'|'foods'|'rs'>&{players:ViewPlayer[];foodChanges:Food[];roster:RosterEntry[];you:string;serverTime:number};
 
 const baseFoodCache=new Map<number,Food[]>();
@@ -109,27 +113,33 @@ export const baseFoods=(seed:number)=>{let f=baseFoodCache.get(seed);if(!f)baseF
  *  everyone but its own player, the same rule the renderer and sense() already apply; the roster still lists every human
  *  for the lobby and scores. Food is sent as changes from the seed's fixed layout. */
 export function viewFor(room:Room,viewer:string,now:number):RoomView{
- const players:ViewPlayer[]=[];
+ const players:ViewPlayer[]=[],me=room.players.find(p=>p.id===viewer);
  for(const p of room.players){
   const own=p.id===viewer,concealed=!p.deadUntil&&hidden(p,room,now)&&!p.perched;
   if(concealed&&!own)continue;
-  const v:Record<string,unknown>={...p,online:online(p,now),concealed};
-  for(const k of SERVER_ONLY)delete v[k];
-  if(!own)for(const k of OWNER_ONLY)delete v[k];
-  if(own&&p.act)v.act=p.act;
-  players.push(v as ViewPlayer);
+  const full:Record<string,unknown>={...p,online:online(p,now),concealed};
+  if(!own&&me&&Math.hypot(p.x-me.x,p.y-me.y)>FAR_VIEW){const far:Record<string,unknown>={};for(const k of FAR_FIELDS)if(full[k]!==undefined)far[k]=full[k];players.push(far as ViewPlayer);continue;}
+  for(const k of SERVER_ONLY)delete full[k];
+  if(!own)for(const k of OWNER_ONLY)delete full[k];
+  if(p.bot){delete full.score;delete full.deaths;}
+  if(own&&p.act)full.act=p.act;
+  players.push(full as ViewPlayer);
  }
  const base=baseFoods(room.seed);
- const foodChanges=room.foods.filter(f=>f.id>=base.length?!!f.until&&f.until>now:f.ready>now||!!f.until);
- const {players:_p,foods:_f,rs:_r,...rest}=room;
- return{...rest,players,foodChanges,roster:humans(room).map(p=>({id:p.id,name:p.name,score:p.score,deaths:p.deaths,online:online(p,now)})),you:viewer,serverTime:now};
+ // a seed food that has changed only needs its id and timers (its place and kind are fixed); a carcass is sent whole
+ const foodChanges=room.foods.filter(f=>f.id>=base.length?!!f.until&&f.until>now:f.ready>now||!!f.until).map(f=>f.id>=base.length?f:{id:f.id,ready:f.ready,...f.until?{until:f.until}:{}} as Food);
+ const rest:Partial<Room>={...room};delete rest.players;delete rest.foods;delete rest.rs;
+ return{...rest as Omit<Room,'players'|'foods'|'rs'>,players,foodChanges,roster:humans(room).map(p=>({id:p.id,name:p.name,species:p.species,score:p.score,deaths:p.deaths,online:online(p,now)})),you:viewer,serverTime:now};
 }
 
 /** Client side: rebuild the full food table from the seed layout plus the changes. */
 export function expandFoods(view:Pick<RoomView,'seed'|'foodChanges'>):Food[]{
  const changed=new Map(view.foodChanges.map(f=>[f.id,f]));
- return[...baseFoods(view.seed).map(f=>changed.get(f.id)||f),...view.foodChanges.filter(f=>f.id>=baseFoods(view.seed).length)];
+ return[...baseFoods(view.seed).map(f=>{const c=changed.get(f.id);return c?{...f,...c}:f;}),...view.foodChanges.filter(f=>f.id>=baseFoods(view.seed).length)];
 }
+
+/** Client side: the view in the shape the page and renderer use (a Room with the full food table). */
+export const expandView=<V extends Pick<RoomView,'seed'|'foodChanges'>>(view:V)=>({...view,foods:expandFoods(view)});
 
 /** JSON for the wire: fractional numbers (positions, velocities, angles) to two decimals, about a millimetre of game space. */
 export const encode=(data:unknown)=>JSON.stringify(data,(_k,v)=>typeof v==='number'&&!Number.isInteger(v)?Math.round(v*100)/100:v);
