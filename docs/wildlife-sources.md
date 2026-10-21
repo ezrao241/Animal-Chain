@@ -44,3 +44,24 @@ safari redo and are unchanged here.
 - **Mud.** Wading through a watering hole or its mud ring slows every animal to 80 %.
 - **Tracks.** Footprints are drawn about four times life size so they read from the follow camera. They fade within 55 s, or
   110 s in mud.
+
+## Climbing and solid objects
+
+Real behaviour the climbing rules follow:
+- **Leopards** are the savanna's tree climbers. They go up a trunk in a few seconds, pulling with the forelimbs and
+  pushing with the hind limbs, lie up draped over a bough with legs and tail hanging, carry kills up, and come down
+  head first before jumping the last stretch.
+- **Lions** do climb, famously in Ishasha (Uganda) and Lake Manyara (Tanzania), but only into big, low, near-level
+  limbs. They are heavy and clumsy up there, and they jump down rather than climb down.
+- **Hyenas, zebras, impalas and warthogs** don't climb trees.
+
+Game numbers (in `CLIMB` and `BODY`, lib/game.ts):
+- A leopard climbs at 2 m/s, walks along a bough at 0.9 m/s, uses wood down to 4.5 cm radius, climbs down at
+  1.2 m/s and jumps the last 1.6 m.
+- A lion only uses the low resting bough when it starts no higher than 1.8 m and is thick enough (8.5 cm radius or
+  more) where its body sits. It climbs at 0.9 m/s and leans into the trunk at about 55° instead of hanging on it. At a
+  taller tree it rears, scrabbles to about 1.3 m and slides back.
+- Every animal's body is a capsule (nose reach, rump, half-width measured off its model), and that whole body is kept
+  out of trunks and boulders, not just its centre point.
+- Each acacia's trunk and limbs come from one shared description (lib/acacia.ts), so the bark the paws land on is the
+  bark that is drawn.

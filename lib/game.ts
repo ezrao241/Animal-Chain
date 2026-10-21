@@ -1,5 +1,6 @@
 // Animal Chain: African savanna rules shared by the server, the offline practice build and the 3D client.
 // 400 x 280 m playable map; 10 game units = 1 m. Animals are life-size.
+import {tree,limbPoint,type Tree} from './acacia.ts';
 export const W=4000,H=2800;
 export const SPECIES=['lion','leopard','hyena','zebra','impala','warthog'] as const;
 export type Species=typeof SPECIES[number];
@@ -16,7 +17,7 @@ type Animal={name:string;subtitle:string;gait:Gait;ability:string;duration:numbe
 // zebra 65, impala 75 with 10 m bounds, warthog 48. Predators only list prey they can realistically take alone: a leopard or a lone
 // hyena does not bring down an adult zebra, and nothing here hunts a lion.
 export const ANIMALS:Record<Species,Animal>={
- lion:{name:'Lion',subtitle:'Panthera leo · 190 kg',gait:{walk:1.4,run:8,sprint:22,accel:9.5,grip:16,brake:15,turnRate:7,sprintTime:9,recover:30,trot:Infinity,gallop:4.5},ability:'Charge',duration:1.6,cooldown:9,prey:['zebra','impala','warthog'],foods:['carrion'],diet:'Zebra, impala, warthog & carrion',tip:'Charge closes the gap. Watch a zebra’s hind legs.',color:'#d9a54c',size:1.2,catchRange:26,sight:240,style:'Ambush and short charge',threat:'Nothing hunts you, but a zebra kick stuns you',defense:'Size: no predator here takes a lion'},
+ lion:{name:'Lion',subtitle:'Panthera leo · 190 kg',gait:{walk:1.4,run:8,sprint:22,accel:9.5,grip:16,brake:15,turnRate:7,sprintTime:9,recover:30,trot:Infinity,gallop:4.5},ability:'Charge',duration:1.6,cooldown:9,prey:['zebra','impala','warthog'],foods:['carrion'],diet:'Zebra, impala, warthog & carrion',tip:'Charge closes the gap. Watch a zebra’s hind legs. Q scrambles into a low, thick bough.',color:'#d9a54c',size:1.2,catchRange:26,sight:240,style:'Ambush and short charge',threat:'Nothing hunts you, but a zebra kick stuns you',defense:'Size: no predator here takes a lion'},
  leopard:{name:'Leopard',subtitle:'Panthera pardus · 60 kg',gait:{walk:1.2,run:8,sprint:16.5,accel:9,grip:20,brake:16,turnRate:10,sprintTime:10,recover:25,trot:Infinity,gallop:4},ability:'Stalk',duration:4,cooldown:9,prey:['impala','warthog'],foods:['carrion'],diet:'Impala, warthog & carrion',tip:'Stalk unseen, or Q to climb an acacia and drop on prey below.',color:'#e0b25e',size:.7,catchRange:20,sight:250,style:'Stalker and tree ambusher',threat:'Nothing hunts you; prey spots you if you rush',defense:'Climb an acacia (Q) to vanish into the canopy'},
  hyena:{name:'Spotted hyena',subtitle:'Crocuta crocuta · 60 kg',gait:{walk:1.3,run:6.5,sprint:17,accel:6,grip:15,brake:13,turnRate:8,sprintTime:45,recover:12,trot:2.2,gallop:7},ability:'Tireless',duration:6,cooldown:12,prey:['impala','warthog'],foods:['carrion'],diet:'Impala, warthog & any carcass',tip:'Outlast prey with Tireless. Every carcass is yours to clean up.',color:'#b99a6c',size:.8,catchRange:22,sight:230,style:'Endurance chaser and scavenger',threat:'Nothing hunts you; prey outruns a short chase',defense:'Tireless refills stamina for a long pursuit'},
  zebra:{name:'Plains zebra',subtitle:'Equus quagga · 300 kg',gait:{walk:1.6,run:7,sprint:18,accel:5.5,grip:13,brake:11,turnRate:6,sprintTime:30,recover:15,trot:2.6,gallop:8},ability:'Kick',duration:.6,cooldown:8,prey:[],foods:['grass'],diet:'Grasses',tip:'Kick stuns any predator right behind you.',color:'#ece6d6',size:1.35,catchRange:0,sight:260,style:'Herd watcher with a defensive kick',threat:'Lions',defense:'Kick a lion that is right behind you'},
@@ -27,7 +28,11 @@ export type Prop={x:number;y:number;kind:'tree'|'rock'|'bush'|'burrow'|'water'|'
 /** What a computer-controlled animal is doing right now; the client poses the animal to match. */
 export type Mood='graze'|'rest'|'drink'|'watch'|'flee'|'regroup'|'patrol'|'stalk'|'chase'|'wander';
 export type Food={id:number;x:number;y:number;kind:string;ready:number;until?:number};
-export type Player={id:string;token?:string;name:string;bot:boolean;species:Species;x:number;y:number;dx:number;dy:number;vx:number;vy:number;perched:boolean;perchHeight:number;actionUntil:number;lastSeen:number;inputAt:number;born:number;protectedUntil:number;deadUntil:number;abilityUntil:number;abilityReady:number;interactReady:number;stunUntil:number;hunger:number;score:number;deaths:number;food:number;hunts:number;drinks:number;scavenged:number;escapes:number;hiddenSeconds:number;survivalSeconds:number;claimed:boolean[];sprint:boolean;stamina:number;exhausted?:boolean;threatAt:number;face:number;message:string;messageUntil:number;seq:number;targetX:number;targetY:number;heading:number;mood:Mood;alert:number;targetId:string;moodUntil:number;alarmAt:number;calledAt:number;threatX:number;threatY:number;lastThreatAt:number;homeX:number;homeY:number;herd:string;nextDrink:number;chaseStart:number;thinkAt:number;stuckX:number;stuckY:number;stuckAt:number;unstickUntil:number};
+export type Player={id:string;token?:string;name:string;bot:boolean;species:Species;x:number;y:number;dx:number;dy:number;vx:number;vy:number;perched:boolean;perchHeight:number;actionUntil:number;lastSeen:number;inputAt:number;born:number;protectedUntil:number;deadUntil:number;abilityUntil:number;abilityReady:number;interactReady:number;stunUntil:number;hunger:number;score:number;deaths:number;food:number;hunts:number;drinks:number;scavenged:number;escapes:number;hiddenSeconds:number;survivalSeconds:number;claimed:boolean[];sprint:boolean;stamina:number;exhausted?:boolean;threatAt:number;face:number;message:string;messageUntil:number;seq:number;targetX:number;targetY:number;heading:number;mood:Mood;alert:number;targetId:string;moodUntil:number;alarmAt:number;calledAt:number;threatX:number;threatY:number;lastThreatAt:number;homeX:number;homeY:number;herd:string;nextDrink:number;chaseStart:number;thinkAt:number;stuckX:number;stuckY:number;stuckAt:number;unstickUntil:number;
+ /** climbing (see climbStep): which prop, the state, height on the trunk and the face climbed, the limb, how far out
+  *  along it and which way the animal faces on it, the limb it is heading for (-1 = down), the mount progress, and
+  *  vertical speed while jumping down. Optional so rooms saved before climbing existed still load. */
+ tree?:number;climb?:Climb;ch?:number;side?:number;limb?:number;along?:number;limbDir?:number;goal?:number;mount?:number;climbHold?:number;vh?:number};
 export type Room={code:string;host:string;phase:'lobby'|'playing'|'finished';started:number;ends:number;tick:number;players:Player[];foods:Food[];events:string[];seed:number;round:number;practice?:boolean;rs?:number};
 // Computer-controlled wildlife keeps savanna proportions: plenty of grazers, a few predators.
 const WILDLIFE_MIX:Species[]=['impala','zebra','impala','warthog','zebra','impala','hyena','impala','warthog','zebra','lion','impala','warthog','zebra','leopard','impala','warthog','hyena','zebra','impala'];
@@ -155,7 +160,7 @@ const inThicket=(ps:Prop[],x:number,y:number)=>bushNear(ps,x,y,26);
 // Hidden (cannot be caught or seen): a leopard up an acacia, a warthog in its burrow, or anyone but a zebra standing still
 // inside a thicket. The thicket reach matches the ring of tall grass drawn around each bush, so a hidden animal is always
 // visibly inside cover. A stalking leopard is NOT hidden: it is harder to notice (see conspicuity), never invisible.
-export function hidden(p:Player,room:Room,now:number){return p.species==='leopard'&&p.perched||p.species==='warthog'&&p.abilityUntil>now||p.species!=='zebra'&&Math.hypot(p.dx,p.dy)<.1&&Math.hypot(p.vx||0,p.vy||0)<8&&inThicket(props(room.seed),p.x,p.y);}
+export function hidden(p:Player,room:Room,now:number){return p.species==='leopard'&&p.climb==='limb'||p.species==='warthog'&&p.abilityUntil>now||p.species!=='zebra'&&Math.hypot(p.dx,p.dy)<.1&&Math.hypot(p.vx||0,p.vy||0)<8&&inThicket(props(room.seed),p.x,p.y);}
 /** The round's breeze: the direction it blows towards (scent drifts downwind). Fixed for a round, new each round. */
 export function wind(room:Pick<Room,'seed'|'round'>){const a=rng(room.seed*31+(room.round||0)*7919)()*Math.PI*2;return{x:Math.cos(a),y:Math.sin(a),angle:a};}
 export const speedOf=(p:{vx?:number;vy?:number})=>Math.hypot(p.vx||0,p.vy||0);
@@ -207,6 +212,7 @@ export const sprinting=(p:Player,now:number)=>{const g=ANIMALS[p.species].gait,f
 // Facing is separate (the renderer turns the body at the species' turnRate), so movement never waits on rotation.
 export function move(p:Player,dt:number,ps:Prop[],now:number){
  p.vx??=0;p.vy??=0;p.stamina??=100;
+ if(p.climb){climbStep(p,dt,ps,now);return;}
  if(p.perched||p.species==='warthog'&&p.abilityUntil>now||(p.stunUntil??0)>now){p.vx=0;p.vy=0;return;}
  const g=ANIMALS[p.species].gait,U=UNITS_PER_METRE,active=p.abilityUntil>now,input=Math.hypot(p.dx,p.dy)>.1;
  const leap=p.species==='impala'&&active,charge=p.species==='lion'&&active,free=charge||p.species==='hyena'&&active,stalk=p.species==='leopard'&&active;
@@ -226,8 +232,7 @@ export function move(p:Player,dt:number,ps:Prop[],now:number){
  if(Math.hypot(vx,vy)<.02){vx=0;vy=0;}
  p.vx=vx*U;p.vy=vy*U;
  let x=Math.max(25,Math.min(W-25,p.x+p.vx*dt)),y=Math.max(25,Math.min(H-25,p.y+p.vy*dt));
- if(!leap)for(const t of solidNear(ps,x,y,126)){const radius=solidRadius(t);
- const d=Math.hypot(x-t.x,y-t.y);if(d<radius){const nx=d>.001?(x-t.x)/d:1,ny=d>.001?(y-t.y)/d:0;x=t.x+nx*radius;y=t.y+ny*radius;const inward=p.vx*nx+p.vy*ny;if(inward<0){p.vx-=inward*nx;p.vy-=inward*ny;}}}
+ ({x,y}=collide(p,x,y,ps));
  p.x=x;p.y=y;if(Math.abs(p.vx)>1)p.face=p.vx>0?1:-1;if(Math.hypot(p.vx,p.vy)>5)p.heading=Math.atan2(p.vy,p.vx);
 }
 /** Stamina: a flat-out sprint empties it in the species' sprint time; resting refills it over its recovery time. */
@@ -236,33 +241,194 @@ function breathe(p:Player,dt:number,now:number){
  if(sprinting(p,now))p.stamina-=100/g.sprintTime*dt;else p.stamina+=100/g.recover*dt*(speed>g.run*.8?.4:1);
  p.stamina=clamp(p.stamina,0,100);if(p.stamina<=.5)p.exhausted=true;else if(p.stamina>=30)p.exhausted=false;
 }
+// ---------------------------------------------------------------- bodies, trunks and climbing
+/** Body extent in metres for collisions: how far the nose reaches ahead of the body's origin, the rump behind it, and
+ *  half the body's width. Measured off the models, so a lion can't push its head into a trunk or its flank into a boulder. */
+export const BODY:Record<Species,[number,number,number]>={lion:[1.15,.85,.3],leopard:[.85,.62,.19],hyena:[.9,.58,.2],zebra:[1.3,.8,.33],impala:[.78,.55,.17],warthog:[.88,.55,.23]};
+/** Push a body (a capsule from rump to nose along its heading) out of every trunk and boulder it overlaps, and drop the
+ *  part of its velocity that drives into them. Two passes settle the corners between neighbouring boulders. */
+function collide(p:Player,x:number,y:number,ps:Prop[]){
+ const [front,rear,half]=BODY[p.species],U=UNITS_PER_METRE,h=Math.hypot(p.vx,p.vy)>5?Math.atan2(p.vy,p.vx):p.heading??0,hx=Math.cos(h),hy=Math.sin(h);
+ for(let pass=0;pass<2;pass++)for(const t of solidNear(ps,x,y,126+front*U)){
+  const r=solidRadius(t)+half*U,u=clamp((t.x-x)*hx+(t.y-y)*hy,-rear*U,front*U),cx=x+hx*u,cy=y+hy*u,d=Math.hypot(cx-t.x,cy-t.y);
+  if(d>=r)continue;const nx=d>.001?(cx-t.x)/d:-hx,ny=d>.001?(cy-t.y)/d:-hy;x+=nx*(r-d);y+=ny*(r-d);
+  const inward=p.vx*nx+p.vy*ny;if(inward<0){p.vx-=inward*nx;p.vy-=inward*ny;}
+ }
+ return{x:Math.max(25,Math.min(W-25,x)),y:Math.max(25,Math.min(H-25,y))};
+}
+export type Climb=''|'approach'|'trunk'|'mount'|'limb'|'drop'|'slip';
+/** Who climbs, and how (metres, m/s). Leopards are true climbers: up a trunk at about 2 m/s (forelimbs pulling, hind
+ *  limbs pushing), out along boughs down to ~4.5 cm radius, and down head first with a jump for the last 1.6 m. Lions are
+ *  clumsy, occasional climbers: only into a thick, low bough (no higher than 1.8 m), never out onto thin wood, and
+ *  they jump down rather than climb down. Hyenas, zebras, impalas and warthogs can't climb at all. paws: how far the
+ *  fore and hind paws sit ahead of / behind the body's origin. rest: how far out a resting animal settles. lean: how
+ *  upright the body gets on the trunk (1 = vertical): a leopard hangs on the bark, a lion braces at an angle, hind feet low. */
+export const CLIMB:Partial<Record<Species,{up:number;down:number;branch:number;minRadius:number;maxStart:number;anyLimb:boolean;jump:number;rest:number;paws:[number,number];lean:number}>>={
+ leopard:{up:2,down:1.2,branch:.9,minRadius:.045,maxStart:Infinity,anyLimb:true,jump:1.6,rest:1.1,paws:[.35,.46],lean:.92},
+ lion:{up:.9,down:.6,branch:.45,minRadius:.085,maxStart:1.8,anyLimb:false,jump:2.8,rest:.7,paws:[.47,.6],lean:.6},
+};
+const SLIP_HEIGHT=1.3,GRAVITY=9.8;
 const nearestTree=(p:Player,room:Room)=>props(room.seed).filter(t=>t.kind==='tree'&&dist(p,t)<TREE_REACH).sort((a,b)=>dist(a,p)-dist(b,p))[0];
-/** Q: a leopard climbs into (or jumps down from) the nearest acacia. */
+/** Can this animal climb into this tree at all (the resting bough low and thick enough for it)? */
+export function canClimb(species:Species,ps:Prop[],t:Prop){
+ const c=CLIMB[species];if(!c)return false;const T=tree(ps,t),k=restLimb(T),fake={species,limbDir:1} as Player;
+ return T.limbs[k].start<=c.maxStart*UNITS_PER_METRE&&limbPoint(T,k,limbRange(T,k,fake)[0]).r>=c.minRadius*UNITS_PER_METRE;
+}
+export function endClimb(p:Player){p.climb='';p.perched=false;p.perchHeight=0;p.tree=-1;p.goal=-1;p.vh=0;}
+const restLimb=(T:Tree)=>T.limbs.findIndex(l=>l.rest);
+/** The trunk face an animal climbs to reach limb k: to one side of where the limb leaves, so at the top it turns onto it. */
+function faceFor(T:Tree,k:number,from:number){
+ // of the two faces, the one whose head-room is clearer of the crown branches (then the nearer one)
+ const a=T.limbs[k].angle,faces=[a+Math.PI/2,a-Math.PI/2],room=(f:number)=>Math.min(...T.limbs.filter((_,i)=>i!==k).map(l=>Math.abs(wrap(l.angle-f))));
+ const [l,r]=faces,dl=room(l),dr=room(r);return Math.abs(dl-dr)>.2?(dl>dr?l:r):Math.abs(wrap(l-from))<Math.abs(wrap(r-from))?l:r;
+}
+/** How far out along limb k the body can sit: its rump clear of the trunk, its nose short of the tip, and the wood at
+ *  least as thick as the species needs. */
+function limbRange(T:Tree,k:number,p:Player,dir=p.limbDir??1){
+ // facing out along the bough the rump must clear the trunk; facing the trunk, the head must
+ const c=CLIMB[p.species]!,U=UNITS_PER_METRE,[front,rear]=BODY[p.species],l=T.limbs[k],lo=T.axis(l.start).r+(dir<0?front:rear)*1.1*U;
+ let hi=lo;for(let d=lo;d<=l.length-front*.7*U;d+=1){if(limbPoint(T,k,d).r<c.minRadius*U)break;hi=d;}
+ return[lo,Math.max(lo,hi)];
+}
+/** Q: climb the nearest acacia (if this animal can), or start down again. */
 export function perch(p:Player,room:Room,now:number){
- if(p.species!=='leopard'||p.deadUntil)return;
- if(p.perched){p.perched=false;p.perchHeight=0;p.abilityReady=Math.max(p.abilityReady,now+600);notify(p,'Down from the tree.',now);return;}
- const tree=nearestTree(p,room);
- if(!tree){notify(p,'Move closer to an acacia, then press Q to climb.',now);return;}
- p.perched=true;p.x=tree.x+8;p.y=tree.y;p.perchHeight=tree.size*30;p.dx=0;p.dy=0;p.vx=0;p.vy=0;notify(p,'Hidden in the acacia. E drops onto prey below.',now);
+ const c=CLIMB[p.species];if(!c||p.deadUntil||(p.stunUntil??0)>now)return;
+ const ps=props(room.seed);
+ if(p.climb){
+  if(p.climb==='drop'||p.climb==='slip'||p.climb==='approach'&&(endClimb(p),true))return;
+  // a lion jumps down off its bough; a leopard walks back to the trunk and climbs down head first
+  if(p.species==='lion'&&p.climb==='limb'){jumpDown(p,ps,(p.heading??0)+Math.PI/2);notify(p,'Down from the tree.',now);}
+  else{p.goal=-1;notify(p,'Climbing down.',now);}
+  return;
+ }
+ const t=nearestTree(p,room);
+ if(!t){notify(p,'Move closer to an acacia, then press Q to climb.',now);return;}
+ const T=tree(ps,t),k=restLimb(T),high=!canClimb(p.species,ps,t);
+ Object.assign(p,{tree:ps.indexOf(t),climb:'approach' as Climb,goal:high?-2:k,ch:0,limb:k,along:0,limbDir:1,mount:0,vh:0,climbHold:0,dx:0,dy:0,vx:0,vy:0,perched:true,perchHeight:0});
+ p.side=faceFor(T,k,Math.atan2(p.y-t.y,p.x-t.x));
+ notify(p,high?'That bough is too high for a lion, but it tries…':p.species==='lion'?'Scrambling up into the low bough.':'Climbing the acacia.',now);
+}
+function jumpDown(p:Player,ps:Prop[],angle:number){const pose=climbPose(ps,p);Object.assign(p,{climb:'drop' as Climb,side:angle,mount:2.2*UNITS_PER_METRE,vh:1*UNITS_PER_METRE,perchHeight:pose?.h??0});}
+/** A leopard's ambush: it leaves the bough and lands on the prey below (the prey is taken at once). */
+function dropOnto(p:Player,ps:Prop[],q:Player){
+ const pose=climbPose(ps,p),h=pose?.h??0,g=GRAVITY*UNITS_PER_METRE,vh=1.5*UNITS_PER_METRE,t=(vh+Math.sqrt(vh*vh+2*g*h))/g,d=dist(p,q);
+ Object.assign(p,{climb:'drop' as Climb,side:Math.atan2(q.y-p.y,q.x-p.x),mount:Math.max(1.5*UNITS_PER_METRE,(d-8)/t),vh,perchHeight:h});
+}
+/** One step of climbing. Every transition is driven by where the body actually is (height on the trunk, distance along
+ *  the limb, height above the ground), not by a timer. Input moves the animal along whatever it is on. */
+function climbStep(p:Player,dt:number,ps:Prop[],now:number){
+ const c=CLIMB[p.species],t=ps[p.tree??-1];p.vx=0;p.vy=0;
+ if(!c||!t||t.kind!=='tree'){endClimb(p);return;}
+ const T=tree(ps,t),U=UNITS_PER_METRE,input=Math.hypot(p.dx,p.dy)>.1,step=(v:number)=>v*U*dt;
+ const toward=(v:number,goal:number,rate:number)=>v<goal?Math.min(goal,v+rate):Math.max(goal,v-rate);
+ switch(p.climb){
+ case 'approach':{
+  // walk round to the climbing face: circle the trunk at a body's clearance, then step in until the forepaws touch bark
+  const stand=T.axis(0).r+BODY[p.species][0]*U,clear=T.axis(0).r+(BODY[p.species][2]+.25)*U,ang=Math.atan2(p.y-t.y,p.x-t.x),rad=Math.hypot(p.x-t.x,p.y-t.y),dA=wrap((p.side??0)-ang);
+  const goal=Math.abs(dA)>.5?{a:ang+Math.sign(dA)*Math.min(Math.abs(dA),.6),r:Math.max(rad,clear)}:{a:p.side??0,r:stand};
+  const gx=t.x+Math.cos(goal.a)*goal.r,gy=t.y+Math.sin(goal.a)*goal.r,d=Math.hypot(gx-p.x,gy-p.y),v=ANIMALS[p.species].gait.walk*1.6*U;
+  if(Math.abs(dA)<.05&&Math.abs(rad-stand)<1.5){p.climb=p.goal===-2?'slip':'trunk';p.ch=0;p.mount=0;p.heading=(p.side??0)+Math.PI;return;}
+  const k=Math.min(1,v*dt/Math.max(d,.001));p.vx=(gx-p.x)/Math.max(dt,1e-3)*k;p.vy=(gy-p.y)/Math.max(dt,1e-3)*k;p.x+=(gx-p.x)*k;p.y+=(gy-p.y)*k;p.heading=Math.atan2(p.vy,p.vx);
+  return;
+ }
+ case 'slip':{
+  // a lion at a trunk too tall for it: rears and scrabbles up a little way, can't get a grip, slides back down
+  if((p.mount??0)<1){p.ch=toward(p.ch??0,SLIP_HEIGHT*U,step(c.up));if(p.ch>=SLIP_HEIGHT*U)p.mount=1;}
+  else{p.ch=toward(p.ch??0,0,step(2.2));if(p.ch<=0){const back=climbPose(ps,p);endClimb(p);if(back){p.x=back.x;p.y=back.y;}notify(p,'Too high: lions only manage low, thick boughs.',now);return;}}
+  break;
+ }
+ case 'trunk':{
+  const goal=p.goal??-1,gh=goal>=0?T.limbs[goal].start:0;
+  if(goal>=0){const face=faceFor(T,goal,p.side??0);p.side=(p.side??0)+clamp(wrap(face-(p.side??0)),-step(c.up)/T.axis(p.ch??0).r,step(c.up)/T.axis(p.ch??0).r);}
+  p.ch=toward(p.ch??0,gh,step(gh>(p.ch??0)?c.up:c.down));
+  if(goal<0&&(p.ch??0)<=c.jump*U){jumpDown(p,ps,p.side??0);return;}
+  if(goal>=0&&p.ch===gh&&Math.abs(wrap(faceFor(T,goal,p.side??0)-(p.side??0)))<.01){p.climb='mount';p.limb=goal;p.mount=0;p.limbDir=1;p.along=limbRange(T,goal,p,1)[0];}
+  break;
+ }
+ case 'mount':{
+  // pulling up from the trunk onto the bough (mount 0 -> 1), or back off it (1 -> 0) to climb down or change bough
+  const len=Math.max(.6*U,BODY[p.species][0]*U),on=p.goal===p.limb;
+  p.mount=toward(p.mount??0,on?1:0,step((c.up+c.branch)/2)/len);
+  if(on&&p.mount===1){p.climb='limb';p.limbDir=1;}
+  if(!on&&p.mount===0){p.climb='trunk';p.ch=T.limbs[p.limb!].start;}
+  break;
+ }
+ case 'limb':{
+  const [lo,hi]=limbRange(T,p.limb!,p),L=limbPoint(T,p.limb!,p.along!),hl=Math.hypot(L.tx,L.ty)||1;
+  // keep the body clear of the trunk for the way it now faces (shuffling out a little after turning to face the trunk)
+  p.along=toward(p.along!,clamp(p.along!,lo,hi),step(c.branch));
+  if(now<(p.climbHold??0))break;
+  // turning round on a bough: crouch and pivot in place before walking the other way
+  const turn=(dir:number)=>{if(dir===p.limbDir)return false;p.limbDir=dir;p.climbHold=now+(Math.PI/ANIMALS[p.species].gait.turnRate+.3)*1000;return true;};
+  if(p.goal!==p.limb){if(turn(-1))break;p.along=toward(p.along!,lo,step(c.branch));if(p.along===lo){p.climb='mount';p.mount=1;}break;}
+  if(!input)break;
+  const s=(p.dx*L.tx+p.dy*L.ty)/hl/Math.hypot(p.dx,p.dy);
+  if(Math.abs(s)>.35){const dir=s>0?1:-1;if(!turn(dir))p.along=clamp(p.along!+dir*step(c.branch),lo,hi);}
+  // at the trunk end, pushing towards another bough climbs over to it (leopards only)
+  if(c.anyLimb&&p.along!<=lo+1&&s<.35){const want=Math.atan2(p.dy,p.dx);let best=-1,score=.6;T.limbs.forEach((l,k)=>{const sc=Math.cos(l.angle-want);if(k!==p.limb&&sc>score){score=sc;best=k;}});if(best>=0)p.goal=best;}
+  break;
+ }
+ case 'drop':{
+  // jumping down: a short ballistic arc, landing feet first a couple of metres out
+  p.vh=(p.vh??0)-GRAVITY*U*dt;p.perchHeight=(p.perchHeight??0)+(p.vh??0)*dt;
+  const hs=p.mount??0;p.x+=Math.cos(p.side??0)*hs*dt;p.y+=Math.sin(p.side??0)*hs*dt;p.heading=p.side??0;
+  if((p.perchHeight??0)<=0){endClimb(p);p.vx=Math.cos(p.heading)*hs*.5;p.vy=Math.sin(p.heading)*hs*.5;({x:p.x,y:p.y}=collide(p,p.x,p.y,ps));}
+  return;
+ }
+ }
+ const pose=climbPose(ps,p);if(pose){p.x=pose.x;p.y=pose.y;p.perchHeight=pose.h;p.heading=pose.heading;}
+}
+/** Where a climbing body is: the point under its origin (game x/y), its height above the ground at the trunk's foot,
+ *  which way it faces, its pitch (nose up +), and what it stands on. Shared by the rules and the renderer, so both put
+ *  the animal on the same bark. */
+export function climbPose(ps:Prop[],p:Pick<Player,'species'|'x'|'y'|'heading'|'climb'|'tree'|'ch'|'side'|'limb'|'along'|'limbDir'|'goal'|'mount'|'perchHeight'>){
+ const c=CLIMB[p.species],t=ps[p.tree??-1];if(!c||!t||!p.climb||p.climb==='approach')return null;
+ const T=tree(ps,t),U=UNITS_PER_METRE;
+ if(p.climb==='drop')return{x:p.x,y:p.y,h:Math.max(0,p.perchHeight??0),heading:p.side??0,pitch:-.25,on:'air' as const};
+ const onTrunk=(h:number,down:boolean)=>{
+  // rearing: standing nose to the bark, the body pivots up on its hind paws while the forepaws walk up the trunk,
+  // until it hangs on the bark
+  const hind=c.paws[1]*U,phi=down?-Math.PI*.46:Math.asin(clamp(h/hind,0,1))*c.lean,a=T.axis(h),side=p.side??0;
+  const off=a.r+(down?0:BODY[p.species][0]*U*Math.cos(phi));
+  return{x:a.x+Math.cos(side)*off,y:a.y+Math.sin(side)*off,h,heading:down?side:side+Math.PI,pitch:phi,on:'trunk' as const};
+ };
+ const onLimb=(k:number,along:number,dir:number)=>{
+  const L=limbPoint(T,k,along),hl=Math.hypot(L.tx,L.ty)||1,
+   // stand on the top of the bark: the radius along the limb's upward normal
+   nx=-L.th*L.tx/hl,ny=-L.th*L.ty/hl,nh=hl,n=Math.hypot(nx,ny,nh);
+  return{x:L.x+nx/n*L.r,y:L.y+ny/n*L.r,h:L.h+nh/n*L.r,heading:Math.atan2(L.ty,L.tx)+(dir<0?Math.PI:0),pitch:Math.atan2(L.th,hl)*dir,on:'limb' as const};
+ };
+ if(p.climb==='trunk'||p.climb==='slip')return onTrunk(p.ch??0,p.climb==='trunk'&&(p.goal??-1)<0);
+ if(p.climb==='limb')return onLimb(p.limb!,p.along!,p.limbDir??1);
+ // mount: from hanging on the trunk to standing on the bough. The body first turns toward the bough while still upright
+ // (its head up and clear), then levels out onto it; it swings out from the trunk and up over the bark on the way, so
+ // no part of it passes through the wood.
+ const k=p.limb!,m=p.mount??0,sm=(a:number,b:number)=>{const x=clamp((m-a)/(b-a),0,1);return x*x*(3-2*x);},e=sm(0,1),down=(p.goal??-1)<0,
+  // (going down it is the reverse: it turns on the bough first, then tips head first onto the trunk)
+  eh=down?sm(.4,1):sm(0,.6),ep=down?sm(0,.65):sm(.2,.9);
+ const a=onTrunk(T.limbs[k].start,down),b=onLimb(k,limbRange(T,k,p as Player,p.goal===k?1:-1)[0],p.goal===k?1:-1);
+ const mx=a.x+(b.x-a.x)*e,my=a.y+(b.y-a.y)*e,ax=T.axis(a.h),ox=mx-ax.x,oy=my-ax.y,ol=Math.hypot(ox,oy)||1,bulge=Math.sin(Math.PI*m)*.35*U;
+ return{x:mx+ox/ol*bulge,y:my+oy/ol*bulge,h:a.h+(b.h-a.h)*e+Math.sin(Math.PI*m)*.25*U,heading:a.heading+wrap(b.heading-a.heading)*eh,pitch:a.pitch+(b.pitch-a.pitch)*ep,on:m<.5?'trunk' as const:'limb' as const};
 }
 /** True when q stands in the rear arc of p (more than about 110° off the way p faces): where a zebra's hind legs reach. */
 export const behind=(p:Player,q:{x:number;y:number})=>Math.cos(Math.atan2(q.y-p.y,q.x-p.x)-(p.heading??0))<-.35;
 export function useAbility(p:Player,room:Room,now:number){if(now<p.abilityReady||p.deadUntil)return;
- if(p.species==='leopard'&&p.perched){notify(p,'Press Q to climb down first.',now);return;}
+ if(p.climb){notify(p,'Press Q to climb down first.',now);return;}
  if(p.species==='warthog'){const burrow=props(room.seed).filter(t=>t.kind==='burrow'&&dist(t,p)<BURROW_REACH).sort((a,b)=>dist(a,p)-dist(b,p))[0];if(!burrow){notify(p,'Find a burrow first: a dark hole in open ground.',now);return;}p.x=burrow.x;p.y=burrow.y;p.dx=0;p.dy=0;}
  if(p.species==='zebra'){const close=room.players.filter(q=>!q.deadUntil&&ANIMALS[q.species].prey.includes('zebra')&&dist(q,p)<KICK_RANGE),kicked=close.filter(q=>behind(p,q));if(close.length&&!kicked.length)notify(p,'Missed: a kick only reaches behind you.',now);for(const q of kicked){q.stunUntil=now+2500;const d=Math.max(1,dist(q,p));q.x=Math.max(25,Math.min(W-25,q.x+(q.x-p.x)/d*20));q.y=Math.max(25,Math.min(H-25,q.y+(q.y-p.y)/d*20));notify(q,'Kicked by a zebra! Stunned.',now);}if(kicked.length){p.score+=4;notify(p,'Kick landed +4',now);}}
  if(p.species==='hyena')p.stamina=100,p.exhausted=false;
  if(p.species==='impala'){const g=Math.hypot(p.vx,p.vy)||1,h=Math.hypot(p.dx,p.dy)>.1?Math.atan2(p.dy,p.dx):Math.atan2(p.vy,p.vx),v=Math.max(g,LEAP_SPEED*UNITS_PER_METRE);p.vx=Math.cos(h)*v;p.vy=Math.sin(h)*v;}
  p.abilityUntil=now+ANIMALS[p.species].duration*1000;p.abilityReady=now+ANIMALS[p.species].cooldown*1000;if(p.species!=='zebra')notify(p,ANIMALS[p.species].ability+'!',now);}
-export function die(p:Player,room:Room,now:number,cause:string){if(p.deadUntil)return;p.deadUntil=now+2600;p.dx=0;p.dy=0;p.vx=0;p.vy=0;p.perched=false;p.deaths++;notify(p,cause,now);if(!p.bot){room.events.unshift(p.name+' '+cause);room.events=room.events.slice(0,5);}}
+export function die(p:Player,room:Room,now:number,cause:string){if(p.deadUntil)return;p.deadUntil=now+2600;p.dx=0;p.dy=0;p.vx=0;p.vy=0;endClimb(p);p.deaths++;notify(p,cause,now);if(!p.bot){room.events.unshift(p.name+' '+cause);room.events=room.events.slice(0,5);}}
 // A kill leaves a carcass for scavengers once the hunter has eaten. Old carcasses dry out.
 function dropCarcass(room:Room,x:number,y:number,now:number){room.foods=room.foods.filter(f=>!f.until||f.until>now);if(room.foods.length>620)return;const id=Math.max(0,...room.foods.map(f=>f.id))+1;room.foods.push({id,x,y,kind:'carrion',ready:now+5000,until:now+90000});}
 export function interact(p:Player,room:Room,now:number){if(p.deadUntil||now<p.interactReady)return;p.interactReady=now+650;p.actionUntil=now+500;
  if(p.stunUntil>now){notify(p,'Still stunned.',now);return;}
- const a=ANIMALS[p.species],ambush=p.species==='leopard'&&p.perched;
+ const a=ANIMALS[p.species],ambush=p.species==='leopard'&&p.climb==='limb';
  const reach=ambush?AMBUSH_RANGE:p.abilityUntil>now&&(p.species==='lion'||p.species==='leopard')?POUNCE_RANGE:a.catchRange;
  const victims=room.players.filter(q=>q.id!==p.id&&!q.deadUntil&&q.protectedUntil<now&&a.prey.includes(q.species)&&!hidden(q,room,now)&&!leaping(q,now)&&dist(p,q)<reach);victims.sort((x,y)=>dist(p,x)-dist(p,y));
- if(victims[0]){const q=victims[0];if(ambush){p.perched=false;p.perchHeight=0;}p.x=q.x-(q.x-p.x)*.3;p.y=q.y-(q.y-p.y)*.3;die(q,room,now,'was caught by a '+a.name.toLowerCase()+'.');dropCarcass(room,q.x,q.y,now);p.hunger=Math.min(100,p.hunger+45);p.hunts++;p.food++;const points=(savannaEvent(room,now).kind==='hunt'?15:10)+(ambush?3:0);p.score+=points;notify(p,(ambush?'Ambush! ':'Successful hunt ')+'+'+points,now);return;}
+ if(p.climb&&!ambush)return;
+ if(victims[0]){const q=victims[0];if(ambush)dropOnto(p,props(room.seed),q);else{p.x=q.x-(q.x-p.x)*.3;p.y=q.y-(q.y-p.y)*.3;}die(q,room,now,'was caught by a '+a.name.toLowerCase()+'.');dropCarcass(room,q.x,q.y,now);p.hunger=Math.min(100,p.hunger+45);p.hunts++;p.food++;const points=(savannaEvent(room,now).kind==='hunt'?15:10)+(ambush?3:0);p.score+=points;notify(p,(ambush?'Ambush! ':'Successful hunt ')+'+'+points,now);return;}
  if(ambush){notify(p,'No prey below. Wait for it to come closer.',now);return;}
  const f=room.foods.filter(f=>f.ready<=now&&(!f.until||f.until>now)&&(a.foods as string[]).includes(f.kind)&&dist(p,f)<FOOD_RANGE).sort((x,y)=>dist(p,x)-dist(p,y))[0];
  if(f){if(f.until)f.until=now;else f.ready=now+18000;p.food++;if(f.kind==='carrion')p.scavenged++;p.hunger=Math.min(100,p.hunger+(f.kind==='carrion'?35:28));const points=(savannaEvent(room,now).kind==='forage'?5:3)+(f.kind==='carrion'&&p.species==='hyena'?2:0);p.score+=points;notify(p,(f.kind==='carrion'?'Scavenged ':f.kind==='roots'?'Dug up roots ':'Food found ')+'+'+points,now);return;}
@@ -421,7 +587,12 @@ function steer(p:Player,room:Room,ps:Prop[],t:number,dt:number,humans:Player[]){
  if(t<p.thinkAt)return;
  const far=!humans.some(h=>dist(h,p)<1600),think=far?.4:dt;p.thinkAt=far?t+400:0;
  const a=ANIMALS[p.species];
- if(p.perched){const below=room.players.some(q=>!q.deadUntil&&a.prey.includes(q.species)&&q.protectedUntil<t&&dist(q,p)<AMBUSH_RANGE);if(below)interact(p,room,t);else if(p.hunger<55||roll(room)<.002)perch(p,room,t);p.dx=0;p.dy=0;return;}
+ if(p.climb){p.dx=0;p.dy=0;if(p.climb!=='limb')return;
+  const below=room.players.some(q=>!q.deadUntil&&a.prey.includes(q.species)&&q.protectedUntil<t&&dist(q,p)<AMBUSH_RANGE);
+  if(below)interact(p,room,t);else if(p.hunger<55||roll(room)<.002)perch(p,room,t);
+  // otherwise settle a body length out along the bough, where leopards lie up
+  else{const T=tree(ps,ps[p.tree!]),L=limbPoint(T,p.limb!,p.along!),want=CLIMB[p.species]!.rest*UNITS_PER_METRE;if(p.along!<want-2&&p.goal===p.limb){const l=Math.hypot(L.tx,L.ty)||1;p.dx=L.tx/l*.6;p.dy=L.ty/l*.6;}}
+  return;}
  p.sprint=false;
  const plan=a.prey.length?hunter(p,room,ps,t):grazer(p,room,ps,t,think);
  if(p.perched){p.dx=0;p.dy=0;return;}
@@ -434,7 +605,7 @@ function steer(p:Player,room:Room,ps:Prop[],t:number,dt:number,humans:Player[]){
  if(p.y<100&&p.dy<0||p.y>H-100&&p.dy>0){p.dy=0;if(fleeing&&Math.abs(p.dx)<.3)p.dx=slide;}
  // steer around trunks and boulders before collision instead of running into them forever
  for(const tree of solidNear(ps,p.x,p.y,90)){
-  const ox=tree.x-p.x,oy=tree.y-p.y,clearance=solidRadius(tree)+18;
+  const ox=tree.x-p.x,oy=tree.y-p.y,clearance=solidRadius(tree)+BODY[p.species][0]*UNITS_PER_METRE+8;
   if(Math.hypot(ox,oy)<clearance&&ox*p.dx+oy*p.dy>0){const side=p.dx*oy-p.dy*ox>=0?-1:1,angle=side*.9;const dx=p.dx*Math.cos(angle)-p.dy*Math.sin(angle);p.dy=p.dx*Math.sin(angle)+p.dy*Math.cos(angle);p.dx=dx;break;}
  }
  // stuck (pushing into a kopje, wedged between boulders): side-step for a moment and pick a new wander target

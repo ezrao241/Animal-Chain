@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import {W,H,props,trailDistance,GRASS_PATCH,type Prop} from '@/lib/game';
 import {Model,hex,hash,facetMaterial} from './faceted';
+import {acaciaShape,placementAt} from '@/lib/acacia';
 
 const S=40,X0=-1600,Z0=-1600,NX=Math.ceil((W+3200)/S)+1,NZ=Math.ceil((H+3200)/S)+1;
 const PROPS=props(417),WATERS=PROPS.filter(p=>p.kind==='water'),KOPJES=PROPS.filter(p=>p.kind==='rock'&&p.size>=1.3),BURROWS=PROPS.filter(p=>p.kind==='burrow'),PATCHES=PROPS.filter(p=>p.kind==='tallgrass');
@@ -59,16 +60,12 @@ function terrain(){
 
 // ---------------------------------------------------------------- vegetation and rocks (authored in metres, placed x10)
 function acacia(seed:number,lod=0){
- const m=new Model(seed,lod),r=(a:number,b:number)=>a+hash(seed,a*100,b*100)*(b-a),fork=2.6+r(0,.6);
- m.loft('t#bark',[{c:[0,-.3,0],rz:.24,ry:.24},{c:[0,1.2,0],rz:.17,ry:.17},{c:[.15,fork,0],rz:.15,ry:.15}],{n:6,jitter:.08,start:'flat',end:'point'});
- const branches=3+Math.floor(r(0,1.9));
- for(let b=0;b<branches;b++){
-  const a=b/branches*Math.PI*2+r(-.3,.3),out=2.2+r(0,1.6),top=fork+1.6+r(0,1.1),mid:[number,number,number]=[Math.cos(a)*out*.45+.15,fork+(top-fork)*.6,Math.sin(a)*out*.45],tip:[number,number,number]=[Math.cos(a)*out,top,Math.sin(a)*out];
-  m.spike('t#bark',[[.15,fork-.2,0],mid,tip],[.13,.085,.04],{n:5});
-  // flat-topped umbrella canopy: overlapping faceted pads at the branch tips
-  m.blob('t#leaf',[tip[0],top+.35,tip[2]],[1.9+r(0,.8),.42+r(0,.15),1.9+r(0,.8)],{detail:1,jitter:.18,rot:[0,a,0]});
- }
- m.blob('t#leaf',[.1,fork+2.4+r(0,.5),0],[2.6+r(0,.6),.5,2.4+r(0,.6)],{detail:1,jitter:.16});
+ // trunk and limbs come from the shared shape the climbing rules use, so paws land on the bark that is drawn
+ const m=new Model(seed,lod),shape=acaciaShape(seed);
+ m.loft('t#bark',shape.trunk.map(t=>({c:t.c,rz:t.r,ry:t.r})),{n:6,jitter:.04,start:'flat',end:'point'});
+ shape.limbs.forEach(l=>m.spike('t#bark',l.path,l.radii,{n:5,jitter:.03}));
+ // flat-topped umbrella canopy: overlapping faceted pads at the branch tips, a small one over the resting bough
+ shape.canopy.forEach((c,i)=>m.blob('t#leaf',c.c,c.r,{detail:1,jitter:i===shape.canopy.length-1?.16:.18,rot:[0,c.rot,0]}));
  // warm bark that catches the sun on top; canopies lit gold-green above, cool olive in their own shade (never black)
  return m.build((p,n,part)=>part.includes('#bark')?(n.y>.4?hex(0xa88b68):hex(0x7a624b).lerp(hex(0x8e7457),hash(p.x*13,p.z*13,4))).multiplyScalar(.9+hash(p.x*40,p.y*40,p.z*40)*.2):n.y>.55?hex([0xa4b553,0x93a849,0xb3bd5e,0x8b9f43][Math.floor(hash(p.x*9,p.z*9,1)*4)]):n.y<-.3?hex(0x6b8848):hex(0x7d9a44),{t:[0,0,0]},.1).get('t')!;
 }
@@ -185,7 +182,7 @@ export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
  // acacias, three shapes (map trees come first, so their shape and turn match the climbing data)
  const lods:{near:THREE.InstancedMesh;far:THREE.InstancedMesh;items:Placed[]}[]=[];
  const leveled=(near:THREE.BufferGeometry,far:THREE.BufferGeometry,items:Placed[])=>{const a=add(instanced(near,facet,items)),b=add(instanced(far,facet,items));lods.push({near:a,far:b,items});disposables.push(near,far);};
- [11,23,37].forEach((seed,v)=>leveled(acacia(seed),acacia(seed,1),trees.filter((_,i)=>i%3===v).map((t,i)=>({x:t.x,y:groundY(t.x,t.y),z:t.y,rot:r(i,v)*6.28,scale:10*t.size}))));
+ [11,23,37].forEach((seed,v)=>leveled(acacia(seed),acacia(seed,1),trees.filter((_,k)=>placementAt(k).variant===v).map(t=>({x:t.x,y:groundY(t.x,t.y),z:t.y,rot:placementAt(trees.indexOf(t)).rot,scale:10*t.size}))));
  // kopjes: boulders half sunk into their mounds
  const rocks=PROPS.filter(p=>p.kind==='rock');
  [5,9,17,29].forEach((seed,v)=>leveled(boulder(seed),boulder(seed,1),rocks.filter((_,i)=>i%4===v).map((t,i)=>({x:t.x,y:groundY(t.x,t.y)-t.size*6,z:t.y,rot:r(i,v+5)*6.28,scale:t.size*33,sy:.85+r(i,v+9)*.4}))));

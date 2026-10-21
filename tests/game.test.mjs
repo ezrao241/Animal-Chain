@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {move,UNITS_PER_METRE,spawnPoint,W,H,ANIMALS,SPECIES,WILDLIFE,newPlayer,newRoom,start,respawn,die,tick,props,interact,savannaEvent,useAbility,perch,hidden,publicRoom,makeFoods,solid,solidRadius,KICK_RANGE,TREE_REACH} from '../lib/game.ts';
+import {move,UNITS_PER_METRE,spawnPoint,W,H,ANIMALS,SPECIES,WILDLIFE,newPlayer,newRoom,start,respawn,die,tick,props,interact,savannaEvent,useAbility,perch,hidden,publicRoom,makeFoods,solid,solidRadius,KICK_RANGE,TREE_REACH,climbPose,canClimb,BODY} from '../lib/game.ts';
+import {tree as acaciaTree,limbPoint} from '../lib/acacia.ts';
 const NOW=1800000000000;
 // an open patch of plain: no thicket (hiding), boulder, tree or water nearby
 const OPEN=(()=>{for(let y=300;y<H-300;y+=50)for(let x=300;x<W-300;x+=50)if(props(417).every(p=>Math.hypot(p.x-x,p.y-y)>(p.kind==='water'?p.size+150:p.kind==='tallgrass'?p.size*100+150:150)))return{x,y};})();
@@ -40,10 +41,52 @@ test('zebra kick stuns a lion, impala leap and warthog burrow escape a catch',()
  {const{room,player}=fixture('impala');const lion=near(player,'lion',15);room.players.push(lion);useAbility(player,room,NOW);interact(lion,room,NOW+200);assert.equal(lion.hunts,0);}
  {const{room,player}=fixture('warthog');const burrow=props(417).find(p=>p.kind==='burrow');Object.assign(player,{x:burrow.x+20,y:burrow.y});useAbility(player,room,NOW);assert.equal(player.x,burrow.x);assert.ok(hidden(player,room,NOW+1000));}
 });
-test('leopards climb acacias and ambush from them',()=>{
- const{room,player}=fixture('leopard');const tree=props(417).find(p=>p.kind==='tree');Object.assign(player,{x:tree.x+TREE_REACH-5,y:tree.y});perch(player,room,NOW);
- assert.ok(player.perched);assert.ok(hidden(player,room,NOW));
- const impala=near(player,'impala',45);room.players.push(impala);interact(player,room,NOW+1000);assert.equal(player.hunts,1);assert.equal(player.perched,false);assert.equal(player.score,13);
+test('leopards climb a trunk, walk out on a bough, turn round, ambush and climb down head first',()=>{
+ const{room,player}=fixture('leopard'),ps=props(417),tree=ps.find(p=>p.kind==='tree');Object.assign(player,{x:tree.x+TREE_REACH-5,y:tree.y});
+ const T=acaciaTree(ps,tree),poses=[];let t=NOW;const run=(sec,dx=0,dy=0)=>{for(let i=0;i<sec*20;i++){player.dx=dx;player.dy=dy;move(player,.05,ps,t);t+=50;const q=climbPose(ps,player);if(q)poses.push(q);}};
+ perch(player,room,t);assert.equal(player.climb,'approach');assert.ok(!hidden(player,room,t),'climbing is not hiding');
+ run(6);assert.equal(player.climb,'limb','reaches the resting bough');
+ const lift=T.limbs[player.limb].start/UNITS_PER_METRE;assert.ok(lift>1.5&&lift<4.5,'the bough is '+lift.toFixed(1)+' m up');
+ // the body stands on top of the bark: its origin sits one bark radius above the limb's centreline
+ const onBark=()=>{const L=limbPoint(T,player.limb,player.along),q=climbPose(ps,player);return Math.abs(Math.hypot(q.x-L.x,q.y-L.y,q.h-L.h)-L.r);};
+ assert.ok(onBark()<.05);assert.ok(hidden(player,room,t),'a leopard lying up in the canopy is hidden');
+ const start=player.along,out=T.limbs[player.limb];run(1.5,Math.cos(out.angle),Math.sin(out.angle));assert.ok(player.along>start+5,'walks out along the bough');assert.ok(onBark()<.05);
+ // reversing: it first pivots in place, then walks back
+ const before=player.along;run(.2,-Math.cos(out.angle),-Math.sin(out.angle));assert.equal(player.limbDir,-1);assert.ok(Math.abs(player.along-before)<.01,'pivots before walking back');
+ run(1.5,-Math.cos(out.angle),-Math.sin(out.angle));assert.ok(player.along<before);
+ // no frame jumps: every step of the climb moves the body less than a sprinting leopard would
+ for(let i=1;i<poses.length;i++){const a=poses[i-1],b=poses[i];assert.ok(Math.hypot(b.x-a.x,b.y-a.y,b.h-a.h)<16.5*UNITS_PER_METRE*.05,'continuous at step '+i);}
+ // ambush: drops onto prey below, then lands
+ const impala=near(player,'impala',30);room.players.push(impala);interact(player,room,t);assert.equal(player.hunts,1);assert.equal(player.climb,'drop');assert.equal(player.score,13);
+ run(2);assert.equal(player.climb,'');assert.equal(player.perched,false);
+ // and the long way down: back to the trunk, head first, a jump for the last stretch
+ Object.assign(player,{x:tree.x+TREE_REACH-5,y:tree.y});perch(player,room,t);run(6);assert.equal(player.climb,'limb');perch(player,room,t);
+ const seen=new Set();for(let i=0;i<200&&player.climb;i++){run(.05);seen.add(player.climb);if(player.climb==='trunk')assert.ok(climbPose(ps,player).pitch<-1,'head first');}
+ assert.deepEqual([...seen].filter(s=>s),['limb','mount','trunk','drop']);assert.equal(player.perched,false);assert.ok(Math.hypot(player.x-tree.x,player.y-tree.y)>solidRadius(tree));
+});
+test('lions only scramble into low, thick boughs; grazers and hyenas never climb',()=>{
+ const ps=props(417),trees=ps.filter(p=>p.kind==='tree'),low=trees.find(t=>canClimb('lion',ps,t)),high=trees.find(t=>!canClimb('lion',ps,t));
+ assert.ok(low&&high,'the plains have both kinds of tree');
+ for(const [t,ok] of [[low,true],[high,false]]){
+  const{room,player}=fixture('lion');Object.assign(player,{x:t.x+TREE_REACH-5,y:t.y});let now=NOW;perch(player,room,now);
+  const seen=new Set();for(let i=0;i<240;i++){move(player,.05,ps,now);now+=50;seen.add(player.climb);}
+  if(ok){assert.equal(player.climb,'limb');const T=acaciaTree(ps,t),L=limbPoint(T,player.limb,player.along);assert.ok(T.limbs[player.limb].rest);
+   // it can't go out onto thin wood
+   for(let i=0;i<200;i++){player.dx=Math.cos(T.limbs[player.limb].angle);player.dy=Math.sin(T.limbs[player.limb].angle);move(player,.05,ps,now);now+=50;}
+   assert.ok(limbPoint(T,player.limb,player.along).r>=.085*UNITS_PER_METRE-.01,'stays where the wood takes 190 kg');
+   perch(player,room,now);assert.equal(player.climb,'drop');for(let i=0;i<60;i++){move(player,.05,ps,now);now+=50;}assert.equal(player.climb,'');}
+  else{assert.ok(seen.has('slip'));assert.equal(player.climb,'');assert.equal(player.perched,false);assert.match(player.message,/Too high/);}
+ }
+ for(const s of ['hyena','zebra','impala','warthog']){const{room,player}=fixture(s);Object.assign(player,{x:low.x+TREE_REACH-5,y:low.y});perch(player,room,NOW);assert.ok(!player.climb&&!player.perched,s+' stays on the ground');}
+});
+test('bodies, not points: no animal pushes its head or flank into a trunk or boulder',()=>{
+ const ps=props(417);
+ for(const kind of ['tree','rock'])for(const s of SPECIES){const t=ps.find(p=>p.kind===kind&&p.size<1.2);for(let k=0;k<8;k++){
+  const a=k/8*Math.PI*2,{room,player}=fixture(s);Object.assign(player,{x:t.x+Math.cos(a)*(solidRadius(t)+60),y:t.y+Math.sin(a)*(solidRadius(t)+60)});let now=NOW;
+  for(let i=0;i<80;i++){player.dx=-Math.cos(a);player.dy=-Math.sin(a);move(player,.05,ps,now);now+=50;
+   const [front,rear,half]=BODY[s],h=player.heading,nose={x:player.x+Math.cos(h)*front*10,y:player.y+Math.sin(h)*front*10};
+   assert.ok(Math.hypot(nose.x-t.x,nose.y-t.y)>=solidRadius(t)+half*10-1,`${s} nose into a ${kind}`);}
+ }}
 });
 test('drinking at a watering hole counts for the drink task',()=>{
  const{room,player}=fixture('lion');const water=props(417).find(p=>p.kind==='water');Object.assign(player,{x:water.x+water.size+10,y:water.y});interact(player,room,NOW);assert.equal(player.drinks,1);tick(room,NOW+200);assert.ok(player.claimed[1]);
