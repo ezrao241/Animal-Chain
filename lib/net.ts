@@ -1,7 +1,7 @@
 // Room sessions shared by the multiplayer route (app/api/game/route.ts, rooms in D1) and the offline shim (play/api-shim.ts,
 // rooms in memory): lobby membership and host succession, one-shot actions that run at most once, and what each player is
 // sent. Rules stay in lib/game.ts; this file only decides who may do what, when, and who may see what.
-import {newPlayer,start,tick,useAbility as startAbility,perch,interact,die,hidden,makeFoods,type Room,type Player,type Food} from './game.ts';
+import {newPlayer,start,tick,useAbility as startAbility,perch,interact,restartLife,hidden,makeFoods,type Room,type Player,type Food} from './game.ts';
 
 export const ONLINE_MS=8000,        // a human who hasn't synced for this long is shown as away (tick() also freezes their input)
  HOST_GRACE_MS=10000,               // an away host keeps the room this long (a reload or a tunnel), then an online player takes over
@@ -76,7 +76,7 @@ export function roomRequest(room:Room,b:Record<string,unknown>,action:string,now
   if(!humans(room).length)return{status:200,body:{left:true},save:false,remove:true};
   settleRoom(room,now);return{status:200,body:{left:true,room:viewFor(room,p.id,now)},save:true};
  }else if(action==='restart'){
-  if(room.phase!=='playing')return fail(409,'Start the round first.');die(p,room,now,'started a new life.');
+  if(room.phase!=='playing')return fail(409,'Start the round first.');restartLife(p,room,now);
  }else if(room.phase==='playing'){
   const seq=Number(b.seq)||0;
   if(seq>p.seq){p.seq=seq;p.dx=clamp(b.dx);p.dy=clamp(b.dy);p.sprint=b.sprint===true;p.inputAt=now;}
@@ -97,7 +97,7 @@ function quiet(p:Player,seenBefore:number,room:Room,b:Record<string,unknown>,now
 // Fields only the server (and the animal's own player) may see: credentials, input, AI plans and targets, task progress,
 // private messages. Everything else describes what any animal on the plains could observe.
 const SERVER_ONLY=['token','bag','seq','act','inputAt','lastSeen','strikeId','strikeBorn'] as const;
-const OWNER_ONLY=['dx','dy','targetX','targetY','targetId','threatX','threatY','lastThreatAt','threatAt','homeX','homeY','nextDrink','chaseStart','thinkAt','stuckX','stuckY','stuckAt','unstickUntil','moodUntil','alarmAt','message','messageUntil','hunger','thirst','claimed','food','hunts','drinks','scavenged','escapes','hiddenSeconds','survivalSeconds','abilityReady','interactReady'] as const;
+const OWNER_ONLY=['dx','dy','targetX','targetY','targetId','threatX','threatY','lastThreatAt','threatAt','homeX','homeY','nextDrink','chaseStart','thinkAt','stuckX','stuckY','stuckAt','unstickUntil','moodUntil','alarmAt','message','messageUntil','hunger','thirst','claimed','food','hunts','drinks','scavenged','escapes','hiddenSeconds','survivalSeconds','abilityReady','interactReady','done','carry','lives','lifeStart','survived'] as const;
 // Beyond FAR_VIEW (past the largest draw range, sound and sense ranges) an animal is never drawn or heard; it is sent with just
 // what its tracks need (components/game/safari-traces.ts), about a quarter of the size.
 export const FAR_VIEW=1150;

@@ -6,7 +6,7 @@ Game rules stay in `lib/game.ts`.
 
 | # | Issue | Reproduction (fails on the old route) | Fix | Regression test |
 |---|---|---|---|---|
-| 1 | The route test failed about 1 run in 10 | 40 repeated runs: 6 failures, all "respawned as impala again" | The test forced the guest to be an impala without taking impala out of its species bag, so the bag could deal impala next. The test now updates the bag and stages the encounter on open ground. Before, the guest could spawn still inside a thicket, which hides it from the lion | 100 repeated runs, 0 failures |
+| 1 | The route test failed about 1 run in 10 | 40 repeated runs: 6 failures, all "respawned as impala again". Once the lunge windup landed, a second cause appeared: a still impala that spawned in a thicket counts as hidden and can't be caught | The test forced the guest to be an impala without taking impala out of its species bag, so the bag could deal impala next. The test now updates the bag and stages the encounter on open ground. Before, the guest could spawn still inside a thicket, which hides it from the lion | 130 repeated runs, 0 failures |
 | 2 | An away host stranded the lobby ("Only the host can start") | Host silent 12 s: guest's start → 403. Host dropped as stale: `room.host` still pointed at them | `settleRoom`: after a 10 s grace the earliest-joined online player becomes host. If the host has gone entirely, the most recently seen player takes over | `an away host hands the lobby…`, `a host removed as stale…` |
 | 3 | Concealed animals' exact coordinates went to every client | A burrowed warthog appeared in the other player's response with x/y | `viewFor`: a concealed animal is left out for everyone but its own player. A roster lists every human for the lobby and scores. Credentials, inputs, AI targets and plans, task progress, private messages, cooldowns and the room RNG state are no longer sent for other animals | `hidden animals, AI plans…` (checks the serialized text), browser check |
 | 4 | One-shot presses were lost on a failed request, and a stale press could act after a respawn | The client cleared E/Space/Q before the request. Presses had no id or life | Presses carry an id, increasing per player, plus the life they were made in. The client resends a press until the server acknowledges it (`act`). The server runs each id at most once. It drops a press from an earlier life, a press made while dead or outside a round, and a press more than 1.5 s old | `one-shot actions run once…`, `a lunge committed before a new life…` |
@@ -22,9 +22,9 @@ Simulated clock, every player polling every 140 ms with keyboard-style input. Re
 | | Response per poll | Download per room | D1 writes per poll | Writes per second | Server CPU per poll |
 |---|---|---|---|---|---|
 | 2 players, before | 122.9 KB | 1716 KB/s | 1.00 | 14.3 | 5.3 ms |
-| 2 players, after | 20.2 KB | 282 KB/s | 1.00 | 14.3 | 4.2 ms |
+| 2 players, after | 21.2 KB | 296 KB/s | 1.00 | 14.3 | 4.2 ms |
 | 8 players, before | 130.4 KB | 7276 KB/s | 1.00 | 57.1 | 6.0 ms |
-| 8 players, after | 25.0 KB | 1396 KB/s | 0.39 | 22.4 | 3.1 ms |
+| 8 players, after | 21.7 KB | 1212 KB/s | 0.39 | 22.4 | 3.0 ms |
 
 The stored state is still about 127 KB per write. Fixing that needs the room held in memory, for example in a Durable Object, rather than in a D1 row, and the deployment target for that isn't set up. Each poll still costs one D1 read.
 

@@ -48,11 +48,12 @@ try{
  const act=used.act;await wait(800);assert.equal(state(code).players.find(p=>p.id===host.id).act,act,'no second run');
  pass('Space on the host page ran the ability once and was acknowledged (act '+String(act).slice(-4)+')');
  // a burrowed player is absent from the other player's actual responses
- edit(code,room=>{Object.assign(room.players.find(p=>p.id===guest.id),{species:'warthog',abilityUntil:Date.now()+20000,deadUntil:0});});
+ edit(code,room=>{Object.assign(room.players.find(p=>p.id===guest.id),{species:'warthog',abilityUntil:Date.now()+20000,deadUntil:0});});const editAt=Date.now();
  const gx=String(state(code).players.find(p=>p.id===guest.id).x).slice(0,6);A.seen.length=0;const t0=Date.now();await wait(4000);const secs=(Date.now()-t0)/1000;
- const fps=await A.page.locator('.world-scene').first().getAttribute('data-fps').catch(()=>'?');console.log('host page fps (software GPU):',fps);const views=A.seen.map(t=>JSON.parse(t).room).filter(Boolean);assert.ok(views.length>=2,'host kept syncing ('+views.length+')');
+ const fps=await A.page.locator('.world-scene').first().getAttribute('data-fps').catch(()=>'?');console.log('host page fps (software GPU):',fps);// only responses computed after the change count (one already in flight may predate it)
+ const after=A.seen.filter(t=>JSON.parse(t).room?.serverTime>editAt),views=after.map(t=>JSON.parse(t).room);assert.ok(views.length>=2,'host kept syncing ('+views.length+')');
  for(const v of views)assert.ok(!v.players.some(p=>p.id===guest.id),'hidden warthog leaked');
- assert.ok(!A.seen.some(t=>t.includes(gx)),'its coordinates appear in no response');
+ assert.ok(!after.some(t=>t.includes(gx)),'its coordinates appear in no response');
  pass(`a burrowed warthog was absent from all ${views.length} of the other player's responses; the roster still lists it`);
  const sizes=A.seen.map(t=>t.length);pass(`real responses during play: mean ${Math.round(sizes.reduce((a,b)=>a+b,0)/sizes.length/1024)} KB, ${(sizes.length/secs).toFixed(1)} per second`);
  // the host's tab closes: after the grace period the guest becomes host
