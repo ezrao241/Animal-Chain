@@ -29,14 +29,14 @@ listed top speed, and holds it for its listed sprint time before tiring (lion 7.
 | --- | --- | --- | --- |
 | Lion | 22 m/s (79 km/h), spent after about 9 s | Collared wild lions: 20.6 m/s (74 km/h) by the third-fastest individual, 13.9 m/s at the 98th percentile; popular figure about 80 km/h. A charge rarely lasts beyond 100–200 m. | [Wilson et al. 2018, Nature 554:183](https://www.researchgate.net/publication/322697727_Biomechanics_of_predator-prey_arms_race_in_lion_zebra_cheetah_and_impala); [LionAlert](https://lionalert.org/predatory-behaviour/) |
 | Plains zebra | 18 m/s (65 km/h) | Commonly given as about 55–65 km/h; collared zebras reached 13.8 m/s (50 km/h) in routine running. Lions had about 37 % more acceleration and 72 % more deceleration than their prey in the same study, which the game's zebra acceleration and braking now follow. | [Wilson et al. 2018](https://www.researchgate.net/publication/322697727_Biomechanics_of_predator-prey_arms_race_in_lion_zebra_cheetah_and_impala); [Africa Freak](https://africafreak.com/how-fast-can-a-zebra-run) |
-| Impala | 21 m/s (76 km/h), 10 m bounds | Collared impala reached 17.7 m/s (64 km/h); wildlife charities quote up to 90 km/h and leaps of about 10 m. The game sits between the two. | [Wilson et al. 2018](https://www.researchgate.net/publication/322697727_Biomechanics_of_predator-prey_arms_race_in_lion_zebra_cheetah_and_impala); [IFAW: impalas](https://www.ifaw.org/international/animals/impalas) |
+| Impala | 17.7 m/s (64 km/h), 10 m bounds, the tightest turns in the game | Collared impala reached 17.7 m/s (64 km/h), the game's figure; wildlife charities quote up to 90 km/h (unmeasured) and leaps of about 10 m. Impala escape by agility (jinking turns and leaps) rather than by outrunning a lion. | [Wilson et al. 2018](https://www.researchgate.net/publication/322697727_Biomechanics_of_predator-prey_arms_race_in_lion_zebra_cheetah_and_impala); [IFAW: impalas](https://www.ifaw.org/international/animals/impalas) |
 | Spotted hyena | 17 m/s (61 km/h) for about 45 s | Up to about 60 km/h; chases often run several kilometres, at about 40–50 km/h when sustained. | [Spotted hyena (Wikipedia, citing Kruuk 1972)](https://en.wikipedia.org/wiki/Spotted_hyena); [Lateral magazine](https://www.lateralmag.com/articles/issue-23/hunters-of-the-night) |
 | Leopard | 16.5 m/s (59 km/h), short bursts | About 58–65 km/h in short bursts (popular sources; no field measurement found). | general references, approximate |
 | Warthog | 13 m/s (47 km/h) | Common warthog about 48 km/h. | [Africa Freak](https://africafreak.com/how-fast-can-a-warthog-run) |
 
 Simplifications: the 400 × 280 m map can't hold a several-kilometre hyena chase, so a hyena's endurance is shown as a
-45 s sprint (and Tireless) rather than a run of kilometres. The top-speed numbers for zebra and impala follow the
-commonly quoted figures, which are higher than the collar maxima from Wilson et al.; the collars logged everyday
+45 s sprint (and Tireless) rather than a run of kilometres. The zebra's top speed follows the commonly quoted figure,
+which is higher than the collar maximum from Wilson et al. (the impala uses the collar figure); the collars logged everyday
 running, and the authors note animals rarely reached their limits, so the true maxima are uncertain.
 
 ## Game rules (simplifications, not facts)
