@@ -83,7 +83,11 @@ export default function WorldScene({room,me,input,preview=false,onPerformance,on
      if(p.perched){position.x=THREE.MathUtils.damp(position.x,p.x,10,dt);position.y=THREE.MathUtils.damp(position.y,p.y,10,dt);position.vx=position.vy=0;}
      else{move(position,dt,ps,now);const tx=p.x+vx*lag,ty=p.y+vy*lag,error=Math.hypot(position.x-tx,position.y-ty),k=1-Math.exp(-(error>100?12:1.4)*dt);position.x+=(tx-position.x)*k;position.y+=(ty-position.y)*k;}vx=position.vx;vy=position.vy;
     }else{const k=1-Math.exp(-12*dt);position.x+=(p.x+vx*lag-position.x)*k;position.y+=(p.y+vy*lag-position.y)*k;}
-    const speed=Math.hypot(vx,vy);if(speed>3){const direction=-Math.atan2(vy,vx),delta=Math.atan2(Math.sin(direction-rig.turn),Math.cos(direction-rig.turn));rig.turn+=delta*(1-Math.exp(-18*dt));}
+    const speed=Math.hypot(vx,vy);
+    // Facing is separate from movement: the body swings toward where the animal is being steered (the input), or
+    // along its motion when there is no input, eased but capped at the species' turnRate so a 180 is a quick pivot.
+    {const steer=own&&r?.phase==='playing'?position:p,steering=Math.hypot(steer.dx,steer.dy)>.1&&!p.perched;
+     if(steering||speed>3){const direction=steering?-Math.atan2(steer.dy,steer.dx):-Math.atan2(vy,vx),delta=Math.atan2(Math.sin(direction-rig.turn),Math.cos(direction-rig.turn)),max=ANIMALS[p.species].gait.turnRate*dt;rig.turn+=THREE.MathUtils.clamp(delta*(1-Math.exp(-14*dt)),-max,max);}}
     rig.altitude=THREE.MathUtils.damp(rig.altitude,p.perched?p.perchHeight:0,6,dt);rig.root.rotation.y=rig.turn;rig.root.position.set(position.x,groundY(position.x,position.y)+rig.altitude,position.y);
     {const a=ANIMALS[p.species],start=p.abilityUntil-a.duration*1000;animateSafari(rig,{speed:p.perched?0:speed,time,dt,ability:p.abilityUntil>now?THREE.MathUtils.clamp((now-start)/(a.duration*1000),0,1):-1,action:p.actionUntil>now,perched:!!p.perched,altitude:rig.altitude,stunned:(p.stunUntil||0)>now});}
     shadow.position.set(position.x+3,groundY(position.x,position.y)+.6,position.y+2);{const sp=cameraProfile(p.species);shadow.scale.set(sp.shadow[0],sp.shadow[1],1);shadow.rotation.z=rig.turn;}
