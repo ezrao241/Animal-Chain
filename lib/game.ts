@@ -48,6 +48,8 @@ export type Player={id:string;token?:string;name:string;bot:boolean;species:Spec
  carry?:{hunger:number;thirst:number};
  /** whole minutes this life has been paid for staying alive */
  survived?:number;
+ /** the last one-shot action id processed for this player (lib/net.ts applyActions), so retries never run twice */
+ act?:number;
  tree?:number;climb?:Climb;ch?:number;side?:number;limb?:number;along?:number;limbDir?:number;goal?:number;mount?:number;climbHold?:number;vh?:number};
 /** one finished life: what it was, how long it lasted, what it earned and how it ended */
 export type LifeRecord={species:Species;seconds:number;points:number;food:number;hunts:number;cause:string};

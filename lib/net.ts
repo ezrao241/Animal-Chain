@@ -1,0 +1,135 @@
+// Room sessions shared by the multiplayer route (app/api/game/route.ts, rooms in D1) and the offline shim (play/api-shim.ts,
+// rooms in memory): lobby membership and host succession, one-shot actions that run at most once, and what each player is
+// sent. Rules stay in lib/game.ts; this file only decides who may do what, when, and who may see what.
+import {newPlayer,start,tick,useAbility,perch,interact,die,hidden,makeFoods,type Room,type Player,type Food} from './game.ts';
+
+export const ONLINE_MS=8000,        // a human who hasn't synced for this long is shown as away (tick() also freezes their input)
+ HOST_GRACE_MS=10000,               // an away host keeps the room this long (a reload or a tunnel), then an online player takes over
+ STALE_MS=90000,                    // away this long outside a round: dropped from the lobby / results
+ IDLE_ROOM_MS=30*60000,             // nobody has synced for this long: the room is gone
+ ACTION_MAX_AGE=1500,               // a one-shot press older than this (a long outage) is dropped rather than replayed late
+ COALESCE_MS=60,                    // a sync carrying nothing new within this long of the last tick is answered from the stored state
+ MAX_PLAYERS=8;
+
+export type Action={id:number;kind:'ability'|'interact'|'perch';born:number;age?:number};
+export type Outcome={status:number;body:Record<string,unknown>;save:boolean;remove?:boolean};
+const fail=(status:number,error:string):Outcome=>({status,body:{error},save:false});
+export const online=(p:Player,now:number)=>p.bot||now-p.lastSeen<ONLINE_MS;
+const humans=(room:Room)=>room.players.filter(p=>!p.bot);
+
+/** Drops long-gone humans outside a round (in a round they keep their animal and score) and hands the room on when the
+ *  host has been away past the grace period, or has gone. The new host is the earliest-joined online player. */
+export function settleRoom(room:Room,now:number){
+ let changed=false;
+ if(room.phase!=='playing'){const keep=room.players.filter(p=>p.bot||now-p.lastSeen<STALE_MS);if(keep.length!==room.players.length){room.players=keep;changed=true;}}
+ const people=humans(room),host=people.find(p=>p.id===room.host);
+ if(host&&now-host.lastSeen<HOST_GRACE_MS)return changed;
+ const next=people.find(p=>p.id!==room.host&&online(p,now))||(!host?people.slice().sort((a,b)=>b.lastSeen-a.lastSeen)[0]:undefined);
+ if(next&&next.id!==room.host){room.host=next.id;next.message='You are now the host.';next.messageUntil=now+4000;changed=true;}
+ else if(!next&&!host&&room.host){room.host='';changed=true;}
+ return changed;
+}
+
+/** Runs one-shot presses at most once each: ids are per-player and increasing, so a retried or reordered request can't
+ *  repeat one. A press made in an earlier life (born), while dead, outside a round, or too long ago is acknowledged and dropped. */
+export function applyActions(p:Player,room:Room,list:unknown,now:number){
+ if(!Array.isArray(list))return false;
+ const actions=list.slice(0,8).filter((a):a is Action=>!!a&&Number.isSafeInteger(a.id)&&['ability','interact','perch'].includes(a.kind)).sort((a,b)=>a.id-b.id);
+ let acted=false;
+ for(const a of actions){
+  if(a.id<=(p.act??0))continue;p.act=a.id;acted=true;
+  if(room.phase!=='playing'||p.deadUntil||a.born!==p.born||(Number(a.age)||0)>ACTION_MAX_AGE)continue;
+  if(a.kind==='ability')useAbility(p,room,now);else if(a.kind==='perch')perch(p,room,now);else interact(p,room,now);
+ }
+ return acted;
+}
+
+const clamp=(v:unknown)=>typeof v==='number'&&Number.isFinite(v)?Math.max(-1,Math.min(1,v)):0;
+/** One request against a loaded room (create is handled by the caller, which owns the room store). Mutates the room;
+ *  save says whether it must be written back, remove that the room is now empty and should be deleted. */
+export function roomRequest(room:Room,b:Record<string,unknown>,action:string,now:number,uuid:()=>string):Outcome{
+ let p=room.players.find(q=>!q.bot&&typeof b.token==='string'&&q.id===b.id&&q.token===b.token);
+ const seenBefore=p?.lastSeen??0;if(p)p.lastSeen=now;
+ const settled=settleRoom(room,now);
+ if(action==='join'){
+  // a player who still holds a valid session for this room gets it back instead of a second animal
+  if(p)return{status:200,body:{room:viewFor(room,p.id,now),id:p.id,token:p.token},save:true};
+  const name=String(b.name||'').trim().slice(0,18);if(!name)return fail(400,'Choose a nickname first.');
+  if(room.phase==='playing')return fail(409,'This round has started. Join the next room or ask the host to play again.');
+  if(humans(room).length>=MAX_PLAYERS)return fail(409,`This room is full (${MAX_PLAYERS} players).`);
+  p=newPlayer(uuid(),name,now);p.token=uuid();room.players.push(p);settleRoom(room,now);
+  return{status:200,body:{room:viewFor(room,p.id,now),id:p.id,token:p.token},save:true};
+ }
+ if(!p)return fail(401,'Your session is no longer in this room. Please rejoin.');
+ if(action==='sync'&&!settled&&quiet(p,seenBefore,room,b,now))return{status:200,body:{room:viewFor(room,p.id,room.phase==='playing'?room.tick:now)},save:false};
+ tick(room,now);
+ if(action==='start'||action==='practice'){
+  if(room.host!==p.id)return fail(403,'Only the host can start the round.');
+  // a repeated click or a retried request finds the round already running and gets it, rather than a second round or an error
+  if(room.phase==='playing')return!!room.practice===(action==='practice')?{status:200,body:{room:viewFor(room,p.id,now)},save:true}:fail(409,'The round is already running.');
+  const active=humans(room).filter(q=>online(q,now)),practice=action==='practice';
+  if(!practice&&active.length<2)return fail(409,'Invite one more player to start, or choose solo practice.');
+  if(practice&&active.length!==1)return fail(409,'Solo practice is for one player. Start a multiplayer round instead.');
+  room.practice=practice;room.players=active;start(room,now);
+ }else if(action==='leave'){
+  room.players=room.players.filter(q=>q.id!==p!.id);
+  if(!humans(room).length)return{status:200,body:{left:true},save:false,remove:true};
+  settleRoom(room,now);return{status:200,body:{left:true,room:viewFor(room,p.id,now)},save:true};
+ }else if(action==='restart'){
+  if(room.phase!=='playing')return fail(409,'Start the round first.');die(p,room,now,'started a new life.');
+ }else if(room.phase==='playing'){
+  const seq=Number(b.seq)||0;
+  if(seq>p.seq){p.seq=seq;p.dx=clamp(b.dx);p.dy=clamp(b.dy);p.sprint=b.sprint===true;p.inputAt=now;}
+  applyActions(p,room,b.actions,now);
+ }
+ return{status:200,body:{room:viewFor(room,p.id,now)},save:true};
+}
+
+/** A sync that changes nothing (same input, no presses, recently seen, the room ticked a moment ago) is answered from the
+ *  stored state as of its last tick, with no simulation step and no database write. */
+function quiet(p:Player,seenBefore:number,room:Room,b:Record<string,unknown>,now:number){
+ if(Array.isArray(b.actions)&&b.actions.some(a=>Number(a?.id)>(p.act??0)))return false;
+ if(now-seenBefore>2000)return false;
+ if(room.phase!=='playing')return true;
+ return now-room.tick<COALESCE_MS&&clamp(b.dx)===p.dx&&clamp(b.dy)===p.dy&&(b.sprint===true)===!!p.sprint;
+}
+
+// Fields only the server (and the animal's own player) may see: credentials, input, AI plans and targets, task progress,
+// private messages. Everything else describes what any animal on the plains could observe.
+const SERVER_ONLY=['token','bag','seq','act','inputAt','lastSeen','strikeId','strikeBorn'] as const;
+const OWNER_ONLY=['dx','dy','targetX','targetY','targetId','threatX','threatY','lastThreatAt','threatAt','homeX','homeY','nextDrink','chaseStart','thinkAt','stuckX','stuckY','stuckAt','unstickUntil','moodUntil','alarmAt','message','messageUntil','hunger','thirst','claimed','food','hunts','drinks','scavenged','escapes','hiddenSeconds','survivalSeconds'] as const;
+export type ViewPlayer=Omit<Player,typeof SERVER_ONLY[number]>&{online:boolean;concealed:boolean};
+export type RosterEntry={id:string;name:string;score:number;deaths:number;online:boolean};
+export type RoomView=Omit<Room,'players'|'foods'|'rs'>&{players:ViewPlayer[];foodChanges:Food[];roster:RosterEntry[];you:string;serverTime:number};
+
+const baseFoodCache=new Map<number,Food[]>();
+export const baseFoods=(seed:number)=>{let f=baseFoodCache.get(seed);if(!f)baseFoodCache.set(seed,f=makeFoods(seed));return f;};
+
+/** What one player is sent. A concealed animal (in a thicket, burrowed, lying along a limb) is left out entirely for
+ *  everyone but its own player, the same rule the renderer and sense() already apply; the roster still lists every human
+ *  for the lobby and scores. Food is sent as changes from the seed's fixed layout. */
+export function viewFor(room:Room,viewer:string,now:number):RoomView{
+ const players:ViewPlayer[]=[];
+ for(const p of room.players){
+  const own=p.id===viewer,concealed=!p.deadUntil&&hidden(p,room,now)&&!p.perched;
+  if(concealed&&!own)continue;
+  const v:Record<string,unknown>={...p,online:online(p,now),concealed};
+  for(const k of SERVER_ONLY)delete v[k];
+  if(!own)for(const k of OWNER_ONLY)delete v[k];
+  if(own&&p.act)v.act=p.act;
+  players.push(v as ViewPlayer);
+ }
+ const base=baseFoods(room.seed);
+ const foodChanges=room.foods.filter(f=>f.id>=base.length?!!f.until&&f.until>now:f.ready>now||!!f.until);
+ const {players:_p,foods:_f,rs:_r,...rest}=room;
+ return{...rest,players,foodChanges,roster:humans(room).map(p=>({id:p.id,name:p.name,score:p.score,deaths:p.deaths,online:online(p,now)})),you:viewer,serverTime:now};
+}
+
+/** Client side: rebuild the full food table from the seed layout plus the changes. */
+export function expandFoods(view:Pick<RoomView,'seed'|'foodChanges'>):Food[]{
+ const changed=new Map(view.foodChanges.map(f=>[f.id,f]));
+ return[...baseFoods(view.seed).map(f=>changed.get(f.id)||f),...view.foodChanges.filter(f=>f.id>=baseFoods(view.seed).length)];
+}
+
+/** JSON for the wire: fractional numbers (positions, velocities, angles) to two decimals, about a millimetre of game space. */
+export const encode=(data:unknown)=>JSON.stringify(data,(_k,v)=>typeof v==='number'&&!Number.isInteger(v)?Math.round(v*100)/100:v);
