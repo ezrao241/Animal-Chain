@@ -56,6 +56,12 @@ safari redo and are unchanged here.
 - **Scoring a life.** Species tasks pay once per species per round, however many lives it takes. Staying alive pays
   10, 20, 30... points for each further minute of the same life, and the menu's New life counts as a death (a 6 s
   wait, and the next animal starts no better fed or watered), so ending a life early never earns more.
+- **Who hunts zebra.** Lions favour zebra over smaller prey, and spotted hyenas take zebra only as a clan of three
+  or more within 30 m (a lone hyena can't); clan members travel together and join each other's chases. These follow
+  the real pattern (zebra is a staple of lions and of hyena clans; leopards take only foals, which the game leaves
+  out). Wild lions and hyenas go after favoured prey whenever they can, but only chase warthogs once they are
+  properly hungry. A standing zebra is easy to pick out in open grass, so it is seen from
+  further away than other still animals. Six lions, six hyenas and three leopards share the plains with 45 grazers.
 - **Mud.** Wading through a watering hole or its mud ring slows every animal to 80 %.
 - **Tracks.** Footprints are drawn about four times life size so they read from the follow camera. They fade within 55 s, or
   110 s in mud.

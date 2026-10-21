@@ -19,8 +19,8 @@ type Animal={name:string;subtitle:string;gait:Gait;ability:string;duration:numbe
 export const ANIMALS:Record<Species,Animal>={
  lion:{name:'Lion',subtitle:'Panthera leo · 190 kg',gait:{walk:1.4,run:8,sprint:22,accel:9.5,grip:16,brake:15,turnRate:7,sprintTime:9,recover:30,trot:Infinity,gallop:4.5},ability:'Charge',duration:1.6,cooldown:9,prey:['zebra','impala','warthog'],foods:['carrion'],diet:'Zebra, impala, warthog & carrion',tip:'Charge closes the gap. Watch a zebra’s hind legs. Q scrambles into a low, thick bough.',color:'#d9a54c',size:1.2,catchRange:26,sight:240,style:'Ambush and short charge',threat:'Nothing hunts you, but a zebra kick stuns you',defense:'Size: no predator here takes a lion'},
  leopard:{name:'Leopard',subtitle:'Panthera pardus · 60 kg',gait:{walk:1.2,run:8,sprint:16.5,accel:9,grip:20,brake:16,turnRate:10,sprintTime:10,recover:25,trot:Infinity,gallop:4},ability:'Stalk',duration:4,cooldown:9,prey:['impala','warthog'],foods:['carrion'],diet:'Impala, warthog & carrion',tip:'Stalk unseen, or Q to climb an acacia and drop on prey below.',color:'#e0b25e',size:.7,catchRange:20,sight:250,style:'Stalker and tree ambusher',threat:'Nothing hunts you; prey spots you if you rush',defense:'Climb an acacia (Q) to vanish into the canopy'},
- hyena:{name:'Spotted hyena',subtitle:'Crocuta crocuta · 60 kg',gait:{walk:1.3,run:6.5,sprint:17,accel:6,grip:15,brake:13,turnRate:8,sprintTime:45,recover:12,trot:2.2,gallop:7},ability:'Tireless',duration:6,cooldown:12,prey:['impala','warthog'],foods:['carrion'],diet:'Impala, warthog & any carcass',tip:'Outlast prey with Tireless. Every carcass is yours to clean up.',color:'#b99a6c',size:.8,catchRange:22,sight:230,style:'Endurance chaser and scavenger',threat:'Nothing hunts you; prey outruns a short chase',defense:'Tireless refills stamina for a long pursuit'},
- zebra:{name:'Plains zebra',subtitle:'Equus quagga · 300 kg',gait:{walk:1.6,run:7,sprint:18,accel:5.5,grip:13,brake:11,turnRate:6,sprintTime:30,recover:15,trot:2.6,gallop:8},ability:'Kick',duration:.6,cooldown:8,prey:[],foods:['grass'],diet:'Grasses',tip:'Kick stuns any predator right behind you.',color:'#ece6d6',size:1.35,catchRange:0,sight:260,style:'Herd watcher with a defensive kick',threat:'Lions',defense:'Kick a lion that is right behind you'},
+ hyena:{name:'Spotted hyena',subtitle:'Crocuta crocuta · 60 kg',gait:{walk:1.3,run:6.5,sprint:17,accel:6,grip:15,brake:13,turnRate:8,sprintTime:45,recover:12,trot:2.2,gallop:7},ability:'Tireless',duration:6,cooldown:12,prey:['impala','warthog','zebra'],foods:['carrion'],diet:'Impala, warthog, zebra (as a clan) & any carcass',tip:'Outlast prey with Tireless. A zebra needs the clan: hunt it with two more hyenas close by.',color:'#b99a6c',size:.8,catchRange:22,sight:230,style:'Endurance chaser and scavenger',threat:'Nothing hunts you; prey outruns a short chase',defense:'Tireless refills stamina for a long pursuit'},
+ zebra:{name:'Plains zebra',subtitle:'Equus quagga · 300 kg',gait:{walk:1.6,run:7,sprint:18,accel:5.5,grip:13,brake:11,turnRate:6,sprintTime:30,recover:15,trot:2.6,gallop:8},ability:'Kick',duration:.6,cooldown:8,prey:[],foods:['grass'],diet:'Grasses',tip:'Kick stuns any predator right behind you.',color:'#ece6d6',size:1.35,catchRange:0,sight:260,style:'Herd watcher with a defensive kick',threat:'Lions and hyena clans',defense:'Kick a predator that is right behind you'},
  impala:{name:'Impala',subtitle:'Aepyceros melampus · 55 kg',gait:{walk:1.4,run:9,sprint:21,accel:8,grip:24,brake:18,turnRate:12,sprintTime:18,recover:14,trot:2.4,gallop:6},ability:'Leap',duration:.9,cooldown:6,prey:[],foods:['grass','browse'],diet:'Grass & acacia browse',tip:'Leap clears a predator’s reach. Keep moving.',color:'#c98a4b',size:.85,catchRange:0,sight:280,style:'Alert sprinter, sharp turns and leaps',threat:'Lions, leopards and hyenas',defense:'Leap clear of a catch at the last moment'},
  warthog:{name:'Warthog',subtitle:'Phacochoerus africanus · 75 kg',gait:{walk:1.2,run:5.5,sprint:13,accel:6.5,grip:18,brake:15,turnRate:10,sprintTime:14,recover:14,trot:2,gallop:6},ability:'Burrow',duration:5,cooldown:9,prey:[],foods:['grass','roots'],diet:'Grass, roots & bulbs',tip:'Back into a burrow to vanish. Dig up roots to eat.',color:'#8e7a6a',size:.7,catchRange:0,sight:170,style:'Burrow escape artist',threat:'Lions, leopards and hyenas',defense:'Back into a burrow to become uncatchable'},
 };
@@ -40,6 +40,8 @@ export type Player={id:string;token?:string;name:string;bot:boolean;species:Spec
  strikeId?:string;strikeAt?:number;strikeAmbush?:boolean;
  /** the life (born time) a strike was committed in: a strike never carries over into a new life */
  strikeBorn?:number;
+ /** the line the lunge was launched along */
+ strikeDir?:number;
  /** species tasks already rewarded this round ('zebra:1'): a new life doesn't pay the same task twice */
  done?:string[];
  /** this round's lives so far, for the death card and the end-of-round recap; lifeStart is the score a life began on */
@@ -53,7 +55,7 @@ export type Player={id:string;token?:string;name:string;bot:boolean;species:Spec
 export type LifeRecord={species:Species;seconds:number;points:number;food:number;hunts:number;cause:string};
 export type Room={code:string;host:string;phase:'lobby'|'playing'|'finished';started:number;ends:number;tick:number;players:Player[];foods:Food[];events:string[];seed:number;round:number;practice?:boolean;rs?:number};
 // Computer-controlled wildlife keeps savanna proportions: plenty of grazers, a few predators.
-const WILDLIFE_MIX:Species[]=['impala','zebra','impala','warthog','zebra','impala','hyena','impala','warthog','zebra','lion','impala','warthog','zebra','leopard','impala','warthog','hyena','zebra','impala'];
+const WILDLIFE_MIX:Species[]=['impala','zebra','impala','warthog','zebra','impala','hyena','impala','warthog','zebra','lion','impala','warthog','zebra','leopard','lion','warthog','hyena','zebra','impala'];
 export const WILDLIFE:Species[]=Array.from({length:60},(_,i)=>WILDLIFE_MIX[i%WILDLIFE_MIX.length]);
 export function savannaEvent(room:Pick<Room,'started'>,now:number){const stage=Math.min(2,Math.floor(Math.max(0,now-room.started)/100000));return [
  {name:'GOLDEN GRAZE',detail:'Food is worth +2 extra points',kind:'forage',next:room.started+100000},
@@ -200,6 +202,8 @@ export const headDown=(p:Pick<Player,'mood'|'id'>,now:number)=>p.mood==='graze'&
 export function conspicuity(t:Player,ps:Prop[],now:number){
  const v=speedOf(t),pace=walkPace(t.species);
  let c=v<8?.35:v<pace*.65?.6:v<pace*1.05?.8:1;
+ // a zebra is big and boldly striped in open grass: even standing still it is easy to pick out
+ if(t.species==='zebra')c=Math.max(c,.65);
  if(stalking(t,now))c*=.45;
  if(t.perched)c*=.5;
  else if(t.species!=='zebra'&&inThicket(ps,t.x,t.y))c*=.45;
@@ -244,6 +248,18 @@ export function sense(o:Player,t:Player,room:Room,now:number,ps=props(room.seed)
 export const THIRST_RATE=100/240,THIRSTY=60,FULL=90;
 /** Food runs down per second. Grazers live on poor food and must eat most of the day; big carnivores gorge on a kill
  *  and can go days between meals, so their meter falls more slowly (game rates, real ordering). */
+/** Spotted hyenas bring down zebra only as a clan (Kruuk's Serengeti hunts: several hyenas, often many more, run a
+ *  zebra down together); a lone hyena can't. A hyena counts as in a clan with two more within 30 m. */
+export const CLAN_SIZE=3,CLAN_RANGE=300;
+export function canTake(p:Player,q:{species:Species},room:Room,range=CLAN_RANGE){
+ if(!ANIMALS[p.species].prey.includes(q.species))return false;
+ if(p.species==='hyena'&&q.species==='zebra')return room.players.filter(o=>o!==p&&o.species==='hyena'&&!o.deadUntil&&dist(o,p)<range).length>=CLAN_SIZE-1;
+ return true;
+}
+/** How much a wild hunter favours each prey when choosing (it will go after a favoured animal further away): lions
+ *  mostly hunt zebra and other big grazers, hyena clans run down zebra and impala. Small prey (below 1) is only worth
+ *  a chase once the hunter is properly hungry. */
+const PREFERENCE:Partial<Record<Species,Partial<Record<Species,number>>>>={lion:{zebra:3,impala:1,warthog:.35},hyena:{zebra:2.2,impala:1,warthog:.6}};
 export const HUNGER_RATE:Record<Species,number>={lion:.35,leopard:.4,hyena:.45,zebra:.6,impala:.6,warthog:.6};
 export const UNITS_PER_METRE=10,TRUNK_RADIUS=7,POUNCE_RANGE=42,AMBUSH_RANGE=60,KICK_RANGE=40,FOOD_RANGE=18,BURROW_REACH=45,TREE_REACH=40,WATER_REACH=30,THREAT_RANGE=300,LEAP_SPEED=11,STALK_SPEED=1;
 const wrap=(a:number)=>Math.atan2(Math.sin(a),Math.cos(a)),clamp=(v:number,a:number,b:number)=>Math.max(a,Math.min(b,v));
@@ -460,7 +476,7 @@ export function climbPose(ps:Prop[],p:Pick<Player,'species'|'x'|'y'|'heading'|'c
 export const behind=(p:Player,q:{x:number;y:number})=>Math.cos(Math.atan2(q.y-p.y,q.x-p.x)-(p.heading??0))<-.35;
 export function useAbility(p:Player,room:Room,now:number){if(now<p.abilityReady||p.deadUntil)return;
  if(p.climb){notify(p,'Press Q to climb down first.',now);return;}
- if(p.species==='warthog'){const burrow=props(room.seed).filter(t=>t.kind==='burrow'&&dist(t,p)<BURROW_REACH).sort((a,b)=>dist(a,p)-dist(b,p))[0];if(!burrow){notify(p,'Find a burrow first: a dark hole in open ground.',now);return;}p.x=burrow.x;p.y=burrow.y;p.dx=0;p.dy=0;}
+ if(p.species==='warthog'){const burrow=props(room.seed).filter(t=>t.kind==='burrow'&&dist(t,p)<BURROW_REACH).sort((a,b)=>dist(a,p)-dist(b,p))[0];if(!burrow){notify(p,'Find a burrow first: a dark hole in open ground.',now);return;}const sa=idHash(p.id)*6.28;p.x=burrow.x+Math.cos(sa)*5;p.y=burrow.y+Math.sin(sa)*5;p.dx=0;p.dy=0;}
  if(p.species==='zebra'){const close=room.players.filter(q=>!q.deadUntil&&ANIMALS[q.species].prey.includes('zebra')&&dist(q,p)<KICK_RANGE),kicked=close.filter(q=>behind(p,q));if(close.length&&!kicked.length)notify(p,'Missed: a kick only reaches behind you.',now);for(const q of kicked){q.stunUntil=now+2500;const d=Math.max(1,dist(q,p));q.x=Math.max(25,Math.min(W-25,q.x+(q.x-p.x)/d*20));q.y=Math.max(25,Math.min(H-25,q.y+(q.y-p.y)/d*20));notify(q,'Kicked by a zebra! Stunned.',now);}if(kicked.length){p.score+=4;notify(p,'Kick landed +4',now);}}
  if(p.species==='hyena')p.stamina=100,p.exhausted=false;
  if(p.species==='impala'){const g=Math.hypot(p.vx,p.vy)||1,h=Math.hypot(p.dx,p.dy)>.1?Math.atan2(p.dy,p.dx):Math.atan2(p.vy,p.vx),v=Math.max(g,LEAP_SPEED*UNITS_PER_METRE);p.vx=Math.cos(h)*v;p.vy=Math.sin(h)*v;}
@@ -477,14 +493,14 @@ export function interact(p:Player,room:Room,now:number){if(p.deadUntil||now<p.in
  if(p.stunUntil>now){notify(p,'Still stunned.',now);return;}
  const a=ANIMALS[p.species],ambush=p.species==='leopard'&&p.climb==='limb';
  const reach=ambush?AMBUSH_RANGE:p.abilityUntil>now&&(p.species==='lion'||p.species==='leopard')?POUNCE_RANGE:a.catchRange;
- const victims=room.players.filter(q=>q.id!==p.id&&!q.deadUntil&&q.protectedUntil<now&&a.prey.includes(q.species)&&!hidden(q,room,now)&&!leaping(q,now)&&dist(p,q)<reach);victims.sort((x,y)=>dist(p,x)-dist(p,y));
+ const victims=room.players.filter(q=>q.id!==p.id&&!q.deadUntil&&q.protectedUntil<now&&canTake(p,q,room)&&!hidden(q,room,now)&&!leaping(q,now)&&dist(p,q)<reach);victims.sort((x,y)=>dist(p,x)-dist(p,y));
  if(p.climb&&!ambush)return;
  // A catch is a committed lunge: aimed at prey in front, with nothing solid in between, and it lands a quarter of a
  // second later (the prey sees the hunter gather itself and can still leap, kick or break away). A leopard's ambush
  // is a leap from the bough that is checked when it lands.
  if(victims.length&&!ambush){const ps=props(room.seed),q=victims.find(q=>inFront(p,q)&&!contactBlocked(ps,p,q));
   if(!q){notify(p,'Missed: face your prey, with nothing in the way.',now);return;}
-  p.strikeId=q.id;p.strikeAt=now+STRIKE_WINDUP;p.strikeAmbush=false;p.strikeBorn=p.born;q.threatAt=now;notify(p,'Lunge!',now);notify(q,'Lunge! '+a.name+' right on you',now);p.heading=Math.atan2(q.y-p.y,q.x-p.x);return;}
+  p.strikeId=q.id;p.strikeAt=now+STRIKE_WINDUP;p.strikeAmbush=false;p.strikeBorn=p.born;p.strikeDir=Math.atan2(q.y-p.y,q.x-p.x);q.threatAt=now;notify(p,'Lunge!',now);notify(q,'Lunge! '+a.name+' right on you',now);p.heading=Math.atan2(q.y-p.y,q.x-p.x);return;}
  if(victims[0]&&ambush){const q=victims[0];dropOnto(p,props(room.seed),q);p.strikeId=q.id;p.strikeAt=0;p.strikeAmbush=true;p.strikeBorn=p.born;return;}
  if(ambush){notify(p,'No prey below. Wait for it to come closer.',now);return;}
  const f=nearest(room.foods,p,FOOD_RANGE,f=>f.ready<=now&&(!f.until||f.until>now)&&(a.foods as string[]).includes(f.kind));
@@ -495,16 +511,19 @@ export function interact(p:Player,room:Room,now:number){if(p.deadUntil||now<p.in
   // water refills thirst (not food) and only scores when the animal really needed it
   if((p.thirst??100)>=THIRSTY){notify(p,'Not thirsty yet.',now);return;}
   p.drinks++;p.thirst=100;p.score+=2;notify(p,'A long drink +2',now);return;}
- if(!p.bot)notify(p,'Move closer to your food, water or suitable prey.',now);
+ if(!p.bot)notify(p,p.species==='hyena'&&room.players.some(q=>q.species==='zebra'&&!q.deadUntil&&dist(p,q)<a.catchRange*1.5)?'A zebra is too big alone: bring two more hyenas close.':'Move closer to your food, water or suitable prey.',now);
 }
 /** The moment a lunge lands (or a leopard lands from its leap): the prey must still be there, catchable, in reach and
  *  in front, with nothing solid between. Otherwise it got away. */
+/** The prey is still ahead of the lunge (a cat twists in the air to follow prey that jinks, but can't catch one that
+ *  has slipped behind it), or already under the hunter. */
+const lungeLine=(p:Player,q:Player)=>dist(p,q)<12||Math.cos(Math.atan2(q.y-p.y,q.x-p.x)-(p.strikeDir??strikeDirection(p)))>0;
 export function resolveStrike(p:Player,room:Room,now:number){
  const q=room.players.find(o=>o.id===p.strikeId),a=ANIMALS[p.species],ambush=!!p.strikeAmbush,ps=props(room.seed),life=p.strikeBorn;
  p.strikeId='';p.strikeAt=0;p.strikeAmbush=false;if(p.deadUntil||life!==p.born)return;
  if((p.stunUntil??0)>now){notify(p,'Missed: knocked off balance.',now);return;}
  const reach=(ambush?a.catchRange*1.3:p.abilityUntil>now&&(p.species==='lion'||p.species==='leopard')?POUNCE_RANGE:a.catchRange)*1.15;
- const caught=!!q&&!q.deadUntil&&q.protectedUntil<now&&!hidden(q,room,now)&&!leaping(q,now)&&dist(p,q)<reach&&(ambush||inFront(p,q))&&!contactBlocked(ps,p,q);
+ const caught=!!q&&!q.deadUntil&&q.protectedUntil<now&&canTake(p,q,room)&&!hidden(q,room,now)&&!leaping(q,now)&&dist(p,q)<reach&&(ambush||lungeLine(p,q))&&!contactBlocked(ps,p,q);
  if(!q||!caught){notify(p,ambush?'Missed: the prey moved before you landed.':'Missed: it broke away.',now);if(q&&!q.deadUntil)q.threatAt=now;return;}
  if(!ambush){p.x=q.x-(q.x-p.x)*.3;p.y=q.y-(q.y-p.y)*.3;}
  die(q,room,now,'was caught by a '+a.name.toLowerCase()+'.');dropCarcass(room,q.x,q.y,now);p.hunger=Math.min(100,p.hunger+45);p.hunts++;p.food++;
@@ -622,7 +641,7 @@ function grazer(p:Player,room:Room,ps:Prop[],t:number,think:number):Plan{
    if(p.species==='warthog'){const b=ps.filter(o=>o.kind==='burrow'&&dist(o,p)<400).sort((x,y)=>dist(x,p)-dist(y,p))[0];if(b){const ready=t>p.abilityReady,a=idHash(p.id)*6.28;
     // a burrow it can't use yet: wait at the mouth, each hog at its own spot, rather than all on the hole
     goal=ready?b:{x:b.x+Math.cos(a)*16,y:b.y+Math.sin(a)*16};if(ready&&dist(p,b)<BURROW_REACH)activate(p,room,t);}}
-   else if(src&&t>p.abilityReady&&(p.species==='zebra'?dist(src,p)<KICK_RANGE&&behind(p,src):dist(src,p)<70))activate(p,room,t);
+   else if(src&&t>p.abilityReady&&(p.species==='zebra'?dist(src,p)<KICK_RANGE&&behind(p,src)&&roll(room)<.04:dist(src,p)<70))activate(p,room,t);
    return{goal,pace:1};
   }
  }
@@ -650,22 +669,31 @@ function grazer(p:Player,room:Room,ps:Prop[],t:number,think:number):Plan{
 // Predators: they hunt only prey they have noticed, creep in (swinging crosswind so the breeze doesn't carry their scent
 // ahead), charge from close range, and give up a chase that runs long, then rest in shade before hunting again.
 // Lions rarely charge from beyond ~30 m and seldom run more than 100–200 m; hyenas wear prey down over longer runs.
+/** Below this food level a wild predator goes looking for prey. Lions and hyena clans take any good chance at a
+ *  zebra herd (real lions hunt opportunistically when prey comes close, even after eating); leopards are choosier. */
+const KEEN:Partial<Record<Species,number>>={lion:97,hyena:97,leopard:85};
 export const CHASE={lion:{start:150,give:5000,walk:.35},leopard:{start:110,give:4000,walk:.3},hyena:{start:230,give:12000,walk:.55}} as const;
 function hunter(p:Player,room:Room,ps:Prop[],t:number):Plan{
- const a=ANIMALS[p.species],c=CHASE[p.species as keyof typeof CHASE];
+ const a=ANIMALS[p.species],c=CHASE[p.species as keyof typeof CHASE],keen=KEEN[p.species]??85;
  if(p.mood==='rest'&&t<p.moodUntil){const tree=nearest(ofKind(ps,'tree'),p,500);return{goal:tree?{x:tree.x+22,y:tree.y+6}:undefined,pace:.3};}
  let q=p.targetId?room.players.find(o=>o.id===p.targetId):undefined;
  if(q&&(q.deadUntil||hidden(q,room,t)))q=undefined;
  if(q){if(sense(p,q,room,t,ps))p.lastThreatAt=t;else if(t-p.lastThreatAt>2500)q=undefined;}
- if(!q&&p.hunger<85){let best=Infinity;for(const o of room.players){if(o===p||o.deadUntil||o.protectedUntil>t||!a.prey.includes(o.species))continue;const d=dist(p,o);if(d<best&&d<400&&sense(p,o,room,t,ps)){best=d;q=o;}}if(q){p.targetId=q.id;p.lastThreatAt=t;p.mood='stalk';}}
+ // a clan mate already after something: join the hunt (hyenas converge on a chase)
+ if(!q&&p.species==='hyena'&&p.hunger<keen){const mate=room.players.find(o=>o!==p&&o.bot&&o.species==='hyena'&&!o.deadUntil&&o.targetId&&(o.mood==='chase'||o.mood==='stalk')&&dist(o,p)<400);const m=mate&&room.players.find(o=>o.id===mate.targetId);if(m&&!m.deadUntil&&!hidden(m,room,t)){q=m;p.targetId=m.id;p.lastThreatAt=t;p.mood=mate.mood;p.chaseStart=t;}}
+ if(!q&&p.hunger<keen){let best=Infinity;for(const o of room.players){if(o===p||o.deadUntil||o.protectedUntil>t||!canTake(p,o,room,CLAN_RANGE*2))continue;const like=PREFERENCE[p.species]?.[o.species]??1;if(like<1&&p.hunger>=70)continue;const d=dist(p,o)/like;if(d<best&&dist(p,o)<400&&sense(p,o,room,t,ps)){best=d;q=o;}}if(q){p.targetId=q.id;p.lastThreatAt=t;p.mood='stalk';}}
  if(!q){
   p.targetId='';if(p.mood==='chase'||p.mood==='stalk')p.mood='patrol';
   if(p.species==='leopard'&&p.hunger>75&&t>p.abilityReady&&nearestTree(p,room)){perch(p,room,t);return{pace:0};}
-  if(p.hunger>=85){p.mood='rest';p.moodUntil=t+8000;return{pace:0};}
+  if(p.hunger>=keen){p.mood='rest';p.moodUntil=t+8000;return{pace:0};}
   // circling vultures give a carcass away from far off: scavengers head for any within 70 m
   const carcass=nearest(room.foods,p,700,f=>f.kind==='carrion'&&f.ready<=t&&(!f.until||f.until>t));
   if(carcass)return{goal:carcass,pace:.6};
   p.mood='patrol';
+  // a hyena clan travels together behind its first member, so it is a clan when it meets a zebra herd
+  if(p.species==='hyena'&&p.herd){const lead=room.players.find(o=>o.herd===p.herd&&o.species==='hyena'&&!o.deadUntil);if(lead&&lead!==p&&dist(lead,p)<900)return{goal:{x:lead.x-(lead.vx||0)*.6+(idHash(p.id)-.5)*80,y:lead.y-(lead.vy||0)*.6+(idHash(p.id+'y')-.5)*80},pace:dist(lead,p)>160?.6:.4};}
+  // lions and hyenas know where the zebra herds graze and work towards them (real lions hunt the herds around water)
+  if((p.species==='lion'||p.species==='hyena')&&(!p.targetX||dist(p,{x:p.targetX,y:p.targetY})<50)&&roll(room)<.6){const zs=room.players.filter(o=>o.species==='zebra'&&!o.deadUntil);if(zs.length){const z=zs[Math.floor(roll(room)*zs.length)],ang=roll(room)*Math.PI*2,d=180+roll(room)*120;p.targetX=Math.max(80,Math.min(W-80,z.homeX+Math.cos(ang)*d));p.targetY=Math.max(80,Math.min(H-80,z.homeY+Math.sin(ang)*d));if(p.species==='lion'){p.homeX=p.targetX;p.homeY=p.targetY;}}}
   if(!p.targetX||dist(p,{x:p.targetX,y:p.targetY})<50){const w=ps.filter(o=>o.kind==='water');const r=roll(room);if(r<.4){const o=w[Math.floor(roll(room)*w.length)],ang=roll(room)*Math.PI*2;p.targetX=o.x+Math.cos(ang)*(o.size+90);p.targetY=o.y+Math.sin(ang)*(o.size+90);}else{const ang=roll(room)*Math.PI*2,d=150+roll(room)*350;p.targetX=Math.max(80,Math.min(W-80,p.homeX+Math.cos(ang)*d));p.targetY=Math.max(80,Math.min(H-80,p.homeY+Math.sin(ang)*d));}}
   return{goal:{x:p.targetX,y:p.targetY},pace:.35};
  }
@@ -714,6 +742,8 @@ function steer(p:Player,room:Room,ps:Prop[],t:number,dt:number,humans:Player[]){
  // stuck (pushing into a kopje, wedged between boulders): side-step for a moment and pick a new wander target
  if(t-p.stuckAt>1500){if(Math.hypot(p.dx,p.dy)>.2&&Math.hypot(p.x-p.stuckX,p.y-p.stuckY)<12){p.unstickUntil=t+1200;p.targetX=0;}p.stuckX=p.x;p.stuckY=p.y;p.stuckAt=t;}
  if(t<p.unstickUntil){const dx=p.dx;p.dx=-p.dy*slide;p.dy=dx*slide;}
- if(p.hunger<90||!a.prey.length)interact(p,room,t);
+ // a hunter in a chase lunges only once its quarry is in reach (pressing early would waste the lunge's cooldown)
+ if(a.prey.length&&p.mood==='chase'){const q=room.players.find(o=>o.id===p.targetId),reach=p.abilityUntil>t&&(p.species==='lion'||p.species==='leopard')?POUNCE_RANGE:a.catchRange;if(q&&dist(p,q)<reach*.9)interact(p,room,t);}
+ else if(p.hunger<90||!a.prey.length)interact(p,room,t);
 }
-export function publicRoom(room:Room,now:number){return{...room,players:room.players.map(({token,bag,strikeId,strikeBorn,done,carry,...p})=>({...p,online:p.bot||now-p.lastSeen<8000,concealed:hidden(p,room,now)&&!p.perched})),serverTime:now};}
+export function publicRoom(room:Room,now:number){return{...room,players:room.players.map(({token,bag,strikeId,strikeBorn,strikeDir,done,carry,...p})=>({...p,online:p.bot||now-p.lastSeen<8000,concealed:hidden(p,room,now)&&!p.perched})),serverTime:now};}
