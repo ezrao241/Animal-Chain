@@ -6,7 +6,7 @@ The map is one place at one time, so the light, colours and vegetation stay cons
 
 - **Place:** central Serengeti, Tanzania, around Seronera: open grassland with scattered umbrella thorn acacias, granite kopjes and seasonal watering holes. About 2.3° S.
 - **Season:** early dry season, late June. Little rain, clear skies with a few fair-weather cumulus. The grass is drying to straw and tan but still grey-green at the base, with green flushes near water and in damp swales.
-- **Time:** about 10:30 in the morning. At this latitude in late June the sun is roughly 50° above the horizon in the north-east, so shadows are short and fall to the south-west.
+- **Time:** about 10:00 solar time. On 25 June at 2.3° S the sun is 51° above the horizon at an azimuth of 47° (north-east), so shadows are short and fall to the south-west. On the map north is -z (up on the minimap) and east is +x.
 
 ## How the game shows it
 
@@ -18,7 +18,8 @@ The map is one place at one time, so the light, colours and vegetation stay cons
 | Ground | Straw, tan and grey-green mixed per facet; olive swales; red-brown bare soil; greener grass and mud at the watering holes; pale worn game trails; dug earth at burrows. |
 | Trees | Umbrella thorn acacias with grey-olive dry-season canopies. Their trunks and limbs come from `lib/acacia.ts`, which the climbing rules also use. |
 | Kopjes | Grey-pink granite boulders with pale tops and yellow-orange lichen, sunk into low mounds. |
-| Home screen | Keeps its separate golden-hour look (low sun in the north-west); only the game itself uses late morning. |
+| Flowers | Only a few white and yellow drifts, and only in damp swales and near water: the main flowering follows the rains, which have ended. |
+| Home screen | Keeps its separate golden-hour look; its sun sits about 22° up in the west-north-west, where the late-June sun sets at this latitude. Only the game itself uses mid-morning. |
 
 `?graphics=performance|balanced|high` on the page URL pins the quality tier. Real shadow maps are drawn on `high`; the other tiers use the painted shade.
 
@@ -26,7 +27,7 @@ The map is one place at one time, so the light, colours and vegetation stay cons
 
 - Dry-season timing and July conditions: [Discover Africa, Serengeti in July](https://www.discoverafrica.com/safaris/serengeti-national-park/serengeti-july/), [Champion Traveler, best time to visit Serengeti](https://championtraveler.com/dates/best-time-to-visit-serengeti-national-park-tz/). These are travel sources; the season is a broad choice, not a precise climate claim.
 - Kopjes as exposed granite inselbergs with vegetation in soil-filled cracks, and as refuges and lookouts for animals: [Amusing Planet, The Kopjes of Serengeti](https://www.amusingplanet.com/2014/09/the-kopjes-of-serengeti.html), [World Safaris, kopjes as islands of biodiversity](https://worldsafaris.com/incredible-kopjes-islands-of-biodiversity/).
-- Sun height and direction are worked out from the latitude and the June solstice declination (about +23.4°), not taken from a source.
+- Sun height and direction are computed with the standard solar-position formulas from latitude -2.3°, declination +23.4° (June solstice) and hour angle -30° (10:00 solar time): sin(altitude) = sin(lat)·sin(dec) + cos(lat)·cos(dec)·cos(H) gives 51°; cos(azimuth) = (sin(dec) - sin(alt)·sin(lat)) / (cos(alt)·cos(lat)) gives 47° east of north. Sunset azimuth: cos(A) = sin(dec)/cos(lat) gives 67° from north, i.e. about 23° north of west.
 
 ## Simplifications
 

@@ -1,5 +1,5 @@
 // The Golden Plains: a faceted African savanna modelled on the central Serengeti (Seronera) in the early dry season
-// (late June, about 10:30 in the morning: clear sky, a few fair-weather cumulus, straw-tan grass still green at the
+// (late June, about 10:00 in the morning: clear sky, a few fair-weather cumulus, straw-tan grass still green at the
 // base, green flushes by water, granite kopjes). See docs/visual-reference.md. It is built in code from the shared prop table (lib/game.ts), so the
 // colliders the server uses and the acacias, kopjes, thickets, burrows and watering holes the player sees always agree.
 // Terrain is a faceted height grid; groundY() interpolates the same triangles, so animals stand exactly on the facets.
@@ -123,9 +123,10 @@ function instanced(geometry:THREE.BufferGeometry,material:THREE.Material,items:P
  items.forEach((it,i)=>{q.setFromEuler(e.set(0,it.rot,0));m.compose(new THREE.Vector3(it.x,it.y,it.z),q,new THREE.Vector3(it.scale,it.scale*(it.sy??1),it.scale));mesh.setMatrixAt(i,m);if(tinted)mesh.setColorAt(i,it.tint??white);});
  mesh.count=items.length;mesh.castShadow=shadow;mesh.receiveShadow=true;mesh.computeBoundingSphere();return mesh;
 }
-// Late-morning sun at 2.3° S in late June: about 50° up, in the north-east (north is -z on the map), so shadows are
-// short and fall to the south-west. One vector drives the light, the sun disc, the sky glow and every painted shade.
-const SUN=new THREE.Vector3(.53,.77,-.36).normalize();
+// Sun at 2.3° S on 25 June at 10:00 solar time: altitude 51°, azimuth 47° east of north (north is -z, east is +x on
+// the map), so shadows are short and fall to the south-west. One vector drives the light, the sun disc, the sky glow
+// and every painted shade.
+const SUN=new THREE.Vector3(.46,.78,-.43).normalize();
 /** Where a shadow falls on the ground for something whose shade is cast from `height` units up. */
 const shadowOffset=(height:number)=>({x:-SUN.x/SUN.y*height,z:-SUN.z/SUN.y*height});
 // grass colour per tuft: mostly gold, some pale straw, rusty red oat grass, olive in the damp swales, green by water
@@ -135,7 +136,9 @@ function grassTint(x:number,z:number,lush:boolean){
  const swale=Math.sin(x*.0017+1)*Math.sin(z*.0021+Math.sin(x*.0011)*1.5),r=hash(x,z,22),rusty=Math.sin(x*.0043-z*.0029)>.55;
  return swale>.4&&r<.55?SAGE:rusty&&r<.6?RUST:r<.3?STRAW:GOLD;
 }
-const FLOWERS=[new THREE.Color(1,1,1),new THREE.Color(1,.86,.3),new THREE.Color(.78,.58,.98),new THREE.Color(1,.66,.72)];
+// early dry season: the rains' flowering is over, so only a few white and yellow late bloomers survive where the soil stays damp
+const FLOWERS=[new THREE.Color(1,1,1),new THREE.Color(1,.86,.3)];
+const damp=(x:number,z:number)=>Math.sin(x*.0017+1)*Math.sin(z*.0021+Math.sin(x*.0011)*1.5)>.3||WATERS.some(w=>Math.hypot(x-w.x,z-w.y)<w.size*2.6);
 
 /** A ring of faceted hills at the horizon, drawn far to near: blue-lavender ranges, sage ridges, then low golden rises
  *  with acacia silhouettes. Faces turned to the sun are warm, faces in their own shade cool, and every foot fades into haze. */
@@ -240,8 +243,8 @@ export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
   // reeds and green sedge standing in the shallows of each watering hole
   for(const w of WATERS)if(Math.floor(w.x/CH)===cx&&Math.floor(w.y/CH)===cz)for(let k=0;k<w.size*(lightweight?.25:.6);k++){const a=hash(w.x,k,31)*6.283,d=w.size*(.8+hash(w.y,k,32)*.22),x=w.x+Math.cos(a)*d,z=w.y+Math.sin(a)*d;per[3].push({x,y:Math.max(groundY(x,z),waterLevel(w)-3)-1,z,rot:a,scale:.7+hash(k,w.x,33)*.5,tint:hash(k,w.y,34)<.7?LUSH:SAGE});}
   if(!lightweight){
-   // wildflowers grow in loose drifts; stones lie scattered on the plain and pile up around the kopjes
-   for(let d=0;d<3;d++){const fx=cx*CH+hash(cx,cz,d*7+100)*CH,fz=cz*CH+hash(cx,cz,d*7+101)*CH,tint=FLOWERS[Math.floor(hash(cx,cz,d*7+102)*FLOWERS.length)];for(let k=0;k<14;k++){const x=fx+(hash(fx,k,1)-.5)*70,z=fz+(hash(fz,k,2)-.5)*70;if(!blocked(x,z))per[4].push({x,y:groundY(x,z)-.3,z,rot:hash(x,z,4)*6.28,scale:.8+hash(x,z,5)*.6,tint});}}
+   // a few wildflower drifts in damp ground; stones lie scattered on the plain and pile up around the kopjes
+   for(let d=0;d<3;d++){const fx=cx*CH+hash(cx,cz,d*7+100)*CH,fz=cz*CH+hash(cx,cz,d*7+101)*CH;if(!damp(fx,fz))continue;const tint=FLOWERS[Math.floor(hash(cx,cz,d*7+102)*FLOWERS.length)];for(let k=0;k<14;k++){const x=fx+(hash(fx,k,1)-.5)*70,z=fz+(hash(fz,k,2)-.5)*70;if(!blocked(x,z))per[4].push({x,y:groundY(x,z)-.3,z,rot:hash(x,z,4)*6.28,scale:.8+hash(x,z,5)*.6,tint});}}
    for(let k=0;k<26;k++){const x=cx*CH+hash(cx,cz,k*5+300)*CH,z=cz*CH+hash(cx,cz,k*5+301)*CH;if(!WATERS.some(w=>Math.hypot(x-w.x,z-w.y)<w.size*1.1))per[5].push({x,y:groundY(x,z)-.4,z,rot:hash(x,z,8)*6.28,scale:1.2+hash(x,z,9)*2.3,sy:.6+hash(x,z,10)*.6});}
    for(const t of rocks)if(Math.floor(t.x/CH)===cx&&Math.floor(t.y/CH)===cz)for(let k=0;k<6;k++){const a=hash(t.x,k,41)*6.283,d=t.size*(32+hash(t.y,k,42)*40),x=t.x+Math.cos(a)*d,z=t.y+Math.sin(a)*d;per[5].push({x,y:groundY(x,z)-.6,z,rot:a,scale:2.5+hash(k,t.x,43)*2.5,sy:.7+hash(k,t.y,44)*.5});}
   }
@@ -284,5 +287,5 @@ export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
  };
 }
 export const SUN_DIRECTION=SUN.clone();
-/** the home screen's golden-hour sun, low in the north-west */
-const DUSK_SUN=new THREE.Vector3(-.55,.38,-.68).normalize();
+/** the home screen's golden-hour sun: about 22° up, west-north-west (late-June sunset at 2° S is about 23° north of west) */
+const DUSK_SUN=new THREE.Vector3(-.85,.38,-.36).normalize();
