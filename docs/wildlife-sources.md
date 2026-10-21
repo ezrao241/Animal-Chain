@@ -19,6 +19,26 @@ wildlife references and which are game rules, so nobody mistakes a mechanic for 
 Diets, sizes and the prey matchups (no leopard or lone hyena takes an adult zebra; nothing hunts a lion) were set in the
 safari redo and are unchanged here.
 
+## Speeds
+
+Measured in the game with `.lab`-style straight sprints on open ground (2026-10-21): every species reaches exactly its
+listed top speed, and holds it for its listed sprint time before tiring (lion 7.7 s, about 170 m; hyena 43 s; zebra
+28 s; impala 17 s; leopard 9 s; warthog 13 s). 0 to 90 % of top speed takes 1.7 s (leopard) to 3 s (zebra).
+
+| Animal | Game top speed | Real figures | Source |
+| --- | --- | --- | --- |
+| Lion | 22 m/s (79 km/h), spent after about 9 s | Collared wild lions: 20.6 m/s (74 km/h) by the third-fastest individual, 13.9 m/s at the 98th percentile; popular figure about 80 km/h. A charge rarely lasts beyond 100–200 m. | [Wilson et al. 2018, Nature 554:183](https://www.researchgate.net/publication/322697727_Biomechanics_of_predator-prey_arms_race_in_lion_zebra_cheetah_and_impala); [LionAlert](https://lionalert.org/predatory-behaviour/) |
+| Plains zebra | 18 m/s (65 km/h) | Commonly given as about 55–65 km/h; collared zebras reached 13.8 m/s (50 km/h) in routine running. Lions had about 37 % more acceleration and 72 % more deceleration than their prey in the same study, which the game's zebra acceleration and braking now follow. | [Wilson et al. 2018](https://www.researchgate.net/publication/322697727_Biomechanics_of_predator-prey_arms_race_in_lion_zebra_cheetah_and_impala); [Africa Freak](https://africafreak.com/how-fast-can-a-zebra-run) |
+| Impala | 21 m/s (76 km/h), 10 m bounds | Collared impala reached 17.7 m/s (64 km/h); wildlife charities quote up to 90 km/h and leaps of about 10 m. The game sits between the two. | [Wilson et al. 2018](https://www.researchgate.net/publication/322697727_Biomechanics_of_predator-prey_arms_race_in_lion_zebra_cheetah_and_impala); [IFAW: impalas](https://www.ifaw.org/international/animals/impalas) |
+| Spotted hyena | 17 m/s (61 km/h) for about 45 s | Up to about 60 km/h; chases often run several kilometres, at about 40–50 km/h when sustained. | [Spotted hyena (Wikipedia, citing Kruuk 1972)](https://en.wikipedia.org/wiki/Spotted_hyena); [Lateral magazine](https://www.lateralmag.com/articles/issue-23/hunters-of-the-night) |
+| Leopard | 16.5 m/s (59 km/h), short bursts | About 58–65 km/h in short bursts (popular sources; no field measurement found). | general references, approximate |
+| Warthog | 13 m/s (47 km/h) | Common warthog about 48 km/h. | [Africa Freak](https://africafreak.com/how-fast-can-a-warthog-run) |
+
+Simplifications: the 400 × 280 m map can't hold a several-kilometre hyena chase, so a hyena's endurance is shown as a
+45 s sprint (and Tireless) rather than a run of kilometres. The top-speed numbers for zebra and impala follow the
+commonly quoted figures, which are higher than the collar maxima from Wilson et al.; the collars logged everyday
+running, and the authors note animals rarely reached their limits, so the true maxima are uncertain.
+
 ## Game rules (simplifications, not facts)
 
 - **Detection ranges.** Each species has a sight range in game units. Running makes an animal fully noticeable,
@@ -61,7 +81,10 @@ safari redo and are unchanged here.
   the real pattern (zebra is a staple of lions and of hyena clans; leopards take only foals, which the game leaves
   out). Wild lions and hyenas go after favoured prey whenever they can, but only chase warthogs once they are
   properly hungry. A standing zebra is easy to pick out in open grass, so it is seen from
-  further away than other still animals. Six lions, six hyenas and three leopards share the plains with 45 grazers.
+  further away than other still animals.
+- **Population mix (simplification).** Six lions, six hyenas and three leopards share the plains with 45 grazers so
+  that a five-minute round has encounters. Real savannas carry far more prey for every predator; this ratio is a game
+  choice, not a fact.
 - **Mud.** Wading through a watering hole or its mud ring slows every animal to 80 %.
 - **Tracks.** Footprints are drawn about four times life size so they read from the follow camera. They fade within 55 s, or
   110 s in mud.
