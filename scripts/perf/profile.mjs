@@ -1,6 +1,7 @@
 // Browser performance profile of the solo-practice build (dist-play/). Builds nothing: run the play build first.
 //   node node_modules/vite/bin/vite.js build --config play/vite.config.mjs --minify false && node play/split.mjs
-//   node scripts/perf/profile.mjs [seconds=20] [out.json]      (PERF_VIEWPORT=640x360 to change the window size)
+//   node scripts/perf/profile.mjs [seconds=20] [out.json]      (PERF_VIEWPORT=640x360 to change the window size,
+//   PERF_SEED=<n> for another fixed spawn, PERF_SEED=0 for real randomness, PERF_ROOT=<dir> to profile another build)
 // Starts a practice round in headless Chromium (SwiftShader, so absolute GPU numbers are pessimistic), drives the
 // animal around with the keyboard, records frame intervals, the scene's own fps/draw-call readouts, and a CPU profile
 // of the page's main thread, then prints the functions with the most self time.
@@ -32,7 +33,11 @@ const url = `http://127.0.0.1:${server.address().port}/index.html`;
 const browser = await chromium.launch({args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']});
 const page = await browser.newPage({viewport: {width: vw, height: vh}});
 const errors = []; page.on('pageerror', e => errors.push(String(e)));
-await page.addInitScript(() => { try { localStorage.setItem('animal-chain-name', 'Perf'); } catch {} });
+await page.addInitScript(seed => {
+  try { localStorage.setItem('animal-chain-name', 'Perf'); } catch {}
+  // a seeded Math.random, so two builds spawn the same species in the same places and their numbers compare
+  if (seed) { let a = seed | 0; Math.random = () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+}, Number(process.env.PERF_SEED || 417));
 await page.goto(url);
 await page.getByPlaceholder('Enter a nickname').fill('Perf');
 await page.getByText('Create a room').click();

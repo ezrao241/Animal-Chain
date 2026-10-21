@@ -2,7 +2,8 @@
 import {useEffect,useRef,useState} from 'react';
 import * as THREE from 'three';
 import {createRenderer,SoftwareRenderer} from './software-renderer';
-import {cameraInput,ANIMALS,SPECIES,Species,Room,Player,W,H,props,makeFoods,move,newPlayer,dist,solidNear,solidRadius,sense,wind,headDown} from '@/lib/game';
+import {cameraInput,ANIMALS,SPECIES,Species,Room,Player,W,H,props,makeFoods,move,newPlayer,dist,solidNear,solidRadius,sense,wind,headDown,canClimb} from '@/lib/game';
+import {climberPose,climberFeet} from './climb-pose';
 import {SafariTraces} from './safari-traces';
 import {makeSafariAnimal,animateSafari,SafariRig,animalPortrait,cameraProfile} from './safari-animals';
 import {createSavanna,groundY,SUN_DIRECTION} from './savanna-world';
@@ -95,10 +96,16 @@ export default function WorldScene({room,me,input,preview=false,onPerformance,on
     // along its motion when there is no input, eased but capped at the species' turnRate so a 180 is a quick pivot.
     {const steer=own&&r?.phase==='playing'?position:p,steering=Math.hypot(steer.dx,steer.dy)>.1&&!p.perched;
      if(steering||speed>3){const direction=steering?-Math.atan2(steer.dy,steer.dx):-Math.atan2(vy,vx),delta=Math.atan2(Math.sin(direction-rig.turn),Math.cos(direction-rig.turn)),max=ANIMALS[p.species].gait.turnRate*dt;rig.turn+=THREE.MathUtils.clamp(delta*(1-Math.exp(-14*dt)),-max,max);}
-     // a wild animal on watch turns slowly to face what it noticed
-     else if(!own&&p.mood==='watch'){const delta=Math.atan2(Math.sin(-(p.heading||0)-rig.turn),Math.cos(-(p.heading||0)-rig.turn));rig.turn+=delta*(1-Math.exp(-4*dt));}}
-    rig.altitude=THREE.MathUtils.damp(rig.altitude,p.perched?p.perchHeight:0,6,dt);rig.root.rotation.y=rig.turn;rig.root.position.set(position.x,groundY(position.x,position.y)+rig.altitude,position.y);
-    {const a=ANIMALS[p.species],start=p.abilityUntil-a.duration*1000;animateSafari(rig,{speed:p.perched?0:speed,time,dt,ability:p.abilityUntil>now?THREE.MathUtils.clamp((now-start)/(a.duration*1000),0,1):-1,action:p.actionUntil>now,perched:!!p.perched,altitude:rig.altitude,stunned:(p.stunUntil||0)>now,alert:p.mood==='watch',grazing:headDown(p,now),crouch:p.mood==='stalk',resting:p.mood==='rest'});}
+      // a watchful animal standing still turns to face what it is watching
+      else if(!own&&p.mood==='watch'){const delta=Math.atan2(Math.sin(-(p.heading||0)-rig.turn),Math.cos(-(p.heading||0)-rig.turn));rig.turn+=delta*(1-Math.exp(-4*dt));}}
+    // In a tree the body follows the shared climbing pose (on the bark the rules use), smoothed so every transition
+    // (rearing onto the trunk, pulling up onto a bough, pivoting, jumping down) is continuous; the paws are then placed
+    // on the real bark. Back on the ground the pose eases back into normal locomotion.
+    const climb=preview?null:climberPose(rig,p,ps,dt,groundY);
+    if(climb){position.x=climb.x;position.y=climb.y;position.vx=position.vy=0;}
+    else{rig.pitch=THREE.MathUtils.damp(rig.pitch,0,8,dt);rig.altitude=THREE.MathUtils.damp(rig.altitude,0,6,dt);rig.root.rotation.set(0,rig.turn,rig.pitch);rig.root.position.set(position.x,groundY(position.x,position.y)+rig.altitude,position.y);}
+    {const a=ANIMALS[p.species],start=p.abilityUntil-a.duration*1000;animateSafari(rig,{speed:p.perched?0:speed,time,dt,ability:p.abilityUntil>now?THREE.MathUtils.clamp((now-start)/(a.duration*1000),0,1):-1,action:p.actionUntil>now,perched:!!p.perched,altitude:rig.altitude,stunned:(p.stunUntil||0)>now,alert:p.mood==='watch',grazing:headDown(p,now),crouch:p.mood==='stalk',resting:p.mood==='rest',climb:climb?.info});}
+    climberFeet(rig,climb,ps,dt,groundY);
     shadow.position.set(position.x+3,groundY(position.x,position.y)+.6,position.y+2);{const sp=cameraProfile(p.species);shadow.scale.set(sp.shadow[0],sp.shadow[1],1);shadow.rotation.z=rig.turn;}
     if(own){ownHeading=rig.turn;const headHeight=cameraProfile(p.species).head;target.set(position.x,rig.root.position.y+headHeight,position.y);if(first||ownBorn!==p.born){follow.copy(target);ownBorn=p.born;first=false;yaw=rig.turn-Math.PI/2;pitch=.24;}follow.lerp(target,1-Math.exp(-9*dt));}
    }
@@ -129,7 +136,7 @@ export default function WorldScene({room,me,input,preview=false,onPerformance,on
     const nearestCue=prey[0],nearest=nearestCue?.q,how=nearestCue?.cue!.how;if(nearest){const direction=Math.atan2(nearest.x-m.x,nearest.y-m.y)-yaw-Math.PI,angle=Math.atan2(Math.sin(direction),Math.cos(direction)),sx=width/2-THREE.MathUtils.clamp(angle/1.5,-1,1)*Math.min(220,width*.28);ctx.save();ctx.translate(sx,106);ctx.rotate(-angle);ctx.fillStyle='#f7ba6b';ctx.beginPath();ctx.moveTo(0,-6);ctx.lineTo(-5,4);ctx.lineTo(5,4);ctx.closePath();ctx.fill();ctx.restore();ctx.textAlign='center';ctx.font='600 12px Arial';ctx.fillStyle='#ffe1b3';ctx.fillText(how==='scent'?ANIMALS[nearest.species].name+' scent on the wind':how==='sound'?'Something running':ANIMALS[nearest.species].name+' · '+Math.round(dist(m,nearest)/10)+' m',sx,126);}
    }
    if(m.species==='warthog')for(const t of ps)if(t.kind==='burrow'&&dist(m,t)<230)label('BURROW',t.x,groundY(t.x,t.y)+12,t.y,'#f1d9a6');
-   if(m.species==='leopard'&&!m.perched){const tree=ps.filter(t=>t.kind==='tree'&&dist(m,t)<120).sort((a,b)=>dist(m,a)-dist(m,b))[0];if(tree)label('Q · CLIMB',tree.x,groundY(tree.x,tree.y)+40*tree.size,tree.y,'#f1d9a6');}
+   if((m.species==='leopard'||m.species==='lion')&&!m.perched){const tree=ps.filter(t=>t.kind==='tree'&&dist(m,t)<120&&canClimb(m.species,ps,t)).sort((a,b)=>dist(m,a)-dist(m,b))[0];if(tree)label('Q · CLIMB',tree.x,groundY(tree.x,tree.y)+40*tree.size,tree.y,'#f1d9a6');}
    for(const t of ps)if(t.kind==='water'&&dist(m,t)<t.size+260&&dist(m,t)>t.size*.6)label('WATERING HOLE',t.x,groundY(t.x,t.y)+16,t.y,'#cfe6ea');
    const mw=width<760?106:142,mh=mw*H/W,mx=width-mw-22,my=width<760?94:height-mh-24;
    ctx.fillStyle='#2a2112da';ctx.fillRect(mx-8,my-24,mw+16,mh+32);ctx.strokeStyle='#e6c47a55';ctx.strokeRect(mx-8,my-24,mw+16,mh+32);ctx.textAlign='left';ctx.font='600 11px Arial';ctx.fillStyle='#f3e7cc';ctx.fillText('GOLDEN PLAINS',mx,my-10);ctx.fillStyle='#b8954e';ctx.fillRect(mx,my,mw,mh);

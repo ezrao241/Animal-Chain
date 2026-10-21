@@ -35,7 +35,7 @@ node node_modules/vite/bin/vite.js build --config play/vite.config.mjs --minify 
 node scripts/perf/profile.mjs [seconds] [out.json] # headless Chromium practice round: frame times, fps, triangles, draw calls, top CPU functions
 ```
 
-`profile.mjs` takes `PERF_VIEWPORT=640x360` and `PERF_ROOT=<other dist-play>` (to compare two builds). It runs on SwiftShader (software GPU), so absolute fps is far below real hardware; compare builds against each other, not against a target. The auto quality tier can switch mid-run, so for before/after comparisons build both variants with the downgrade disabled. `WorldScene` publishes its own readouts on the `.world-scene` element's dataset (`fps`, `renderMs`, `drawCalls`, `triangles`, `animalDrawCalls`, `quality`).
+`profile.mjs` takes `PERF_VIEWPORT=640x360`, `PERF_ROOT=<other dist-play>` (to compare two builds) and `PERF_SEED` (Math.random is seeded by default so both builds spawn the same animals; spawns still vary run to run, so repeat runs). It runs on SwiftShader (software GPU), so absolute fps is far below real hardware; compare builds against each other, not against a target. The auto quality tier can switch mid-run, so for before/after comparisons build both variants with the downgrade disabled. `WorldScene` publishes its own readouts on the `.world-scene` element's dataset (`fps`, `renderMs`, `drawCalls`, `triangles`, `animalDrawCalls`, `quality`).
 
 ## Architecture
 

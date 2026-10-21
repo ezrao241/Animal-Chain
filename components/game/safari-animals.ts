@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import {Model,Ring,V,Coat,hex,cellDistance,facetMaterial} from './faceted';
 import {ANIMALS,type Species} from '@/lib/game';
+import {nearestBark,type Segment} from '@/lib/acacia';
 import {createRenderer,SoftwareRenderer} from './software-renderer';
 
 type Leg={name:string;hip:V;knee:V;ankle:V;ground:V;radii:[number,number,number,number];above:{c:V;r:number};foot:{c:V;r:V};hoof?:boolean;front:boolean};
@@ -244,7 +245,9 @@ function build(species:Species,lod=0):Built{
  const out={geometries,joints,partJoint};BUILT.set(species+lod,out);return out;
 }
 
-export type SafariRig={root:THREE.Group;model:THREE.Group;j:Record<string,THREE.Group>;meshes:THREE.Mesh[];species:Species;phase:number;turn:number;born:number;altitude:number;seed:number;blink:number};
+export type SafariRig={root:THREE.Group;model:THREE.Group;j:Record<string,THREE.Group>;meshes:THREE.Mesh[];species:Species;phase:number;turn:number;born:number;altitude:number;seed:number;blink:number;
+ /** climbing: 0..1 weight of the tree pose, the limb-cycle phase, and the smoothed body pose the renderer keeps */
+ climbWeight:number;climbPhase:number;pitch:number;climb?:{x:number;y:number;h:number;yaw:number;pitch:number;speed:number;still:number;on:'trunk'|'limb'|'air'}};
 let sharedMaterial:THREE.MeshStandardMaterial|null=null;
 export const animalMaterial=()=>sharedMaterial||=facetMaterial();
 export function makeSafariAnimal(species:Species):SafariRig{
@@ -253,12 +256,16 @@ export function makeSafariAnimal(species:Species):SafariRig{
  for(const joint of b.joints){const g=new THREE.Group();g.name=joint.name;const parent=joint.parent?b.joints.find(x=>x.name===joint.parent)!.pivot:[0,0,0];g.position.set(joint.pivot[0]-parent[0],joint.pivot[1]-parent[1],joint.pivot[2]-parent[2]);g.userData.rest=g.position.clone();(joint.parent?j[joint.parent]:model).add(g);j[joint.name]=g;}
  const far=build(species,1);
  for(const [part,geometry] of b.geometries){const mesh=new THREE.Mesh(geometry,animalMaterial());mesh.userData.far=far.geometries.get(part);mesh.castShadow=true;mesh.receiveShadow=true;j[b.partJoint.get(part)!].add(mesh);meshes.push(mesh);}
- return{root,model,j,meshes,species,phase:Math.random(),turn:0,born:0,altitude:0,seed:Math.random()*100,blink:0};
+ // remember each leg's rest geometry for the foot-placement solver: the foot segment from ankle to the ground point
+ for(const [id,front,side] of LEGS){const L=front?SPECS[species].front:SPECS[species].hind;j['leg'+id+'2'].userData.toe=new THREE.Vector3(L.ground[0]-L.ankle[0],L.ground[1]-L.ankle[1],(L.ground[2]-L.ankle[2])*side);j['leg'+id+'0'].userData.side=side;}
+ return{root,model,j,meshes,species,phase:Math.random(),turn:0,born:0,altitude:0,seed:Math.random()*100,blink:0,climbWeight:0,climbPhase:0,pitch:0};
 }
 
 /** mood cues: alert = head high, ears forward, watching a threat; grazing = head down at the grass; crouch = a stalking
  *  hunter low to the ground; resting = lying up in the shade */
-export type SafariPose={speed:number;time:number;dt:number;ability:number;action:boolean;perched:boolean;altitude:number;stunned:boolean;alert?:boolean;grazing?:boolean;crouch?:boolean;resting?:boolean};
+export type SafariPose={speed:number;time:number;dt:number;ability:number;action:boolean;perched:boolean;altitude:number;stunned:boolean;alert?:boolean;grazing?:boolean;crouch?:boolean;resting?:boolean;
+ /** in a tree: what the body is on, how fast it moves over the bark (game units/s), lying up, pivoting, head first, pitch */
+ climb?:{on:'trunk'|'limb'|'air';speed:number;rest:boolean;turning:boolean;down:boolean;pitch:number}};
 const damp=(a:number,b:number,k:number,dt:number)=>a+(b-a)*(1-Math.exp(-k*dt));
 /** Pose the joint hierarchy for this frame. speed is in game units per second; ability is the 0..1 progress of an active ability, or -1. */
 export function animateSafari(r:SafariRig,p:SafariPose){
@@ -276,23 +283,37 @@ export function animateSafari(r:SafariRig,p:SafariPose){
   const off=walkOff[id]*walk+trotOff[id]*trot+runOff[id]*gallop,t=phi+off*Math.PI*2,swing=Math.sin(t),lift=Math.max(0,Math.cos(t))*amp*1.5;
   let a0=amp*swing,a1=front?lift*.45:-lift*.55,a2=front?-lift*1.3:lift*.9;
   if(stalk){a0+=front?.25:-.3;a1+=front?.55:-.75;a2+=front?-.6:.7;}
-  if(p.perched){a0=front?1.25:-1.2;a1=front?-.2:-.6;a2=front?-1.1:1.3;}
+  const cl=p.climb;
+  if(p.perched&&!cl){a0=front?1.25:-1.2;a1=front?-.2:-.6;a2=front?-1.1:1.3;}
+  // jumping down: forelegs reach for the ground, hind legs trail, as a cat drops off a bough
+  if(cl?.on==='air'){a0=front?.75:-.55;a1=front?-.15:-.35;a2=front?-.35:.5;}
+  // lying up on a bough: all four legs hang either side of the wood
+  if(cl?.rest){a0=front?-.15:.2;a1=front?.15:-.2;a2=front?.1:-.1;}
   if(kick&&!front){a0=-1.15*kick;a1=.35*kick;a2=.4*kick;}
   if(leap){a0=front?.9*leap:-.95*leap;a1=front?0:-.2*leap;a2=front?-1.3*leap:.3*leap;}
   if(burrow||resting){a0=front?.6:-.7;a1=front?-.4:-.6;a2=front?-.4:.9;}
   if(graze&&r.species==='warthog'&&front){a0=-.15;a1=1.5;a2=-1.6;}
+  j['leg'+id+'0'].rotation.x=damp(j['leg'+id+'0'].rotation.x,cl?.rest?-(j['leg'+id+'0'].userData.side as number)*.22:0,10,dt);
   j['leg'+id+'0'].rotation.z=damp(j['leg'+id+'0'].rotation.z,a0,24,dt);j['leg'+id+'1'].rotation.z=damp(j['leg'+id+'1'].rotation.z,a1,24,dt);j['leg'+id+'2'].rotation.z=damp(j['leg'+id+'2'].rotation.z,a2,24,dt);
  }
  const body=j.body,rest=body.userData.rest as THREE.Vector3,size=a.size;
  const bob=Math.abs(Math.sin(phi*2))*(.012+.025*trot+.05*gallop)*moving*size,breathe=Math.sin(p.time*2.1+r.seed)*.004*size;
- let lower=0;if(stalk)lower=.16*size;if(p.perched)lower=.22*size;if(burrow)lower=.55*size;if(resting)lower=.42*size;if(graze&&r.species==='warthog')lower=.12*size;
+ const cl=p.climb,belly=Math.min(...s.torso.map(t=>t.c[1]-t.ry*(t.bot??1)));
+ let lower=0;if(stalk)lower=.16*size;if(p.perched&&!cl)lower=.22*size;
+ // in a tree the body hugs the bark: close to the trunk while climbing, crouched low on a bough (lower still while
+ // pivoting), and lying on it with the belly on the wood when resting
+ if(cl)lower=cl.rest?belly-.02:cl.on==='trunk'?belly*.85:cl.on==='limb'?belly*(cl.turning?.42:.3):0;if(burrow)lower=.55*size;if(resting)lower=.42*size;if(graze&&r.species==='warthog')lower=.12*size;
  body.position.y=damp(body.position.y,rest.y+bob+breathe-lower+leap*3,leap?30:14,dt);
- body.rotation.z=damp(body.rotation.z,Math.sin(phi)*.07*gallop-kick*.28+(lunge?.12:0)+(graze&&r.species==='warthog'?-.18:0)+leap*.12,14,dt);
+ const climbFlex=cl&&cl.on==='trunk'?Math.sin(r.climbPhase*Math.PI*2)*.08*smooth(1,6,cl.speed):0;
+ body.rotation.z=damp(body.rotation.z,Math.sin(phi)*.07*gallop-kick*.28+(lunge?.12:0)+(graze&&r.species==='warthog'?-.18:0)+leap*.12+climbFlex,14,dt);
  body.rotation.x=damp(body.rotation.x,Math.sin(phi)*.025*moving*(1-gallop),10,dt);
  // neck and head: grazing drops the head to the grass, idle animals look around, runners stretch forward
  const look=Math.sin(p.time*.37+r.seed)*.5+Math.sin(p.time*.13+r.seed*2)*.3;
  const neckZ=alert?.3:resting?-.1:graze?(r.species==='zebra'?-1.05:r.species==='impala'?-1.15:-.35):stalk?-.35:p.perched?-.25:-.22*gallop+Math.sin(phi*2)*.04*moving*(1-gallop);
- j.neck.rotation.z=damp(j.neck.rotation.z,neckZ,6,dt);
+ // in a tree the head keeps itself nearly level against the body's pitch: looking up the trunk, down at the footing
+ // on a bough, resting low along it when lying up
+ const treeNeck=!cl?neckZ:cl.on==='air'?.1:cl.rest?-.3-cl.pitch*.4:cl.on==='trunk'?(cl.down?.45:.3):-.12-cl.pitch*.45;
+ j.neck.rotation.z=damp(j.neck.rotation.z,treeNeck,6,dt);
  j.head.rotation.z=damp(j.head.rotation.z,graze?-.35:gallop*.12+(p.stunned?Math.sin(p.time*9)*.12:0),6,dt);
  j.head.rotation.y=damp(j.head.rotation.y,(1-moving)*(graze||alert?0:look*.45)+(p.stunned?Math.sin(p.time*7)*.3:0),3,dt);
  j.neck.rotation.y=damp(j.neck.rotation.y,(1-moving)*(graze||alert?0:look*.25),3,dt);
@@ -300,9 +321,59 @@ export function animateSafari(r:SafariRig,p:SafariPose){
  const flick=Math.max(0,Math.sin(p.time*1.3+r.seed*5)-.92)*8;
  j.earR.rotation.x=damp(j.earR.rotation.x,alert?-.25:flick*.5,20,dt);if(alert)j.earL.rotation.x=damp(j.earL.rotation.x,.25,20,dt);else j.earL.rotation.x=damp(j.earL.rotation.x,-Math.max(0,Math.sin(p.time*1.1+r.seed*3)-.93)*4,20,dt);
  const tailUp=r.species==='warthog'?smooth(.5,2.5,v)*1.9:r.species==='lion'||r.species==='leopard'?gallop*.9:gallop*.5;
- j.tail1.rotation.z=damp(j.tail1.rotation.z,tailUp+(p.perched?-.9:0),8,dt);j.tail1.rotation.y=Math.sin(p.time*1.6+r.seed)*.28*(1-gallop);
+ // a climbing cat's tail hangs as a counterweight and swings against its balance; resting, it hangs straight down
+ const treeTail=!cl?tailUp+(p.perched?-.9:0):cl.rest?1.3+cl.pitch:cl.on==='trunk'?.5:cl.on==='air'?.4:.9+cl.pitch*.6;
+ j.tail1.rotation.z=damp(j.tail1.rotation.z,treeTail,8,dt);j.tail1.rotation.y=Math.sin(p.time*(cl?1.1:1.6)+r.seed)*(cl?.35:.28)*(1-gallop);
  j.tail2.rotation.z=damp(j.tail2.rotation.z,(r.species==='leopard'?.25:0)+(r.species==='warthog'?tailUp*.3:0),8,dt);j.tail2.rotation.y=Math.sin(p.time*1.6+r.seed-.8)*.35*(1-gallop);
- r.model.position.y=p.perched?0:0;
+ r.model.position.y=0;
+}
+
+// ---------------------------------------------------------------- paws on bark
+// Foot placement for climbing: each paw gets a target on the real surface under it (the trunk, a bough, or the ground)
+// and the leg is solved to reach it: the hip swings the leg sideways (adduction) to bring the paw under the body on
+// narrow wood, a two-bone solve bends shoulder/hip and elbow/knee, and the foot segment keeps its standing angle so the
+// paw lies flat. Paws step in the species' climbing gait: a bound up the trunk (forepaws reach and pull, hind feet push
+// together), a careful walk along a bough; a planted paw stays put on the bark while the body moves over it.
+const tmpV=new THREE.Vector3(),tmpW=new THREE.Vector3();
+const BOUND={FR:0,FL:.08,HR:.5,HL:.58},WALK={FR:.75,FL:.25,HR:.5,HL:0};
+export type Bark={segments:Segment[];base:number;ground:(x:number,z:number)=>number};
+export function plantFeet(r:SafariRig,p:{dt:number;on:'trunk'|'limb';speed:number;weight:number;turning?:boolean},bark:Bark){
+ const s=SPECS[r.species],j=r.j,v=p.speed/10,stride=s.stride*(p.on==='trunk'?.55:.6),duty=p.on==='trunk'?.55:.68;
+ r.climbPhase=(r.climbPhase+p.dt*v/stride)%1;
+ const lift=smooth(.05,.25,v),offsets=p.on==='trunk'?BOUND:WALK;
+ r.root.updateMatrixWorld(true);
+ let worst=0;
+ for(const [id,front,side] of LEGS){
+  const L=front?s.front:s.hind,leg0=j['leg'+id+'0'],leg1=j['leg'+id+'1'],leg2=j['leg'+id+'2'];
+  // the paw's place in its step cycle: in stance it slides back under the body exactly as fast as the body moves forward
+  // (so it stays planted on the bark), in swing it lifts clear and reaches forward
+  const f=(r.climbPhase+offsets[id as keyof typeof BOUND])%1,swing=f>=duty,u=swing?(f-duty)/(1-duty):f/duty;
+  const dx=(swing?-.5+u:.5-u)*duty*stride,up=swing?Math.sin(u*Math.PI)*.07*s.stride*lift:0;
+  // nominal paw: under the hip, pulled in toward the midline on narrow wood; pivoting on a bough, all four paws bunch
+  // together under the body so they stay on the wood while it turns
+  const narrow=p.on==='limb'?.35:.8,bunch=p.turning?.45:1,nominal=new THREE.Vector3((L.ground[0]+dx)*bunch,0,L.ground[2]*side*narrow);
+  r.model.localToWorld(tmpV.copy(nominal));
+  // the real surface nearest that point: bark (trunk or bough) or the ground
+  let best={x:tmpV.x,y:bark.ground(tmpV.x,tmpV.z),z:tmpV.z,nx:0,ny:1,nz:0,d:Math.abs(tmpV.y-bark.ground(tmpV.x,tmpV.z))};
+  for(const seg of bark.segments){const b=nearestBark(seg,{x:tmpV.x,y:tmpV.z,h:tmpV.y-bark.base});if(Math.abs(b.d)<best.d)best={x:b.x,y:b.h+bark.base,z:b.y,nx:b.nx,ny:b.nh,nz:b.ny,d:Math.abs(b.d)};}
+  // the ground point sits a few centimetres up the paw; lift it off the bark along the surface normal while swinging
+  const lift10=(.025+up)*10;tmpW.set(best.x+best.nx*lift10,best.y+best.ny*lift10,best.z+best.nz*lift10);
+  j.body.worldToLocal(tmpW);
+  // solve in the hip's frame
+  const hip=leg0.position,knee=leg1.position,ankle=leg2.position,toe=leg2.userData.toe as THREE.Vector3;
+  const tx=tmpW.x-hip.x,ty=tmpW.y-hip.y,tz=tmpW.z-hip.z-(knee.z+ankle.z+toe.z);
+  const adduct=THREE.MathUtils.clamp(Math.atan2(-tz,-ty),-.6,.6),py=ty*Math.cos(adduct)+tz*Math.sin(adduct),px=tx;
+  const a1r=Math.atan2(knee.y,knee.x),a2r=Math.atan2(ankle.y,ankle.x),a3r=Math.atan2(toe.y,toe.x);
+  const l1=Math.hypot(knee.x,knee.y),l2=Math.hypot(ankle.x,ankle.y),l3=Math.hypot(toe.x,toe.y);
+  const ax=px-Math.cos(a3r)*l3,ay=py-Math.sin(a3r)*l3,reach=Math.hypot(ax,ay),D=THREE.MathUtils.clamp(reach,Math.abs(l1-l2)+.01,(l1+l2)*.995);
+  worst=Math.max(worst,reach-D);
+  const restA=Math.atan2(knee.y+ankle.y,knee.x+ankle.x),bend=Math.sign(Math.atan2(Math.sin(a1r-restA),Math.cos(a1r-restA)))||1;
+  const beta=Math.acos(THREE.MathUtils.clamp((l1*l1+D*D-l2*l2)/(2*l1*D),-1,1)),a1=Math.atan2(ay,ax)+bend*beta;
+  const kx=Math.cos(a1)*l1,ky=Math.sin(a1)*l1,a2=Math.atan2(ay*D/Math.max(reach,1e-4)-ky,ax*D/Math.max(reach,1e-4)-kx);
+  const w=p.weight,mixTo=(o:THREE.Object3D,key:'x'|'z',val:number)=>{o.rotation[key]+=(val-o.rotation[key])*w;};
+  mixTo(leg0,'x',adduct);mixTo(leg0,'z',a1-a1r);mixTo(leg1,'z',(a2-a1)-(a2r-a1r));mixTo(leg2,'z',(a3r-a2)-(a3r-a2r));
+ }
+ return worst;
 }
 
 /** A head-and-shoulders portrait, rendered once per species for the menus and HUD. */
