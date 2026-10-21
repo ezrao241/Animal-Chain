@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {move,UNITS_PER_METRE,spawnPoint,W,H,ANIMALS,SPECIES,WILDLIFE,newPlayer,newRoom,start,respawn,die,tick,props,interact,savannaEvent,useAbility,perch,hidden,publicRoom,makeFoods,solid,solidRadius,KICK_RANGE,TREE_REACH,climbPose,canClimb,BODY} from '../lib/game.ts';
+import {move,UNITS_PER_METRE,spawnPoint,W,H,ANIMALS,SPECIES,WILDLIFE,newPlayer,newRoom,start,respawn,die,tick,props,interact,savannaEvent,useAbility,perch,hidden,publicRoom,makeFoods,solid,solidRadius,KICK_RANGE,TREE_REACH,climbPose,canClimb,BODY,resolveStrike,STRIKE_WINDUP} from '../lib/game.ts';
+/** press E and let the lunge land */
+const hunt=(p,room,t)=>{interact(p,room,t);if(p.strikeId&&p.strikeAt)resolveStrike(p,room,t+STRIKE_WINDUP);};
 import {tree as acaciaTree,limbPoint} from '../lib/acacia.ts';
 const NOW=1800000000000;
 // an open patch of plain: no thicket (hiding), boulder, tree or water nearby
@@ -22,10 +24,10 @@ test('predators only hunt prey their size can take',()=>{
  assert.ok(!ANIMALS.leopard.prey.includes('zebra'));assert.ok(!ANIMALS.hyena.prey.includes('zebra'));assert.ok(ANIMALS.lion.prey.includes('zebra'));
  for(const s of SPECIES)assert.ok(!ANIMALS[s].prey.includes('lion'));
  const {room,player}=fixture('leopard');const zebra=near(player,'zebra');room.players.push(zebra);interact(player,room,NOW);assert.equal(player.hunts,0);assert.equal(zebra.deadUntil,0);
- const impala=near(player,'impala',12);room.players.push(impala);interact(player,room,NOW+1000);assert.equal(player.hunts,1);assert.ok(impala.deadUntil);
+ const impala=near(player,'impala',12);room.players.push(impala);hunt(player,room,NOW+1000);assert.equal(player.hunts,1);assert.ok(impala.deadUntil);
 });
 test('a kill leaves a carcass that scavengers can eat',()=>{
- const {room,player}=fixture('lion');const prey=near(player,'warthog');room.players.push(prey);interact(player,room,NOW);
+ const {room,player}=fixture('lion');const prey=near(player,'warthog');room.players.push(prey);hunt(player,room,NOW);
  const carcass=room.foods.find(f=>f.kind==='carrion');assert.ok(carcass);
  const hyena=newPlayer('h','H',NOW,true,'hyena');Object.assign(hyena,{x:carcass.x,y:carcass.y,protectedUntil:0});room.players.push(hyena);
  interact(hyena,room,NOW+1000);assert.equal(hyena.scavenged,0,'not ready while the hunter feeds');
@@ -33,12 +35,12 @@ test('a kill leaves a carcass that scavengers can eat',()=>{
 });
 test('phase bonuses are real scoring',()=>{
  for(const [elapsed,points]of [[0,5],[100000,3],[200000,3]]){const{room,player}=fixture('zebra');room.foods=[{id:1,x:player.x,y:player.y,kind:'grass',ready:0}];interact(player,room,NOW+elapsed);assert.equal(player.score,points);}
- for(const [elapsed,points]of [[0,10],[100000,15],[200000,10]]){const{room,player}=fixture('lion');const victim=near(player,'impala');room.players.push(victim);interact(player,room,NOW+elapsed);assert.equal(player.score,points);}
+ for(const [elapsed,points]of [[0,10],[100000,15],[200000,10]]){const{room,player}=fixture('lion');const victim=near(player,'impala');room.players.push(victim);hunt(player,room,NOW+elapsed);assert.equal(player.score,points);}
  assert.deepEqual([0,100000,200000,300000].map(t=>savannaEvent({started:NOW},NOW+t).kind),['forage','hunt','escape','escape']);
 });
 test('zebra kick stuns a lion, impala leap and warthog burrow escape a catch',()=>{
- {const{room,player}=fixture('zebra');player.heading=Math.PI;const lion=near(player,'lion',KICK_RANGE-10);room.players.push(lion);useAbility(player,room,NOW);assert.ok(lion.stunUntil>NOW);interact(lion,room,NOW+100);assert.equal(lion.hunts,0);}
- {const{room,player}=fixture('impala');const lion=near(player,'lion',15);room.players.push(lion);useAbility(player,room,NOW);interact(lion,room,NOW+200);assert.equal(lion.hunts,0);}
+ {const{room,player}=fixture('zebra');player.heading=Math.PI;const lion=near(player,'lion',KICK_RANGE-10);room.players.push(lion);useAbility(player,room,NOW);assert.ok(lion.stunUntil>NOW);hunt(lion,room,NOW+100);assert.equal(lion.hunts,0);}
+ {const{room,player}=fixture('impala');const lion=near(player,'lion',15);room.players.push(lion);useAbility(player,room,NOW);hunt(lion,room,NOW+200);assert.equal(lion.hunts,0);}
  {const{room,player}=fixture('warthog');const burrow=props(417).find(p=>p.kind==='burrow');Object.assign(player,{x:burrow.x+20,y:burrow.y});useAbility(player,room,NOW);assert.equal(player.x,burrow.x);assert.ok(hidden(player,room,NOW+1000));}
 });
 test('leopards climb a trunk, walk out on a bough, turn round, ambush and climb down head first',()=>{
@@ -57,8 +59,8 @@ test('leopards climb a trunk, walk out on a bough, turn round, ambush and climb 
  // no frame jumps: every step of the climb moves the body less than a sprinting leopard would
  for(let i=1;i<poses.length;i++){const a=poses[i-1],b=poses[i];assert.ok(Math.hypot(b.x-a.x,b.y-a.y,b.h-a.h)<16.5*UNITS_PER_METRE*.05,'continuous at step '+i);}
  // ambush: drops onto prey below, then lands
- const impala=near(player,'impala',30);room.players.push(impala);interact(player,room,t);assert.equal(player.hunts,1);assert.equal(player.climb,'drop');assert.equal(player.score,13);
- run(2);assert.equal(player.climb,'');assert.equal(player.perched,false);
+ const impala=near(player,'impala',30);room.players.push(impala);interact(player,room,t);assert.equal(player.climb,'drop');assert.equal(player.hunts,0,'the leap is checked when it lands, not when it starts');
+ run(2);assert.equal(player.climb,'');assert.equal(player.perched,false);assert.ok(player.strikeAt>0,'landing arms the strike');resolveStrike(player,room,player.strikeAt);assert.equal(player.hunts,1);assert.equal(player.score,13);
  // and the long way down: back to the trunk, head first, a jump for the last stretch
  Object.assign(player,{x:tree.x+TREE_REACH-5,y:tree.y});perch(player,room,t);run(6);assert.equal(player.climb,'limb');perch(player,room,t);
  const seen=new Set();for(let i=0;i<200&&player.climb;i++){run(.05);seen.add(player.climb);if(player.climb==='trunk')assert.ok(climbPose(ps,player).pitch<-1,'head first');}
@@ -89,7 +91,7 @@ test('bodies, not points: no animal pushes its head or flank into a trunk or bou
  }}
 });
 test('drinking at a watering hole counts for the drink task',()=>{
- const{room,player}=fixture('lion');const water=props(417).find(p=>p.kind==='water');Object.assign(player,{x:water.x+water.size+10,y:water.y});interact(player,room,NOW);assert.equal(player.drinks,1);tick(room,NOW+200);assert.ok(player.claimed[1]);
+ const{room,player}=fixture('lion');const water=props(417).find(p=>p.kind==='water');Object.assign(player,{x:water.x+water.size+10,y:water.y,thirst:30});interact(player,room,NOW);assert.equal(player.drinks,1);tick(room,NOW+200);assert.ok(player.claimed[1]);
 });
 test('human reincarnation changes species but keeps round score; wildlife keeps its slot',()=>{
  const {room,player}=fixture();player.score=125;die(player,room,NOW,'test');const previous=player.species;respawn(player,NOW+2600);
@@ -141,11 +143,11 @@ test('defences have limits: the zebra kick only reaches behind and has a cooldow
 });
 test('every predator/prey matchup: only listed prey, in reach, unprotected and not escaping, can be caught',()=>{
  for(const hunter of SPECIES)for(const prey of SPECIES){if(hunter===prey)continue;
-  const{room,player}=fixture(hunter);const q=near(player,prey,15);room.players.push(q);interact(player,room,NOW);
+  const{room,player}=fixture(hunter);const q=near(player,prey,15);room.players.push(q);hunt(player,room,NOW);
   assert.equal(!!q.deadUntil,ANIMALS[hunter].prey.includes(prey),hunter+' vs '+prey);
   if(!ANIMALS[hunter].prey.includes(prey))continue;
-  const{room:r2,player:h2}=fixture(hunter);const shielded=near(h2,prey,15);shielded.protectedUntil=NOW+4000;r2.players.push(shielded);interact(h2,r2,NOW);assert.equal(shielded.deadUntil,0,'spawn protection '+hunter+' vs '+prey);
-  const{room:r3,player:h3}=fixture(hunter);const away=near(h3,prey,ANIMALS[hunter].catchRange+5);r3.players.push(away);interact(h3,r3,NOW);assert.equal(away.deadUntil,0,'out of reach '+hunter+' vs '+prey);
+  const{room:r2,player:h2}=fixture(hunter);const shielded=near(h2,prey,15);shielded.protectedUntil=NOW+4000;r2.players.push(shielded);hunt(h2,r2,NOW);assert.equal(shielded.deadUntil,0,'spawn protection '+hunter+' vs '+prey);
+  const{room:r3,player:h3}=fixture(hunter);const away=near(h3,prey,ANIMALS[hunter].catchRange+5);r3.players.push(away);hunt(h3,r3,NOW);assert.equal(away.deadUntil,0,'out of reach '+hunter+' vs '+prey);
  }
 });
 // a room with only wildlife: a lion placed by an impala herd that is grazing, everyone else far away

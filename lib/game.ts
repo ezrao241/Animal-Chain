@@ -34,6 +34,12 @@ export type Player={id:string;token?:string;name:string;bot:boolean;species:Spec
   *  vertical speed while jumping down. Optional so rooms saved before climbing existed still load. */
  /** the species still to come for a human player, so every animal comes up once in each run of six lives */
  bag?:Species[];
+ /** water, 100 = just drunk; it runs down on its own, separately from food */
+ thirst?:number;
+ /** a committed catch attempt: the prey it is aimed at and when the lunge lands (or a leopard's leap, on landing) */
+ strikeId?:string;strikeAt?:number;strikeAmbush?:boolean;
+ /** the life (born time) a strike was committed in: a strike never carries over into a new life */
+ strikeBorn?:number;
  tree?:number;climb?:Climb;ch?:number;side?:number;limb?:number;along?:number;limbDir?:number;goal?:number;mount?:number;climbHold?:number;vh?:number};
 export type Room={code:string;host:string;phase:'lobby'|'playing'|'finished';started:number;ends:number;tick:number;players:Player[];foods:Food[];events:string[];seed:number;round:number;practice?:boolean;rs?:number};
 // Computer-controlled wildlife keeps savanna proportions: plenty of grazers, a few predators.
@@ -150,7 +156,7 @@ export function spawnPoint(species:Species,room?:Room,seed=Math.floor(Math.rando
  let q=habitat(species,r);for(let i=0;i<14&&inSight(room,species,q);i++)q=habitat(species,r);
  return q;
 }
-export function newPlayer(id:string,name:string,now:number,bot=false,species?:Species,room?:Room):Player{const kind=species||SPECIES[Math.floor(Math.random()*6)];const p={id,name,bot,species:kind,...spawnPoint(kind,room,Math.floor(Math.random()*1e9)),dx:0,dy:0,vx:0,vy:0,perched:false,perchHeight:0,actionUntil:0,lastSeen:now,inputAt:now,born:now,protectedUntil:now+4000,deadUntil:0,abilityUntil:0,abilityReady:0,interactReady:0,stunUntil:0,hunger:100,score:0,deaths:0,food:0,hunts:0,drinks:0,scavenged:0,escapes:0,hiddenSeconds:0,survivalSeconds:0,claimed:[false,false,false],sprint:false,stamina:100,threatAt:0,face:1,message:'A new place in the chain.',messageUntil:now+3000,seq:0,targetX:0,targetY:0,heading:0,mood:'wander' as Mood,alert:0,targetId:'',moodUntil:0,alarmAt:0,calledAt:0,threatX:0,threatY:0,lastThreatAt:0,homeX:0,homeY:0,herd:'',nextDrink:now+40000+idHash(id)*60000,chaseStart:0,thinkAt:0,stuckX:0,stuckY:0,stuckAt:now,unstickUntil:0};p.homeX=p.stuckX=p.x;p.homeY=p.stuckY=p.y;return p;}
+export function newPlayer(id:string,name:string,now:number,bot=false,species?:Species,room?:Room):Player{const kind=species||SPECIES[Math.floor(Math.random()*6)];const p={id,name,bot,species:kind,...spawnPoint(kind,room,Math.floor(Math.random()*1e9)),dx:0,dy:0,vx:0,vy:0,perched:false,perchHeight:0,actionUntil:0,lastSeen:now,inputAt:now,born:now,protectedUntil:now+4000,deadUntil:0,abilityUntil:0,abilityReady:0,interactReady:0,stunUntil:0,hunger:100,thirst:45+idHash(id+'water')*40,strikeId:'',strikeAt:0,strikeAmbush:false,score:0,deaths:0,food:0,hunts:0,drinks:0,scavenged:0,escapes:0,hiddenSeconds:0,survivalSeconds:0,claimed:[false,false,false],sprint:false,stamina:100,threatAt:0,face:1,message:'A new place in the chain.',messageUntil:now+3000,seq:0,targetX:0,targetY:0,heading:0,mood:'wander' as Mood,alert:0,targetId:'',moodUntil:0,alarmAt:0,calledAt:0,threatX:0,threatY:0,lastThreatAt:0,homeX:0,homeY:0,herd:'',nextDrink:now+40000+idHash(id)*60000,chaseStart:0,thinkAt:0,stuckX:0,stuckY:0,stuckAt:now,unstickUntil:0};p.homeX=p.stuckX=p.x;p.homeY=p.stuckY=p.y;return p;}
 /** A stable 0..1 number per animal, for per-animal variety (reaction time, flee angle) that tests can reproduce. */
 export function idHash(id:string){let h=2166136261;for(let i=0;i<id.length;i++)h=Math.imul(h^id.charCodeAt(i),16777619);return((h^h>>>15)>>>0)/4294967296;}
 /** Seeded randomness kept in the room, so a round's wildlife decisions replay the same from the same state. */
@@ -191,6 +197,16 @@ export function conspicuity(t:Player,ps:Prop[],now:number){
  return c;
 }
 /** True when a boulder stands between a and b (acacia trunks are too thin to hide behind). */
+/** A trunk or boulder between two animals: no catch goes through wood or stone. */
+export function contactBlocked(ps:Prop[],a:{x:number;y:number},b:{x:number;y:number}){
+ const vx=b.x-a.x,vy=b.y-a.y,len=Math.hypot(vx,vy);if(len<1)return false;
+ for(const t of solidNear(ps,(a.x+b.x)/2,(a.y+b.y)/2,len/2+60)){const r=solidRadius(t),u=((t.x-a.x)*vx+(t.y-a.y)*vy)/(len*len);if(u<=0||u>=1)continue;if(Math.hypot(a.x+vx*u-t.x,a.y+vy*u-t.y)<r)return true;}
+ return false;
+}
+/** The way an animal's attack goes: where the player is steering, else the way it is moving or last faced. */
+export const strikeDirection=(p:Player)=>Math.hypot(p.dx,p.dy)>.1?Math.atan2(p.dy,p.dx):p.heading??0;
+/** Prey in front of the hunter: within 65° either side of the way it attacks. */
+export const inFront=(p:Player,q:{x:number;y:number})=>Math.cos(Math.atan2(q.y-p.y,q.x-p.x)-strikeDirection(p))>=Math.cos(65*Math.PI/180);
 export function sightBlocked(ps:Prop[],a:{x:number;y:number},b:{x:number;y:number}){
  const vx=b.x-a.x,vy=b.y-a.y,len=Math.hypot(vx,vy);if(len<1)return false;
  for(const t of solidNear(ps,(a.x+b.x)/2,(a.y+b.y)/2,len/2+60)){if(t.kind!=='rock')continue;const r=solidRadius(t)*.9,u=((t.x-a.x)*vx+(t.y-a.y)*vy)/(len*len);if(u<=0||u>=1)continue;if(Math.hypot(a.x+vx*u-t.x,a.y+vy*u-t.y)<r&&dist(t,a)>r+4&&dist(t,b)>r+4)return true;}
@@ -213,6 +229,9 @@ export function sense(o:Player,t:Player,room:Room,now:number,ps=props(room.seed)
  if(d<SOUND_RANGE&&speedOf(t)>walkPace(t.species)*1.05)return{how:'sound',range:d};
  return null;
 }
+/** Thirst falls from full to empty in about four minutes, so an animal needs one or two drinks a life; below
+ *  THIRSTY it can drink (and scores for it). Real animals drink about daily; this is a game rate. */
+export const THIRST_RATE=100/240,THIRSTY=60;
 export const UNITS_PER_METRE=10,TRUNK_RADIUS=7,POUNCE_RANGE=42,AMBUSH_RANGE=60,KICK_RANGE=40,FOOD_RANGE=18,BURROW_REACH=45,TREE_REACH=40,WATER_REACH=30,THREAT_RANGE=300,LEAP_SPEED=11,STALK_SPEED=1;
 const wrap=(a:number)=>Math.atan2(Math.sin(a),Math.cos(a)),clamp=(v:number,a:number,b:number)=>Math.max(a,Math.min(b,v));
 /** True while the animal is running flat out on its stamina (Charge and Tireless sprint for free). */
@@ -386,7 +405,7 @@ function climbStep(p:Player,dt:number,ps:Prop[],now:number){
   // jumping down: a short ballistic arc, landing feet first a couple of metres out
   p.vh=(p.vh??0)-GRAVITY*U*dt;p.perchHeight=(p.perchHeight??0)+(p.vh??0)*dt;
   const hs=p.mount??0;p.x+=Math.cos(p.side??0)*hs*dt;p.y+=Math.sin(p.side??0)*hs*dt;p.heading=p.side??0;
-  if((p.perchHeight??0)<=0){endClimb(p);p.vx=Math.cos(p.heading)*hs*.5;p.vy=Math.sin(p.heading)*hs*.5;({x:p.x,y:p.y}=collide(p,p.x,p.y,ps));}
+  if((p.perchHeight??0)<=0){endClimb(p);p.vx=Math.cos(p.heading)*hs*.5;p.vy=Math.sin(p.heading)*hs*.5;({x:p.x,y:p.y}=collide(p,p.x,p.y,ps));if(p.strikeAmbush)p.strikeAt=now;}
   return;
  }
  }
@@ -433,22 +452,45 @@ export function useAbility(p:Player,room:Room,now:number){if(now<p.abilityReady|
  if(p.species==='hyena')p.stamina=100,p.exhausted=false;
  if(p.species==='impala'){const g=Math.hypot(p.vx,p.vy)||1,h=Math.hypot(p.dx,p.dy)>.1?Math.atan2(p.dy,p.dx):Math.atan2(p.vy,p.vx),v=Math.max(g,LEAP_SPEED*UNITS_PER_METRE);p.vx=Math.cos(h)*v;p.vy=Math.sin(h)*v;}
  p.abilityUntil=now+ANIMALS[p.species].duration*1000;p.abilityReady=now+ANIMALS[p.species].cooldown*1000;if(p.species!=='zebra')notify(p,ANIMALS[p.species].ability+'!',now);}
-export function die(p:Player,room:Room,now:number,cause:string){if(p.deadUntil)return;p.deadUntil=now+2600;p.dx=0;p.dy=0;p.vx=0;p.vy=0;endClimb(p);p.deaths++;notify(p,cause,now);if(!p.bot){room.events.unshift(p.name+' '+cause);room.events=room.events.slice(0,5);}}
+export function die(p:Player,room:Room,now:number,cause:string){if(p.deadUntil)return;p.deadUntil=now+2600;p.dx=0;p.dy=0;p.vx=0;p.vy=0;endClimb(p);p.strikeId='';p.strikeAt=0;p.strikeAmbush=false;p.deaths++;notify(p,cause,now);if(!p.bot){room.events.unshift(p.name+' '+cause);room.events=room.events.slice(0,5);}}
 // A kill leaves a carcass for scavengers once the hunter has eaten. Old carcasses dry out.
 function dropCarcass(room:Room,x:number,y:number,now:number){room.foods=room.foods.filter(f=>!f.until||f.until>now);if(room.foods.length>620)return;const id=Math.max(0,...room.foods.map(f=>f.id))+1;room.foods.push({id,x,y,kind:'carrion',ready:now+5000,until:now+90000});}
-export function interact(p:Player,room:Room,now:number){if(p.deadUntil||now<p.interactReady)return;p.interactReady=now+650;p.actionUntil=now+500;
+export function interact(p:Player,room:Room,now:number){if(p.deadUntil||now<p.interactReady||p.strikeId)return;p.interactReady=now+650;p.actionUntil=now+500;
  if(p.stunUntil>now){notify(p,'Still stunned.',now);return;}
  const a=ANIMALS[p.species],ambush=p.species==='leopard'&&p.climb==='limb';
  const reach=ambush?AMBUSH_RANGE:p.abilityUntil>now&&(p.species==='lion'||p.species==='leopard')?POUNCE_RANGE:a.catchRange;
  const victims=room.players.filter(q=>q.id!==p.id&&!q.deadUntil&&q.protectedUntil<now&&a.prey.includes(q.species)&&!hidden(q,room,now)&&!leaping(q,now)&&dist(p,q)<reach);victims.sort((x,y)=>dist(p,x)-dist(p,y));
  if(p.climb&&!ambush)return;
- if(victims[0]){const q=victims[0];if(ambush)dropOnto(p,props(room.seed),q);else{p.x=q.x-(q.x-p.x)*.3;p.y=q.y-(q.y-p.y)*.3;}die(q,room,now,'was caught by a '+a.name.toLowerCase()+'.');dropCarcass(room,q.x,q.y,now);p.hunger=Math.min(100,p.hunger+45);p.hunts++;p.food++;const points=(savannaEvent(room,now).kind==='hunt'?15:10)+(ambush?3:0);p.score+=points;notify(p,(ambush?'Ambush! ':'Successful hunt ')+'+'+points,now);return;}
+ // A catch is a committed lunge: aimed at prey in front, with nothing solid in between, and it lands a quarter of a
+ // second later (the prey sees the hunter gather itself and can still leap, kick or break away). A leopard's ambush
+ // is a leap from the bough that is checked when it lands.
+ if(victims.length&&!ambush){const ps=props(room.seed),q=victims.find(q=>inFront(p,q)&&!contactBlocked(ps,p,q));
+  if(!q){notify(p,'Missed: face your prey, with nothing in the way.',now);return;}
+  p.strikeId=q.id;p.strikeAt=now+STRIKE_WINDUP;p.strikeAmbush=false;p.strikeBorn=p.born;p.heading=Math.atan2(q.y-p.y,q.x-p.x);return;}
+ if(victims[0]&&ambush){const q=victims[0];dropOnto(p,props(room.seed),q);p.strikeId=q.id;p.strikeAt=0;p.strikeAmbush=true;p.strikeBorn=p.born;return;}
  if(ambush){notify(p,'No prey below. Wait for it to come closer.',now);return;}
  const f=nearest(room.foods,p,FOOD_RANGE,f=>f.ready<=now&&(!f.until||f.until>now)&&(a.foods as string[]).includes(f.kind));
  if(f){if(f.until)f.until=now;else f.ready=now+18000;p.food++;if(f.kind==='carrion')p.scavenged++;p.hunger=Math.min(100,p.hunger+(f.kind==='carrion'?35:28));const points=(savannaEvent(room,now).kind==='forage'?5:3)+(f.kind==='carrion'&&p.species==='hyena'?2:0);p.score+=points;notify(p,(f.kind==='carrion'?'Scavenged ':f.kind==='roots'?'Dug up roots ':'Food found ')+'+'+points,now);return;}
- if(nearWater(props(room.seed),p.x,p.y,WATER_REACH)){p.drinks++;p.hunger=Math.min(100,p.hunger+6);p.score+=2;notify(p,'A long drink +2',now);return;}
+ if(nearWater(props(room.seed),p.x,p.y,WATER_REACH)){
+  // water refills thirst (not food) and only scores when the animal really needed it
+  if((p.thirst??100)>=THIRSTY){notify(p,'Not thirsty yet.',now);return;}
+  p.drinks++;p.thirst=100;p.score+=2;notify(p,'A long drink +2',now);return;}
  if(!p.bot)notify(p,'Move closer to your food, water or suitable prey.',now);
 }
+/** The moment a lunge lands (or a leopard lands from its leap): the prey must still be there, catchable, in reach and
+ *  in front, with nothing solid between. Otherwise it got away. */
+export function resolveStrike(p:Player,room:Room,now:number){
+ const q=room.players.find(o=>o.id===p.strikeId),a=ANIMALS[p.species],ambush=!!p.strikeAmbush,ps=props(room.seed),life=p.strikeBorn;
+ p.strikeId='';p.strikeAt=0;p.strikeAmbush=false;if(p.deadUntil||life!==p.born)return;
+ if((p.stunUntil??0)>now){notify(p,'Missed: knocked off balance.',now);return;}
+ const reach=(ambush?a.catchRange*1.3:p.abilityUntil>now&&(p.species==='lion'||p.species==='leopard')?POUNCE_RANGE:a.catchRange)*1.15;
+ const caught=!!q&&!q.deadUntil&&q.protectedUntil<now&&!hidden(q,room,now)&&!leaping(q,now)&&dist(p,q)<reach&&(ambush||inFront(p,q))&&!contactBlocked(ps,p,q);
+ if(!q||!caught){notify(p,ambush?'Missed: the prey moved before you landed.':'Missed: it broke away.',now);if(q&&!q.deadUntil)q.threatAt=now;return;}
+ if(!ambush){p.x=q.x-(q.x-p.x)*.3;p.y=q.y-(q.y-p.y)*.3;}
+ die(q,room,now,'was caught by a '+a.name.toLowerCase()+'.');dropCarcass(room,q.x,q.y,now);p.hunger=Math.min(100,p.hunger+45);p.hunts++;p.food++;
+ const points=(savannaEvent(room,now).kind==='hunt'?15:10)+(ambush?3:0);p.score+=points;notify(p,(ambush?'Ambush! ':'Successful hunt ')+'+'+points,now);
+}
+export const STRIKE_WINDUP=250;
 type Task={label:string;value:number;target:number;points:number};
 export function tasks(p:Player,now:number):Task[]{
  const survive={label:'Survive this life for 60 seconds',value:Math.floor(p.survivalSeconds),target:60,points:40};
@@ -480,7 +522,10 @@ export function tick(room:Room,now:number){
  if(p.bot)steer(p,room,ps,t,dt,humans);
  else if(t-p.inputAt>800){p.dx=0;p.dy=0;}
  move(p,dt,ps,t);breathe(p,dt,t);
- p.survivalSeconds+=dt;p.hunger-=dt*.6;
+ p.survivalSeconds+=dt;p.thirst=Math.max(0,(p.thirst??100)-dt*THIRST_RATE);
+ // food runs down at its own pace; a parched animal burns through it twice as fast
+ p.hunger-=dt*.6*(p.thirst<=0?2:1);
+ if(p.strikeId&&p.strikeAt&&t>=p.strikeAt)resolveStrike(p,room,t);
  if(p.hunger<=0){die(p,room,t,'ran out of food.');continue;}
  if(hidden(p,room,t)||stalking(p,t)&&(inThicket(ps,p.x,p.y)||inTallGrass(ps,p.x,p.y)))p.hiddenSeconds+=dt;
  // Being hunted means a predator is actually after you (a wild one has picked you and is charging, or a player's
@@ -533,7 +578,9 @@ function grazer(p:Player,room:Room,ps:Prop[],t:number,think:number):Plan{
   else{
    p.sprint=true;let ax=p.x-p.threatX,ay=p.y-p.threatY;const n=Math.hypot(ax,ay)||1,bias=(idHash(p.id)-.5)*1.3,c=Math.cos(bias),s=Math.sin(bias);ax/=n;ay/=n;
    let goal={x:p.x+(ax*c-ay*s)*300,y:p.y+(ax*s+ay*c)*300};
-   if(p.species==='warthog'){const b=ps.filter(o=>o.kind==='burrow'&&dist(o,p)<400).sort((x,y)=>dist(x,p)-dist(y,p))[0];if(b){goal=b;if(dist(p,b)<BURROW_REACH&&t>p.abilityReady)activate(p,room,t);}}
+   if(p.species==='warthog'){const b=ps.filter(o=>o.kind==='burrow'&&dist(o,p)<400).sort((x,y)=>dist(x,p)-dist(y,p))[0];if(b){const ready=t>p.abilityReady,a=idHash(p.id)*6.28;
+    // a burrow it can't use yet: wait at the mouth, each hog at its own spot, rather than all on the hole
+    goal=ready?b:{x:b.x+Math.cos(a)*16,y:b.y+Math.sin(a)*16};if(ready&&dist(p,b)<BURROW_REACH)activate(p,room,t);}}
    else if(src&&t>p.abilityReady&&(p.species==='zebra'?dist(src,p)<KICK_RANGE&&behind(p,src):dist(src,p)<70))activate(p,room,t);
    return{goal,pace:1};
   }
@@ -544,10 +591,10 @@ function grazer(p:Player,room:Room,ps:Prop[],t:number,think:number):Plan{
  if(mates.length){p.homeX=(p.x+mates.reduce((s,q)=>s+q.x,0))/(mates.length+1);p.homeY=(p.y+mates.reduce((s,q)=>s+q.y,0))/(mates.length+1);}
  const centre={x:p.homeX,y:p.homeY};
  if(p.mood==='regroup'){if(dist(p,centre)<90||t>p.moodUntil)p.mood='graze';else return{goal:centre,pace:.6};}
- if(p.mood==='drink'||t>p.nextDrink&&p.hunger>40){
+ if(p.mood==='drink'||(t>p.nextDrink||(p.thirst??100)<35)&&p.hunger>40){
   // the herd walks to the nearest watering hole now and then: tracks and predators gather there too
   p.mood='drink';const w=ps.filter(o=>o.kind==='water').sort((x,y)=>dist(x,p)-dist(y,p))[0],n=Math.max(1,dist(p,w));
-  if(nearWater(ps,p.x,p.y,WATER_REACH-6)){p.nextDrink=t+70000+roll(room)*60000;p.mood='graze';p.drinks++;p.hunger=Math.min(100,p.hunger+6);return{pace:0};}
+  if(nearWater(ps,p.x,p.y,WATER_REACH-6)){p.nextDrink=t+70000+roll(room)*60000;p.mood='graze';p.drinks++;p.thirst=100;return{pace:0};}
   return{goal:{x:w.x+(p.x-w.x)/n*(w.size+12),y:w.y+(p.y-w.y)/n*(w.size+12)},pace:.5};
  }
  if(dist(p,centre)>170)return{goal:centre,pace:.55};
@@ -628,4 +675,4 @@ function steer(p:Player,room:Room,ps:Prop[],t:number,dt:number,humans:Player[]){
  if(t<p.unstickUntil){const dx=p.dx;p.dx=-p.dy*slide;p.dy=dx*slide;}
  if(p.hunger<90||!a.prey.length)interact(p,room,t);
 }
-export function publicRoom(room:Room,now:number){return{...room,players:room.players.map(({token,bag,...p})=>({...p,online:p.bot||now-p.lastSeen<8000,concealed:hidden(p,room,now)&&!p.perched})),serverTime:now};}
+export function publicRoom(room:Room,now:number){return{...room,players:room.players.map(({token,bag,strikeId,strikeBorn,...p})=>({...p,online:p.bot||now-p.lastSeen<8000,concealed:hidden(p,room,now)&&!p.perched})),serverTime:now};}
