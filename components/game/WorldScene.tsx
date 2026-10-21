@@ -95,8 +95,8 @@ export default function WorldScene({room,me,input,preview=false,onPerformance,on
     // along its motion when there is no input, eased but capped at the species' turnRate so a 180 is a quick pivot.
     {const steer=own&&r?.phase==='playing'?position:p,steering=Math.hypot(steer.dx,steer.dy)>.1&&!p.perched;
      if(steering||speed>3){const direction=steering?-Math.atan2(steer.dy,steer.dx):-Math.atan2(vy,vx),delta=Math.atan2(Math.sin(direction-rig.turn),Math.cos(direction-rig.turn)),max=ANIMALS[p.species].gait.turnRate*dt;rig.turn+=THREE.MathUtils.clamp(delta*(1-Math.exp(-14*dt)),-max,max);}
-      // a watchful animal standing still turns to face what it is watching
-      else if(!own&&p.mood==='watch'){const delta=Math.atan2(Math.sin(-(p.heading||0)-rig.turn),Math.cos(-(p.heading||0)-rig.turn));rig.turn+=delta*(1-Math.exp(-4*dt));}}
+     // a wild animal on watch turns slowly to face what it noticed
+     else if(!own&&p.mood==='watch'){const delta=Math.atan2(Math.sin(-(p.heading||0)-rig.turn),Math.cos(-(p.heading||0)-rig.turn));rig.turn+=delta*(1-Math.exp(-4*dt));}}
     rig.altitude=THREE.MathUtils.damp(rig.altitude,p.perched?p.perchHeight:0,6,dt);rig.root.rotation.y=rig.turn;rig.root.position.set(position.x,groundY(position.x,position.y)+rig.altitude,position.y);
     {const a=ANIMALS[p.species],start=p.abilityUntil-a.duration*1000;animateSafari(rig,{speed:p.perched?0:speed,time,dt,ability:p.abilityUntil>now?THREE.MathUtils.clamp((now-start)/(a.duration*1000),0,1):-1,action:p.actionUntil>now,perched:!!p.perched,altitude:rig.altitude,stunned:(p.stunUntil||0)>now,alert:p.mood==='watch',grazing:headDown(p,now),crouch:p.mood==='stalk',resting:p.mood==='rest'});}
     shadow.position.set(position.x+3,groundY(position.x,position.y)+.6,position.y+2);{const sp=cameraProfile(p.species);shadow.scale.set(sp.shadow[0],sp.shadow[1],1);shadow.rotation.z=rig.turn;}
