@@ -36,26 +36,26 @@ export function playAnimalSound(context:AudioContext,species:Species,event:Anima
   source.connect(filter);filter.connect(envelope);envelope.connect(output);source.start(start);source.stop(start+length+.02);
  };
 
- if(species==='owl'){
-  tone(event==='death'?340:420,event==='death'?245:320,0,.23,'triangle',.65);
-  tone(event==='ability'?360:315,event==='ability'?285:245,.23,.25,'triangle',.58);
- }else if(species==='fox'){
-  tone(event==='death'?470:590,event==='death'?280:860,0,.18,'triangle',.62);
-  tone(430,650,.18,.15,'sine',.42);
- }else if(species==='snake'){
-  hiss(0,duration*1.15,event==='death'?900:1450,.42);
-  if(event==='ability'||event==='success')tone(190,125,.08,.2,'triangle',.2);
- }else if(species==='squirrel'){
-  tone(1050,820,0,.075,'square',.24);
-  tone(940,1180,.09,.07,'square',.22);
-  tone(1100,760,.19,.09,'triangle',.25);
- }else if(species==='mouse'){
-  tone(1380,980,0,.075,'sine',.35);
-  tone(1620,1190,.11,.09,'sine',.3);
-  if(event==='death')tone(1050,700,.2,.13,'sine',.3);
+ if(species==='lion'){
+  // a rolling roar: a low sawtooth swell with a rasp of breath on top
+  tone(event==='death'?120:150,event==='death'?70:95,0,event==='ability'?.75:.5,'sawtooth',.5);
+  hiss(.04,event==='ability'?.65:.4,420,.22);
+ }else if(species==='leopard'){
+  // the sawing call: short rasping coughs
+  for(let i=0;i<(event==='ability'?2:4);i++){tone(190,140,i*.16,.11,'sawtooth',.36);hiss(i*.16,.1,700,.2);}
+ }else if(species==='hyena'){
+  // the rising whoop
+  tone(event==='death'?520:260,event==='death'?240:640,0,.42,'sine',.55);
+  if(event!=='death')tone(300,720,.45,.35,'sine',.38);
+ }else if(species==='zebra'){
+  // a barking bray
+  tone(520,380,0,.12,'square',.25);tone(470,620,.13,.12,'square',.22);tone(520,360,.27,.14,'square',.22);
+ }else if(species==='impala'){
+  // an alarm snort
+  hiss(0,.16,1800,.4);tone(330,220,.02,.1,'triangle',.22);
  }else{
-  tone(event==='death'?620:820,event==='death'?390:1120,0,.11,'sine',.35);
-  tone(740,940,.13,.11,'sine',.3);
+  // warthog grunts
+  for(let i=0;i<3;i++)tone(event==='death'?150:110,80,i*.13,.09,'square',.3);
  }
- if(event==='action'||event==='success')tone(species==='owl'?680:species==='snake'?210:520, species==='owl'?860:species==='snake'?170:760,duration*.55,.1,'sine',.18);
+ if(event==='action'||event==='success')tone(520,760,duration*.55,.1,'sine',.18);
 }

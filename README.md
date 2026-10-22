@@ -1,6 +1,6 @@
 # Animal Chain
 
-Animal Chain is a real-time multiplayer forest survival game for 2–8 players. Each life assigns a different forest animal, and every species has its own food, predators, abilities, and three tasks. Rounds last five minutes and use a room code so players can join from separate devices.
+Animal Chain is a real-time multiplayer African savanna survival game for 2–8 players, drawn in a faceted low-poly style with real animal anatomy. Each life assigns a random animal (lion, leopard, spotted hyena, plains zebra, impala or warthog), and every species has its own food, predators, abilities, and three tasks. Rounds last five minutes and use a room code so players can join from separate devices. The world, animals and food are modelled in code (components/game/faceted.ts, safari-animals.ts, savanna-world.ts), with lighter models swapped in at a distance.
 
 ## Run it locally
 
@@ -18,11 +18,13 @@ pnpm build
 pnpm start
 ```
 
-The game code lives in `app/`, `components/game/`, and `lib/game.ts`. The gameplay tests are in `tests/game.test.mjs` and can be run with:
+The game code lives in `app/`, `components/game/`, and `lib/game.ts`. The gameplay tests are in `tests/game.test.mjs` (rules, awareness, wildlife behaviour) and `tests/route.test.mjs` (the multiplayer handler against an in-memory database). Run them with:
 
 ```bash
-node --test tests/game.test.mjs
+node --experimental-strip-types --test tests/game.test.mjs tests/route.test.mjs
 ```
+
+`docs/wildlife-sources.md` records which behaviours come from wildlife references and which are game rules.
 
 The browser automatically uses a lighter compatibility renderer when WebGL is unavailable. The current build also reduces distant scenery, batches animal meshes, lowers CPU terrain detail, and adapts draw distance and resolution to keep movement responsive on slower devices. Nearby animals vocalize during calls, actions, abilities, and deaths using lightweight synthesized Web Audio effects; use the speaker button to mute them.
 
