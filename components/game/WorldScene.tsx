@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState} from 'react';
 import * as THREE from 'three';
 import {createRenderer,SoftwareRenderer} from './software-renderer';
-import {cameraInput,ANIMALS,SPECIES,Species,Room,Player,W,H,props,makeFoods,move,newPlayer,dist,solidNear,solidRadius,sense,wind,headDown,canClimb} from '@/lib/game';
+import {cameraInput,ANIMALS,SPECIES,Species,Room,Player,W,H,props,makeFoods,move,newPlayer,dist,solidNear,solidRadius,sense,wind,headDown,canClimb,sightBlocked,idHash} from '@/lib/game';
 import {climberPose,climberFeet} from './climb-pose';
 import {SafariTraces} from './safari-traces';
 import {makeSafariAnimal,animateSafari,SafariRig,animalPortrait,cameraProfile} from './safari-animals';
@@ -13,6 +13,9 @@ import {MenuCinema} from './menu-cinema';
 import type {AnimalSoundEvent} from '@/lib/animal-sounds';
 export type GraphicsMode='auto'|'performance'|'high';
 export type PerformanceStats={fps:number;renderMs:number;renderer:string;quality:string;drawCalls:number};
+/** each real player's tag and minimap colour, stable for the player */
+const PLAYER_COLOURS=['#9fd4ff','#ffb3c7','#c8f59a','#ffd68a','#d6b8ff','#8ff0dc','#ffc29e','#f5f0a0'];
+const playerColour=(id:string)=>PLAYER_COLOURS[Math.floor(idHash(id)*PLAYER_COLOURS.length)];
 export type WorldRoom=Omit<Room,'players'>&{serverTime:number;_received?:number;_transitMs?:number;players:(Player&{online:boolean;concealed:boolean})[]};
 // moveYaw is the camera yaw that movement is read against. It is latched while a direction is held, so the camera can
 // swing round behind a turning animal without the held key suddenly meaning a different way.
@@ -141,7 +144,10 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
    // Tracking names only prey your animal can actually notice right now (the same sight / scent / sound rule the wildlife
    // uses): no markers through boulders, no labels on still animals hidden in tall grass, no minimap dots.
    const prey=players.filter(q=>q.id!==m.id&&!q.deadUntil&&ANIMALS[m.species].prey.includes(q.species)).map(q=>({q,cue:sense(m,q,r!,now,ps)})).filter(x=>x.cue).sort((a,b)=>a.cue!.range-b.cue!.range);
-   for(const p of players){const rig=rigs.get(p.id);if(!rig?.root.visible||p.id===m.id||dist(m,p)>400)continue;if(!p.bot)label(p.name,rig.root.position.x,rig.root.position.y+52,rig.root.position.z);}
+   // real players: a small name tag over their animal while it is drawn, in front of the camera and not behind a boulder
+   // (hidden players are never drawn, so they never get one), and a dot in their colour on the minimap
+   const humans=players.filter(p=>!p.bot&&p.id!==m.id&&!p.deadUntil&&!(p as Player&{concealed?:boolean}).concealed);
+   for(const p of humans){const rig=rigs.get(p.id);if(!rig?.root.visible||sightBlocked(ps,m,p))continue;label('\u25BE '+p.name+' \u00B7 '+ANIMALS[p.species].name,rig.root.position.x,rig.root.position.y+cameraProfile(p.species).head+14,rig.root.position.z,playerColour(p.id));}
    if(input.current.instinct!==false){
     for(const {q,cue} of prey.slice(0,2)){const rig=rigs.get(q.id);if(rig&&(cue!.how==='sight'||cue!.how==='close'))label(ANIMALS[q.species].name.toUpperCase()+' · '+Math.round(dist(m,q)/10)+' m',rig.root.position.x,rig.root.position.y+cameraProfile(q.species).head+9,rig.root.position.z,'#ffce89');}
     const nearestCue=prey[0],nearest=nearestCue?.q,how=nearestCue?.cue!.how;if(nearest){const direction=Math.atan2(nearest.x-m.x,nearest.y-m.y)-yaw-Math.PI,angle=Math.atan2(Math.sin(direction),Math.cos(direction)),sx=width/2-THREE.MathUtils.clamp(angle/1.5,-1,1)*Math.min(220,width*.28);ctx.save();ctx.translate(sx,106);ctx.rotate(-angle);ctx.fillStyle='#f7ba6b';ctx.beginPath();ctx.moveTo(0,-6);ctx.lineTo(-5,4);ctx.lineTo(5,4);ctx.closePath();ctx.fill();ctx.restore();ctx.textAlign='center';ctx.font='600 12px Arial';ctx.fillStyle='#ffe1b3';ctx.fillText(how==='scent'?ANIMALS[nearest.species].name+' scent on the wind':how==='sound'?'Something running':ANIMALS[nearest.species].name+' · '+Math.round(dist(m,nearest)/10)+' m',sx,126);}
@@ -152,6 +158,7 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
    const mw=width<760?106:142,mh=mw*H/W,mx=width-mw-22,my=width<760?94:height-mh-24;
    ctx.fillStyle='#2a2112da';ctx.fillRect(mx-8,my-24,mw+16,mh+32);ctx.strokeStyle='#e6c47a55';ctx.strokeRect(mx-8,my-24,mw+16,mh+32);ctx.textAlign='left';ctx.font='600 11px Arial';ctx.fillStyle='#f3e7cc';ctx.fillText('GOLDEN PLAINS',mx,my-10);ctx.fillStyle='#b8954e';ctx.fillRect(mx,my,mw,mh);
    for(const t of ps){if(t.kind==='tallgrass'){ctx.fillStyle='#9c8a3f';ctx.beginPath();ctx.arc(mx+t.x/W*mw,my+t.y/H*mh,Math.max(1.5,t.size*100/W*mw),0,Math.PI*2);ctx.fill();continue;}if(t.kind==='water'){ctx.fillStyle='#5e9a96';ctx.beginPath();ctx.arc(mx+t.x/W*mw,my+t.y/H*mh,Math.max(2,t.size/W*mw),0,Math.PI*2);ctx.fill();continue;}if(t.kind==='bush')continue;ctx.fillStyle=t.kind==='tree'?'#5f7a33':t.kind==='rock'?'#8b8070':'#4a3420';ctx.fillRect(mx+t.x/W*mw,my+t.y/H*mh,2,2);}
+   for(const p of humans){ctx.fillStyle=playerColour(p.id);ctx.strokeStyle='#2a1d0e';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(mx+p.x/W*mw,my+p.y/H*mh,3.2,0,Math.PI*2);ctx.fill();ctx.stroke();}
    ctx.save();ctx.translate(mx+m.x/W*mw,my+m.y/H*mh);ctx.rotate(-yaw);ctx.fillStyle='#fff6dc';ctx.beginPath();ctx.moveTo(0,-5);ctx.lineTo(-3,3);ctx.lineTo(3,3);ctx.closePath();ctx.fill();ctx.restore();
   };
   renderer.setAnimationLoop(render);
