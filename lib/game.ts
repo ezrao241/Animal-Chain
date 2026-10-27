@@ -1,3 +1,4 @@
+import {createTerrainHeight} from './terrain-height.ts';
 // Animal Chain: African savanna rules shared by the server, the offline practice build and the 3D client.
 // 400 x 280 m playable map; 10 game units = 1 m. Animals are life-size.
 import {tree,limbPoint,type Tree} from './acacia.ts';
@@ -527,7 +528,7 @@ export function resolveStrike(p:Player,room:Room,now:number){
  const caught=!!q&&!q.deadUntil&&q.protectedUntil<now&&canTake(p,q,room)&&!hidden(q,room,now)&&!leaping(q,now)&&dist(p,q)<reach&&(ambush||lungeLine(p,q))&&!contactBlocked(ps,p,q);
  if(!q||!caught){notify(p,ambush?'Missed: the prey moved before you landed.':'Missed: it broke away.',now);if(q&&!q.deadUntil)q.threatAt=now;return;}
  if((q.hitUntil??0)>now){notify(p,'It broke free. Give chase.',now);return;}
- const damage=HUNT_DAMAGE[p.species]??25;const resilience=q.species==='zebra'?.7:q.species==='warthog'?.85:1;
+ const damage=HUNT_DAMAGE[p.species]??25;const resilience=q.species==='zebra'?.8:q.species==='warthog'?.9:1;
  q.health=Math.max(0,(q.health??100)-damage*resilience);q.hitUntil=now+900;q.feeding=undefined;
  if(q.health>0){notify(q,'Hit! Sprint or use your defence.',now);notify(p,'Hit landed. Prey is still alive.',now);if(q.species==='warthog'&&inFront(q,p)){p.health=Math.max(1,(p.health??100)-12);p.stunUntil=now+450;notify(p,'Tusks! The warthog pushed back.',now);}return;}
  die(q,room,now,'was caught by a '+a.name.toLowerCase()+'.');dropCarcass(room,q.x,q.y,now);const duration=FEED_SECONDS[p.species]*1000;p.feeding={until:now+duration,duration,last:now};p.dx=p.dy=p.vx=p.vy=0;p.hunts++;p.food++;
@@ -753,26 +754,49 @@ function steer(p:Player,room:Room,ps:Prop[],t:number,dt:number,humans:Player[]){
 export function publicRoom(room:Room,now:number){return{...room,players:room.players.map(({token,bag,strikeId,strikeBorn,strikeDir,done,carry,...p})=>({...p,online:p.bot||now-p.lastSeen<8000,concealed:hidden(p,room,now)&&!p.perched})),serverTime:now};}
 
 // Balance abstractions: health is not a biological measurement. Matchups remain canTake().
-export const HUNT_DAMAGE:Partial<Record<Species,number>>={lion:46,leopard:38,hyena:32};
+export const HUNT_DAMAGE:Partial<Record<Species,number>>={lion:60,leopard:52,hyena:48};
 export const FEED_SECONDS:Record<Species,number>={lion:5,hyena:6,leopard:7,zebra:0,impala:0,warthog:0};
 export function stepFeeding(p:Player,now:number){const f=p.feeding;if(!f)return;
  if(p.deadUntil||p.stunUntil>now||Math.hypot(p.dx,p.dy)>.1){p.feeding=undefined;notify(p,'Feeding stopped. You can move.',now);return;}
  const elapsed=Math.max(0,Math.min(now,f.until)-f.last);p.hunger=Math.min(100,p.hunger+45*elapsed/f.duration);f.last=Math.min(now,f.until);p.vx=p.vy=0;
  if(now>=f.until){p.feeding=undefined;notify(p,'Meal finished.',now);}}
 export function finishRound(room:Room,now:number){room.phase='finished';room.ends=now;for(const p of room.players){p.dx=p.dy=p.vx=p.vy=0;p.feeding=undefined;p.strikeId='';}room.events.unshift('The host ended the round.');}
-export type Poacher={x:number;y:number;jeepX:number;jeepY:number;exitX:number;exitY:number;state:'guarding'|'detecting'|'defending'|'retreating'|'entering'|'escaping'|'gone'|'subdued';target:string;health:number;since:number;shotAt:number;nextShot:number;heading:number};
+export type Poacher={x:number;y:number;jeepX:number;jeepY:number;exitX:number;exitY:number;state:'guarding'|'detecting'|'defending'|'retreating'|'entering'|'escaping'|'gone'|'subdued';target:string;health:number;since:number;shotAt:number;nextShot:number;heading:number;steerSide?:number};
 function spawnPoachers(room:Room):Poacher[]{const ps=props(room.seed),r=rng(room.seed+room.round*17);
  for(let i=0;i<100;i++){const x=80+r()*80,y=180+r()*(H-360),a={x,y},b={x:0,y};if(room.players.some(p=>dist(p,a)<300)||blocked(ps,x,y,65)||contactBlocked(ps,a,b)||ps.some(p=>solid(p)&&Math.abs(p.y-y)<55&&p.x<x+70))continue;
  return[{x:x+35,y,jeepX:x,jeepY:y,exitX:-80,exitY:y,state:'guarding',target:'',health:100,since:0,shotAt:0,nextShot:0,heading:Math.PI}];}return[];}
 function engagePoacher(p:Player,room:Room,now:number,reach:number){if(!ANIMALS[p.species].prey.length||p.bot)return false;
- const n=room.poachers?.find(n=>!['gone','escaping','entering','subdued'].includes(n.state)&&dist(p,n)<reach&&inFront(p,n)&&!contactBlocked(props(room.seed),p,n));if(!n)return false;
- n.target=p.id;n.health=Math.max(0,n.health-(HUNT_DAMAGE[p.species]??30));if(n.health===0){n.state='subdued';}else if(n.state!=='retreating'){n.state='defending';n.since=now;}p.stamina=Math.max(0,p.stamina-12);notify(p,n.health===0?'Poacher stopped. Leave the area.':'Poacher aiming! Break contact and use cover.',now);return true;}
-function stepPoachers(room:Room,now:number,dt:number){for(const n of room.poachers??[]){if(n.state==='gone'||n.state==='subdued')continue;const ps=props(room.seed),p=room.players.find(p=>p.id===n.target);
- const sees=(p:Player)=>!p.deadUntil&&p.protectedUntil<now&&ANIMALS[p.species].prey.length>0&&!hidden(p,room,now)&&dist(p,n)<180&&!contactBlocked(ps,n,p);
+ const n=room.poachers?.find(n=>!['gone','escaping','subdued'].includes(n.state)&&dist(p,n)<reach&&inFront(p,n)&&!contactBlocked(props(room.seed),p,n));if(!n)return false;
+ n.target=p.id;n.health=Math.max(0,n.health-({lion:46,leopard:38,hyena:32}[p.species as 'lion'|'leopard'|'hyena']??30));if(n.health===0){n.state='subdued';}else if(!['retreating','entering','defending'].includes(n.state)){n.state='defending';n.since=now;}p.stamina=Math.max(0,p.stamina-12);notify(p,n.health===0?'Poacher stopped. Leave the area.':'Poacher aiming! Break contact and use cover.',now);return true;}
+export function stepPoachers(room:Room,now:number,dt:number){for(const n of room.poachers??[]){if(n.state==='gone'||n.state==='subdued')continue;const ps=props(room.seed),p=room.players.find(p=>p.id===n.target);
+ if(p&&['detecting','defending'].includes(n.state))n.heading=Math.atan2(p.y-n.y,p.x-n.x);
+ const sees=(p:Player)=>!p.deadUntil&&p.protectedUntil<now&&ANIMALS[p.species].prey.length>0&&!hidden(p,room,now)&&dist(p,n)<180&&!contactBlocked(ps,n,p)&&poacherSight(room,n,p);
  if(n.state==='guarding'){const q=room.players.find(p=>!p.bot&&sees(p));if(q){n.target=q.id;n.state='detecting';n.since=now;notify(q,'Poacher ahead. Stay back or use cover.',now);}}
  else if(n.state==='detecting'){if(!p||!sees(p)){n.state='guarding';n.target='';}else if(now-n.since>1800){if(now-n.since>5000){n.state='retreating';n.since=now;}}}
  else if(n.state==='defending'){if(now-n.since>2200||!p||!sees(p)){n.state='retreating';n.since=now;}else if(now-n.since>1000&&now>=n.nextShot){n.shotAt=now;n.nextShot=now+1500;p.health=Math.max(0,(p.health??100)-25);p.feeding=undefined;notify(p,'Shot! Find cover.',now);if(p.health<=0)die(p,room,now,'was stopped by a poacher.');}}
- else if(n.state==='retreating'){const d=Math.hypot(n.jeepX-n.x,n.jeepY-n.y);if(d<5){n.state='entering';n.since=now;}else{const k=Math.min(1,55*dt/d);n.x+=(n.jeepX-n.x)*k;n.y+=(n.jeepY-n.y)*k;}}
+ else if(n.state==='retreating'){const door={x:n.jeepX+3,y:n.jeepY+16},d=dist(n,door);if(d<3){n.state='entering';n.since=now;}else{const k=Math.min(1,55*dt/d);n.heading=Math.atan2(door.y-n.y,door.x-n.x);n.x+=(door.x-n.x)*k;n.y+=(door.y-n.y)*k;}}
  else if(n.state==='entering'&&now-n.since>1200){n.state='escaping';n.since=now;}
- else if(n.state==='escaping'){const next={x:n.jeepX-70*dt,y:n.jeepY};if(!room.players.some(p=>!p.deadUntil&&dist(p,next)<40)){n.jeepX=next.x;n.x=n.jeepX;if(n.jeepX<=n.exitX)n.state='gone';}}
+ else if(n.state==='escaping'){driveEscape(n,room,dt);}
  }}
+
+let sightSeed:number|undefined,sightTerrain:ReturnType<typeof createTerrainHeight>|undefined;
+export function poacherSight(room:Room,a:{x:number;y:number},b:{x:number;y:number}){
+ if(sightSeed!==room.seed||!sightTerrain){sightSeed=room.seed;sightTerrain=createTerrainHeight(props(room.seed),W,H);}
+ const ground=sightTerrain.groundY,from=ground(a.x,a.y)+14,to=ground(b.x,b.y)+7,steps=Math.ceil(dist(a,b)/8);
+ for(let i=1;i<steps;i++){const t=i/steps;if(ground(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t)>from+(to-from)*t)return false;}
+ return true;
+}
+export function driveEscape(n:Poacher,room:Room,dt:number){
+ const ps=props(room.seed),origin={x:n.jeepX,y:n.jeepY},step=Math.min(5,70*dt);
+ // Probe a full vehicle length ahead; use one stable side to avoid left/right oscillation.
+ const side=n.steerSide??(n.jeepY<H/2?1:-1);n.steerSide=side;
+ for(const angle of [Math.PI,Math.PI-side*.55,Math.PI-side*1.1,Math.PI-side*Math.PI/2,Math.PI+side*.55,Math.PI+side*1.1]){
+  const dx=Math.cos(angle),dy=Math.sin(angle);let clear=true;
+  for(let d=step;d<=step+35;d+=5){const q={x:origin.x+dx*d,y:origin.y+dy*d};
+   if(q.y<45||q.y>H-45||blocked(ps,q.x,q.y,29)||room.players.some(p=>!p.deadUntil&&dist(p,q)<38)){clear=false;break;}}
+  if(!clear)continue;
+  n.heading=angle;n.jeepX+=dx*step;n.jeepY+=dy*step;n.x=n.jeepX;n.y=n.jeepY;
+  if(n.jeepX<=n.exitX)n.state='gone';return;
+ }
+ // Surrounded vehicles wait safely; they never run over a player or teleport away.
+}
