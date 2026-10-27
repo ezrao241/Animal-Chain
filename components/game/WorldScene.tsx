@@ -32,7 +32,7 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
   renderer.setPixelRatio(pixelRatio);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.12;renderer.shadowMap.enabled=false;renderer.shadowMap.type=THREE.PCFSoftShadowMap;if(renderer instanceof THREE.WebGLRenderer)renderer.shadowMap.autoUpdate=false;
   const canvas=renderer.domElement;canvas.setAttribute('aria-label',preview?'Live Golden Plains savanna preview with animated animals':'3D Golden Plains savanna. WASD moves relative to camera. Drag to look. Shift sprints, E interacts, Space uses ability, F toggles instincts, R centers camera.');canvas.tabIndex=preview?-1:0;element.appendChild(canvas);
   const overlay=document.createElement('canvas');overlay.className='world-labels';element.appendChild(overlay);const ctx=overlay.getContext('2d')!;
-  const scene=new THREE.Scene();const encounter=createPoacherEncounter(scene);scene.background=new THREE.Color(0xead8b2);scene.fog=new THREE.Fog(0xe8d5ae,340,800);const camera=new THREE.PerspectiveCamera(61,1,1.8,1000);
+  const scene=new THREE.Scene();const encounters:ReturnType<typeof createPoacherEncounter>[]=[];scene.background=new THREE.Color(0xead8b2);scene.fog=new THREE.Fog(0xe8d5ae,340,800);const camera=new THREE.PerspectiveCamera(61,1,1.8,1000);
   scene.add(new THREE.HemisphereLight(0xc2daf2,0xa98a52,1.4));const sun=new THREE.DirectionalLight(0xffd49a,3.2);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);Object.assign(sun.shadow.camera,{left:-400,right:400,top:400,bottom:-400,near:10,far:1700});sun.shadow.bias=-.0003;sun.shadow.normalBias=1.5;sun.shadow.camera.updateProjectionMatrix();scene.add(sun,sun.target);
   const rim=new THREE.DirectionalLight(0x9fc0e6,.55);rim.position.set(400,200,500);scene.add(rim);
   const savanna=createSavanna(scene,lightweight),ps=props(417),previewFoods=makeFoods(417),food=new FoodField(scene),traces=new SafariTraces(scene,groundY,lightweight);
@@ -42,12 +42,12 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
   const cinema=preview?new MenuCinema():null,demo=cinema?.players||[];let shownShot:Species|null|undefined;
   // the menu backdrop is graded to late golden hour: lower, redder sun, cooler sky fill and a warm haze
   if(preview){sun.color.set(0xffa65c);sun.intensity=3.4;rim.color.set(0x8f9be0);rim.intensity=.7;renderer.toneMappingExposure=1.02;scene.traverse(o=>{if(o instanceof THREE.HemisphereLight){o.color.set(0xb7b9e0);o.groundColor.set(0x9a6a3e);o.intensity=1.15;}});savanna.dusk();scene.background=new THREE.Color(0xd9a77a);(scene.fog as THREE.Fog).color.set(0xd8a47a);}
-  let width=0,height=0,last=performance.now(),lastPreviewFrame=0,yaw=0,pitch=.24,distance=155,shownDistance=0,dragging=false,lastX=0,lastY=0,ownHeading=Math.PI/2,first=true,ownBorn=0,frameCost=16,dragPointer=-1,lastLook=-1e9,latchKey='',moveYaw=0;
+  let width=0,height=0,last=performance.now(),lastPreviewFrame=0,lastTraceFrame=0,yaw=0,pitch=.24,distance=155,shownDistance=0,dragging=false,lastX=0,lastY=0,ownHeading=Math.PI/2,first=true,ownBorn=0,frameCost=16,dragPointer=-1,lastLook=-1e9,latchKey='',moveYaw=0;
   const follow=new THREE.Vector3(1600,20,820),target=new THREE.Vector3(),projected=new THREE.Vector3(),view=new THREE.Vector3();
   const qualityCaps={high:1.5,balanced:1.12,performance:.78};
   const resize=()=>{const bounds=element.getBoundingClientRect();width=bounds.width;height=bounds.height;if(!width||!height)return;renderer.setSize(width,height);camera.aspect=width/height;camera.updateProjectionMatrix();overlay.width=Math.round(width);overlay.height=Math.round(height);};
   const observer=new ResizeObserver(resize);observer.observe(element);resize();input.current.cameraYaw=yaw;
-  let sampleStart=performance.now(),sampleFrames=0,sampleWork=0,lastOverlay=0,lastShadow=0,slowSamples=0,autoTier:'balanced'|'performance'='balanced',activeTier='',drawRange=800,nextAmbientAt=performance.now()+3500;
+  let sampleStart=performance.now(),sampleFrames=0,sampleWork=0,lastOverlay=0,lastShadow=0,slowSamples=0,autoTier:'balanced'|'performance'='performance',activeTier='',drawRange=800,nextAmbientAt=performance.now()+3500;
   const animalStates=new Map<string,{actionUntil:number;abilityUntil:number;deadUntil:number;calledAt:number}>();
   let soundRoomCode='';
   // one finger (or the mouse) looks around; a second finger on the canvas is ignored so look never jumps
@@ -56,16 +56,16 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
   const up=(e:PointerEvent)=>{if(e.pointerId===dragPointer){dragging=false;dragPointer=-1;}};const wheel=(e:WheelEvent)=>{if(preview)return;e.preventDefault();distance=THREE.MathUtils.clamp(distance+e.deltaY*.12,95,260);};
   canvas.addEventListener('pointerdown',down);canvas.addEventListener('pointermove',drag);canvas.addEventListener('pointerup',up);canvas.addEventListener('pointercancel',up);canvas.addEventListener('wheel',wheel,{passive:false});
   const render=(ms:number)=>{
-   if(preview&&ms-lastPreviewFrame<1000/30)return;
-   if(preview)lastPreviewFrame=ms;
+   if(ms-lastPreviewFrame<1000/(preview||lightweight?30:60)-1)return;
+   lastPreviewFrame=ms;
    const dt=Math.min(.075,Math.max(0,(ms-last)/1000));last=ms;if(!width||!height)return;
    const mode=input.current.graphics||'auto';
-   const time=ms/1000,{room:r,me:m}=latest.current;cinema?.animate(time);const now=r?Date.now()+r.serverTime-(r._received||Date.now())+(r._transitMs||0):Date.now(),lag=r?Math.min(.3,Math.max(0,(now-r.serverTime)/1000)):0,players=r?.players||demo,ids=new Set(players.map(p=>p.id));
-   encounter.update(r?.poachers,now,groundY);
+   const time=ms/1000,{room:r,me:m}=latest.current;cinema?.animate(time);const now=r?Date.now()+r.serverTime-(r._received||Date.now())+(r._transitMs||0):Date.now(),lag=r?Math.min(.15,Math.max(0,(now-r.serverTime)/1000)):0,players=r?.players||demo,ids=new Set(players.map(p=>p.id));
+   while(encounters.length<(r?.poachers?.length??0))encounters.push(createPoacherEncounter(scene));for(let i=0;i<encounters.length;i++)encounters[i].update(r?.poachers?.[i]?[r.poachers[i]]:[],now,groundY);
    if(r?.code!==soundRoomCode){animalStates.clear();soundRoomCode=r?.code||'';}
    const tier=lightweight||preview?'performance':mode==='auto'?autoTier:mode;
    const lowBudget=tier==='performance'&&mode!=='high'&&lightweight;
-   if(tier!==activeTier){activeTier=tier;pixelRatio=lightweight?0.7:Math.min(window.devicePixelRatio||1,qualityCaps[tier] ?? 1.12);renderer.setPixelRatio(pixelRatio);renderer.shadowMap.enabled=!lightweight&&tier==='high';savanna.realShadows(renderer.shadowMap.enabled);drawRange=lightweight?520:tier==='high'?1050:tier==='performance'?620:800;if(scene.fog instanceof THREE.Fog){scene.fog.near=drawRange*.4;scene.fog.far=drawRange;}camera.far=drawRange+180;resize();}
+   if(tier!==activeTier){activeTier=tier;pixelRatio=lightweight?0.7:Math.min(window.devicePixelRatio||1,qualityCaps[tier] ?? 1.12);renderer.setPixelRatio(pixelRatio);renderer.shadowMap.enabled=!lightweight&&tier==='high';savanna.realShadows(renderer.shadowMap.enabled);drawRange=lightweight?360:tier==='high'?1050:tier==='performance'?620:800;if(scene.fog instanceof THREE.Fog){scene.fog.near=drawRange*.4;scene.fog.far=drawRange;}camera.far=drawRange+180;resize();}
    if(!preview&&m&&r?.phase==='playing'){
     for(const p of players){
      const previous=animalStates.get(p.id);
@@ -92,7 +92,7 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
     const own=p.id===m?.id;let rig=rigs.get(p.id);
     if(!rig||rig.species!==p.species){if(rig)scene.remove(rig.root);rig=makeSafariAnimal(p.species);rig.born=p.born;rig.turn=own?Math.PI/2:0;rigs.set(p.id,rig);positions.set(p.id,{...p});if(!animalBatches)scene.add(rig.root);if(!shadows.has(p.id)){const shadow=new THREE.Mesh(shadowGeo,shadowMat);shadow.rotation.x=-Math.PI/2;scene.add(shadow);shadows.set(p.id,shadow);}}
     const position=positions.get(p.id)!;if(position.born!==p.born||Math.hypot(position.x-p.x,position.y-p.y)>220){Object.assign(position,p);rig.altitude=0;}
-    const concealed=(p as Player&{concealed?:boolean}).concealed;rig.root.visible=!p.deadUntil&&(!concealed||own)&&(own||!m||dist(m,p)<drawRange-60);const shadow=shadows.get(p.id)!;shadow.visible=rig.root.visible;
+    const concealed=(p as Player&{concealed?:boolean}).concealed;rig.root.visible=!p.deadUntil&&!(p.species==='warthog'&&p.abilityUntil>now)&&(!concealed||own)&&(own||!m||dist(m,p)<drawRange-60);const shadow=shadows.get(p.id)!;shadow.visible=rig.root.visible;
     // the menu camera tours a herd at close range: anyone wandering right up to the lens steps out of the shot
     if(preview&&Math.hypot(position.x-camera.position.x,position.y-camera.position.z)<30)rig.root.visible=shadow.visible=false;
     if(!rig.root.visible)continue;let vx=p.vx||0,vy=p.vy||0;
@@ -100,13 +100,13 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
     else if(own&&r?.phase==='playing'){
      Object.assign(position,{species:p.species,perched:p.perched,abilityUntil:p.abilityUntil,deadUntil:p.deadUntil,stunUntil:p.stunUntil,stamina:p.stamina,exhausted:p.exhausted,...input.current,...cameraInput(input.current.dx,input.current.dy,input.current.moveYaw??input.current.cameraYaw)});
      if(p.perched){position.x=THREE.MathUtils.damp(position.x,p.x,10,dt);position.y=THREE.MathUtils.damp(position.y,p.y,10,dt);position.vx=position.vy=0;}
-     else{move(position,dt,ps,now);const tx=p.x+vx*lag,ty=p.y+vy*lag,error=Math.hypot(position.x-tx,position.y-ty),k=1-Math.exp(-(error>100?12:1.4)*dt);position.x+=(tx-position.x)*k;position.y+=(ty-position.y)*k;}vx=position.vx;vy=position.vy;
+     else{move(position,dt,ps,now);const tx=p.x+vx*lag,ty=p.y+vy*lag,error=Math.hypot(position.x-tx,position.y-ty),k=1-Math.exp(-(error>100?12:4)*dt);if(Math.hypot(position.dx,position.dy)>.1||Math.hypot(p.dx,p.dy)<.1){position.x+=(tx-position.x)*k;position.y+=(ty-position.y)*k;}}vx=position.vx;vy=position.vy;
     }else{const k=1-Math.exp(-12*dt);position.x+=(p.x+vx*lag-position.x)*k;position.y+=(p.y+vy*lag-position.y)*k;}
     const speed=Math.hypot(vx,vy);
     // Facing is separate from movement: the body swings toward where the animal is being steered (the input), or
     // along its motion when there is no input, eased but capped at the species' turnRate so a 180 is a quick pivot.
     {const steer=own&&r?.phase==='playing'?position:p,steering=Math.hypot(steer.dx,steer.dy)>.1&&!p.perched;
-     if(steering||speed>3){const direction=steering?-Math.atan2(steer.dy,steer.dx):-Math.atan2(vy,vx),delta=Math.atan2(Math.sin(direction-rig.turn),Math.cos(direction-rig.turn)),max=ANIMALS[p.species].gait.turnRate*dt;rig.turn+=THREE.MathUtils.clamp(delta*(1-Math.exp(-14*dt)),-max,max);}
+     if(steering||speed>3){const direction=speed>3?-Math.atan2(vy,vx):-Math.atan2(steer.dy,steer.dx),delta=Math.atan2(Math.sin(direction-rig.turn),Math.cos(direction-rig.turn)),max=ANIMALS[p.species].gait.turnRate*dt;rig.turn+=THREE.MathUtils.clamp(delta*(1-Math.exp(-24*dt)),-max,max);}
       // a watchful animal standing still turns to face what it is watching
       else if(!own&&p.mood==='watch'){const delta=Math.atan2(Math.sin(-(p.heading||0)-rig.turn),Math.cos(-(p.heading||0)-rig.turn));rig.turn+=delta*(1-Math.exp(-4*dt));}}
     // In a tree the body follows the shared climbing pose (on the bark the rules use), smoothed so every transition
@@ -135,12 +135,12 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
    const boost=m?.sprint&&!m.exhausted&&m.stamina>2&&Math.hypot(m.vx,m.vy)>ANIMALS[m.species].gait.run*10+5?1:0,nextFov=THREE.MathUtils.damp(camera.fov,61+boost*5,5,dt);if(Math.abs(nextFov-camera.fov)>.01){camera.fov=nextFov;camera.updateProjectionMatrix();}
    camera.position.set(follow.x+forwardX*Math.cos(pitch)*actualDistance,Math.max(groundY(follow.x+forwardX*actualDistance,follow.z+forwardZ*actualDistance)+(prof?prof.clearance:12),follow.y+Math.sin(pitch)*actualDistance+(prof?prof.lift:13)),follow.z+forwardZ*Math.cos(pitch)*actualDistance);
    {const la=prof?prof.lookAhead:32;camera.lookAt(follow.x-forwardX*la,follow.y+(prof?prof.lookY:6),follow.z-forwardZ*la);}}sun.position.set(follow.x+SUN_DIRECTION.x*700,follow.y+SUN_DIRECTION.y*700,follow.z+SUN_DIRECTION.z*700);sun.target.position.set(follow.x,follow.y,follow.z);const breeze=wind(r||{seed:417,round:0});savanna.update(time,follow.x,follow.z,drawRange,camera.far,camera.position,breeze);
-   traces.update(players.map(p=>{const pos=positions.get(p.id)||p,rig=rigs.get(p.id);return{id:p.id+':'+p.born,species:p.species,x:pos.x,z:pos.y,vx:pos.vx||0,vy:pos.vy||0,heading:p.heading||0,visible:!!rig?.root.visible,moving:true,quiet:p.species==='leopard'&&p.abilityUntil>now,onGround:!p.deadUntil&&!p.perched&&!(p.species==='warthog'&&p.abilityUntil>now)};}),r?.foods||[],now,{x:follow.x,z:follow.z},breeze);animalBatches?.update(rigs.values(),camera,!renderer.shadowMap.enabled);
+   if(ms-lastTraceFrame>=100){lastTraceFrame=ms;traces.update(players.filter(p=>rigs.get(p.id)?.root.visible).map(p=>{const pos=positions.get(p.id)||p,rig=rigs.get(p.id);return{id:p.id+':'+p.born,species:p.species,x:pos.x,z:pos.y,vx:pos.vx||0,vy:pos.vy||0,heading:p.heading||0,visible:!!rig?.root.visible,moving:true,quiet:p.species==='leopard'&&p.abilityUntil>now,onGround:!p.deadUntil&&!p.perched&&!(p.species==='warthog'&&p.abilityUntil>now)};}),r?.foods||[],now,{x:follow.x,z:follow.z},breeze);}animalBatches?.update(rigs.values(),camera,!renderer.shadowMap.enabled);
    if(renderer instanceof THREE.WebGLRenderer&&renderer.shadowMap.enabled&&ms-lastShadow>100){renderer.shadowMap.needsUpdate=true;lastShadow=ms;}
    food.update(r?.foods||previewFoods,now,m||null,lightweight?240:360,groundY,kind=>!!m&&(ANIMALS[m.species].foods as string[]).includes(kind),f=>input.current.instinct!==false||(!!m&&dist(m,f)<75));
    const before=performance.now();renderer.render(scene,camera);frameCost=frameCost*.97+(performance.now()-before)*.03;
    sampleFrames++;sampleWork+=performance.now()-before;if(ms-sampleStart>=2000){const fps=sampleFrames*1000/(ms-sampleStart),renderMs=sampleWork/sampleFrames;const stats={fps:Math.round(fps),renderMs:Math.round(renderMs*10)/10,renderer:lightweight?'software':'webgl',quality:activeTier,drawCalls:renderer instanceof THREE.WebGLRenderer?renderer.info.render.calls:0};element.dataset.fps=fps.toFixed(1);element.dataset.renderMs=renderMs.toFixed(1);element.dataset.renderer=stats.renderer;element.dataset.drawCalls=String(stats.drawCalls);if(renderer instanceof THREE.WebGLRenderer)element.dataset.triangles=String(renderer.info.render.triangles);element.dataset.animalDrawCalls=String(animalBatches?.drawCalls||0);element.dataset.quality=activeTier;latest.current.onPerformance?.(stats);if(!document.hidden&&mode==='auto'&&!lightweight){slowSamples=(frameCost>25||fps<40)?slowSamples+1:0;if(slowSamples>=2)autoTier='performance';}sampleStart=ms;sampleFrames=0;sampleWork=0;}
-   if(ms-lastOverlay<50)return;lastOverlay=ms;element.dataset.camera=yaw.toFixed(3)+' '+ownHeading.toFixed(3)+' '+distance.toFixed(0);ctx.clearRect(0,0,width,height);if(preview||!m||lowBudget)return;
+   if(ms-lastOverlay<100)return;lastOverlay=ms;element.dataset.camera=yaw.toFixed(3)+' '+ownHeading.toFixed(3)+' '+distance.toFixed(0);ctx.clearRect(0,0,width,height);if(preview||!m)return;
    const placed:[number,number][]=[];
    function label(text:string,x:number,y:number,z:number,color='#f0f3de'){view.set(x,y,z).applyMatrix4(camera.matrixWorldInverse);if(view.z>=-2)return;projected.set(x,y,z).project(camera);const sx=(projected.x*.5+.5)*width,sy=(-projected.y*.5+.5)*height;if(sx<20||sx>width-20||sy<100||sy>height-100)return;if(placed.some(([px,py])=>Math.abs(px-sx)<90&&Math.abs(py-sy)<16))return;placed.push([sx,sy]);ctx.font='600 12px Arial';ctx.textAlign='center';ctx.lineWidth=4;ctx.strokeStyle='#2a1d0ed9';ctx.strokeText(text,sx,sy);ctx.fillStyle=color;ctx.fillText(text,sx,sy);}
    // Tracking names only prey your animal can actually notice right now (the same sight / scent / sound rule the wildlife
@@ -157,14 +157,16 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
    if(m.species==='warthog')for(const t of ps)if(t.kind==='burrow'&&dist(m,t)<230)label('BURROW',t.x,groundY(t.x,t.y)+12,t.y,'#f1d9a6');
    if((m.species==='leopard'||m.species==='lion')&&!m.perched){const tree=ps.filter(t=>t.kind==='tree'&&dist(m,t)<120&&canClimb(m.species,ps,t)).sort((a,b)=>dist(m,a)-dist(m,b))[0];if(tree)label('Q · CLIMB',tree.x,groundY(tree.x,tree.y)+40*tree.size,tree.y,'#f1d9a6');}
    for(const t of ps)if(t.kind==='water'&&dist(m,t)<t.size+260&&dist(m,t)>t.size*.6)label('WATERING HOLE',t.x,groundY(t.x,t.y)+16,t.y,'#cfe6ea');
+   for(const n of [...(r?.poachers??[])].filter(n=>n.state!=='gone').sort((a,b)=>Math.hypot(a.jeepX-m.x,a.jeepY-m.y)-Math.hypot(b.jeepX-m.x,b.jeepY-m.y)).slice(0,1)){if(input.current.instinct!==false){const direction=Math.atan2(n.jeepX-m.x,n.jeepY-m.y)-yaw-Math.PI,angle=Math.atan2(Math.sin(direction),Math.cos(direction)),sx=width/2-THREE.MathUtils.clamp(angle/1.5,-1,1)*Math.min(220,width*.28);ctx.textAlign='center';ctx.font='600 12px Arial';ctx.fillStyle='#2a2112dd';ctx.fillRect(sx-118,135,236,22);ctx.fillStyle='#ffc78d';ctx.fillText('⚠ POACHER JEEP · '+Math.round(Math.hypot(n.jeepX-m.x,n.jeepY-m.y)/10)+' m'+(angle>.3?' →':angle<-.3?' ←':''),sx,150);}}
    const mw=width<760?106:142,mh=mw*H/W,mx=width-mw-22,my=width<760?94:height-mh-24;
    ctx.fillStyle='#2a2112da';ctx.fillRect(mx-8,my-24,mw+16,mh+32);ctx.strokeStyle='#e6c47a55';ctx.strokeRect(mx-8,my-24,mw+16,mh+32);ctx.textAlign='left';ctx.font='600 11px Arial';ctx.fillStyle='#f3e7cc';ctx.fillText('GOLDEN PLAINS',mx,my-10);ctx.fillStyle='#b8954e';ctx.fillRect(mx,my,mw,mh);
    for(const t of ps){if(t.kind==='tallgrass'){ctx.fillStyle='#9c8a3f';ctx.beginPath();ctx.arc(mx+t.x/W*mw,my+t.y/H*mh,Math.max(1.5,t.size*100/W*mw),0,Math.PI*2);ctx.fill();continue;}if(t.kind==='water'){ctx.fillStyle='#5e9a96';ctx.beginPath();ctx.arc(mx+t.x/W*mw,my+t.y/H*mh,Math.max(2,t.size/W*mw),0,Math.PI*2);ctx.fill();continue;}if(t.kind==='bush')continue;ctx.fillStyle=t.kind==='tree'?'#5f7a33':t.kind==='rock'?'#8b8070':'#4a3420';ctx.fillRect(mx+t.x/W*mw,my+t.y/H*mh,2,2);}
+   if(input.current.instinct!==false)for(const n of r?.poachers??[]){if(n.state==='gone')continue;ctx.fillStyle='#ff9d57';ctx.fillRect(mx+n.jeepX/W*mw-3,my+n.jeepY/H*mh-3,6,6);}
    for(const p of humans){ctx.fillStyle=playerColour(p.id);ctx.strokeStyle='#2a1d0e';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(mx+p.x/W*mw,my+p.y/H*mh,3.2,0,Math.PI*2);ctx.fill();ctx.stroke();}
    ctx.save();ctx.translate(mx+m.x/W*mw,my+m.y/H*mh);ctx.rotate(-yaw);ctx.fillStyle='#fff6dc';ctx.beginPath();ctx.moveTo(0,-5);ctx.lineTo(-3,3);ctx.lineTo(3,3);ctx.closePath();ctx.fill();ctx.restore();
   };
   renderer.setAnimationLoop(render);
-  return()=>{encounter.dispose();observer.disconnect();renderer.setAnimationLoop(null);canvas.removeEventListener('pointerdown',down);canvas.removeEventListener('pointermove',drag);canvas.removeEventListener('pointerup',up);canvas.removeEventListener('pointercancel',up);canvas.removeEventListener('wheel',wheel);animalBatches?.dispose();savanna.dispose();traces.dispose();food.dispose();shadowGeo.dispose();shadowMat.dispose();renderer.dispose();renderer.forceContextLoss();canvas.remove();overlay.remove();};
+  return()=>{encounters.forEach(e=>e.dispose());observer.disconnect();renderer.setAnimationLoop(null);canvas.removeEventListener('pointerdown',down);canvas.removeEventListener('pointermove',drag);canvas.removeEventListener('pointerup',up);canvas.removeEventListener('pointercancel',up);canvas.removeEventListener('wheel',wheel);animalBatches?.dispose();savanna.dispose();traces.dispose();food.dispose();shadowGeo.dispose();shadowMat.dispose();renderer.dispose();renderer.forceContextLoss();canvas.remove();overlay.remove();};
  },[preview,input]);
  return <div ref={host} className="world-scene">{failure&&<div className="graphics-error" role="alert">{failure}</div>}{software&&!preview&&<span className="render-mode">Compatibility graphics</span>}</div>;
 }

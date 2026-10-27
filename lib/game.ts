@@ -22,7 +22,7 @@ export const ANIMALS:Record<Species,Animal>={
  leopard:{name:'Leopard',subtitle:'Panthera pardus · 60 kg',gait:{walk:1.2,run:8,sprint:16.5,accel:9,grip:20,brake:16,turnRate:10,sprintTime:10,recover:25,trot:Infinity,gallop:4},ability:'Stalk',duration:4,cooldown:9,prey:['impala','warthog'],foods:['carrion'],diet:'Impala, warthog & carrion',tip:'Stalk unseen, or Q to climb an acacia and drop on prey below.',color:'#e0b25e',size:.7,catchRange:20,sight:250,style:'Stalker and tree ambusher',threat:'Nothing hunts you; prey spots you if you rush',defense:'Climb an acacia (Q) to vanish into the canopy'},
  hyena:{name:'Spotted hyena',subtitle:'Crocuta crocuta · 60 kg',gait:{walk:1.3,run:6.5,sprint:17,accel:6,grip:15,brake:13,turnRate:8,sprintTime:45,recover:12,trot:2.2,gallop:7},ability:'Tireless',duration:6,cooldown:12,prey:['impala','warthog','zebra'],foods:['carrion'],diet:'Impala, warthog, zebra (as a clan) & any carcass',tip:'Outlast prey with Tireless. A zebra needs the clan: hunt it with two more hyenas close by.',color:'#b99a6c',size:.8,catchRange:22,sight:230,style:'Endurance chaser and scavenger',threat:'Nothing hunts you; prey outruns a short chase',defense:'Tireless refills stamina for a long pursuit'},
  zebra:{name:'Plains zebra',subtitle:'Equus quagga · 300 kg',gait:{walk:1.6,run:7,sprint:18,accel:7,grip:13,brake:9,turnRate:6,sprintTime:30,recover:15,trot:2.6,gallop:8},ability:'Kick',duration:.6,cooldown:8,prey:[],foods:['grass'],diet:'Grasses',tip:'Kick stuns any predator right behind you.',color:'#ece6d6',size:1.35,catchRange:0,sight:260,style:'Herd watcher with a defensive kick',threat:'Lions and hyena clans',defense:'Kick a predator that is right behind you'},
- impala:{name:'Impala',subtitle:'Aepyceros melampus · 55 kg',gait:{walk:1.4,run:9,sprint:17.7,accel:7,grip:24,brake:18,turnRate:12,sprintTime:18,recover:14,trot:2.4,gallop:6},ability:'Leap',duration:.9,cooldown:6,prey:[],foods:['grass','browse'],diet:'Grass & acacia browse',tip:'Leap clears a predator’s reach. Keep moving.',color:'#c98a4b',size:.85,catchRange:0,sight:280,style:'Alert sprinter, sharp turns and leaps',threat:'Lions, leopards and hyenas',defense:'Leap clear of a catch at the last moment'},
+ impala:{name:'Impala',subtitle:'Aepyceros melampus · 55 kg',gait:{walk:1.4,run:7.8,sprint:16.2,accel:7,grip:24,brake:18,turnRate:12,sprintTime:18,recover:14,trot:2.4,gallop:6},ability:'Leap',duration:.9,cooldown:6,prey:[],foods:['grass','browse'],diet:'Grass & acacia browse',tip:'Leap clears a predator’s reach. Keep moving.',color:'#c98a4b',size:.85,catchRange:0,sight:280,style:'Alert sprinter, sharp turns and leaps',threat:'Lions, leopards and hyenas',defense:'Leap clear of a catch at the last moment'},
  warthog:{name:'Warthog',subtitle:'Phacochoerus africanus · 75 kg',gait:{walk:1.2,run:5.5,sprint:13,accel:6.5,grip:18,brake:15,turnRate:10,sprintTime:14,recover:14,trot:2,gallop:6},ability:'Burrow',duration:5,cooldown:9,prey:[],foods:['grass','roots'],diet:'Grass, roots & bulbs',tip:'Back into a burrow to vanish. Dig up roots to eat.',color:'#8e7a6a',size:.7,catchRange:0,sight:170,style:'Burrow escape artist',threat:'Lions, leopards and hyenas',defense:'Back into a burrow to become uncatchable'},
 };
 export type Prop={x:number;y:number;kind:'tree'|'rock'|'bush'|'burrow'|'water'|'tallgrass';size:number};
@@ -189,8 +189,8 @@ const stalking=(p:Player,now:number)=>p.species==='leopard'&&p.abilityUntil>now&
 const inThicket=(ps:Prop[],x:number,y:number)=>bushNear(ps,x,y,26);
 // Hidden (cannot be caught or seen): a leopard up an acacia, a warthog in its burrow, or anyone but a zebra standing still
 // inside a thicket. The thicket reach matches the ring of tall grass drawn around each bush, so a hidden animal is always
-// visibly inside cover. A stalking leopard is NOT hidden: it is harder to notice (see conspicuity), never invisible.
-export function hidden(p:Player,room:Room,now:number){return p.species==='leopard'&&p.climb==='limb'||p.species==='warthog'&&p.abilityUntil>now||p.species!=='zebra'&&Math.hypot(p.dx,p.dy)<.1&&Math.hypot(p.vx||0,p.vy||0)<8&&inThicket(props(room.seed),p.x,p.y);}
+// Stalk is a game ability: full concealment from animal senses for its active duration.
+export function hidden(p:Player,room:Room,now:number){return stalking(p,now)||p.species==='leopard'&&p.climb==='limb'||p.species==='warthog'&&p.abilityUntil>now||p.species!=='zebra'&&Math.hypot(p.dx,p.dy)<.1&&Math.hypot(p.vx||0,p.vy||0)<8&&inThicket(props(room.seed),p.x,p.y);}
 /** The round's breeze: the direction it blows towards (scent drifts downwind). Fixed for a round, new each round. */
 export function wind(room:Pick<Room,'seed'|'round'>){const a=rng(room.seed*31+(room.round||0)*7919)()*Math.PI*2;return{x:Math.cos(a),y:Math.sin(a),angle:a};}
 export const speedOf=(p:{vx?:number;vy?:number})=>Math.hypot(p.vx||0,p.vy||0);
@@ -220,8 +220,8 @@ export function contactBlocked(ps:Prop[],a:{x:number;y:number},b:{x:number;y:num
 }
 /** The way an animal's attack goes: where the player is steering, else the way it is moving or last faced. */
 export const strikeDirection=(p:Player)=>Math.hypot(p.dx,p.dy)>.1?Math.atan2(p.dy,p.dx):p.heading??0;
-/** Prey in front of the hunter: within 65° either side of the way it attacks. */
-export const inFront=(p:Player,q:{x:number;y:number})=>Math.cos(Math.atan2(q.y-p.y,q.x-p.x)-strikeDirection(p))>=Math.cos(65*Math.PI/180);
+/** Prey in front of the hunter: within 85° either side of the way it attacks. */
+export const inFront=(p:Player,q:{x:number;y:number})=>Math.cos(Math.atan2(q.y-p.y,q.x-p.x)-strikeDirection(p))>=Math.cos(85*Math.PI/180);
 export function sightBlocked(ps:Prop[],a:{x:number;y:number},b:{x:number;y:number}){
  const vx=b.x-a.x,vy=b.y-a.y,len=Math.hypot(vx,vy);if(len<1)return false;
  for(const t of solidNear(ps,(a.x+b.x)/2,(a.y+b.y)/2,len/2+60)){if(t.kind!=='rock')continue;const r=solidRadius(t)*.9,u=((t.x-a.x)*vx+(t.y-a.y)*vy)/(len*len);if(u<=0||u>=1)continue;if(Math.hypot(a.x+vx*u-t.x,a.y+vy*u-t.y)<r&&dist(t,a)>r+4&&dist(t,b)>r+4)return true;}
@@ -262,7 +262,8 @@ export function canTake(p:Player,q:{species:Species},room:Room,range=CLAN_RANGE)
  *  a chase once the hunter is properly hungry. */
 const PREFERENCE:Partial<Record<Species,Partial<Record<Species,number>>>>={lion:{zebra:3,impala:1,warthog:.35},hyena:{zebra:2.2,impala:1,warthog:.6}};
 export const HUNGER_RATE:Record<Species,number>={lion:.35,leopard:.4,hyena:.45,zebra:.6,impala:.6,warthog:.6};
-export const UNITS_PER_METRE=10,TRUNK_RADIUS=7,POUNCE_RANGE=42,AMBUSH_RANGE=60,KICK_RANGE=40,FOOD_RANGE=18,BURROW_REACH=45,TREE_REACH=40,WATER_REACH=30,THREAT_RANGE=300,LEAP_SPEED=11,STALK_SPEED=1;
+export const HUNT_REACH_MULTIPLIER=1.44;
+export const UNITS_PER_METRE=10,TRUNK_RADIUS=7,POUNCE_RANGE=42,AMBUSH_RANGE=60,KICK_RANGE=40,FOOD_RANGE=18,BURROW_REACH=45,TREE_REACH=40,WATER_REACH=30,THREAT_RANGE=300,LEAP_SPEED=11,STALK_SPEED=4.5;
 const wrap=(a:number)=>Math.atan2(Math.sin(a),Math.cos(a)),clamp=(v:number,a:number,b:number)=>Math.max(a,Math.min(b,v));
 /** True while the animal is running flat out on its stamina (Charge and Tireless sprint for free). */
 export const sprinting=(p:Player,now:number)=>{const g=ANIMALS[p.species].gait,free=p.abilityUntil>now&&(p.species==='lion'||p.species==='hyena');return!free&&p.sprint&&!p.exhausted&&Math.hypot(p.vx,p.vy)/UNITS_PER_METRE>g.run+.5;};
@@ -289,7 +290,7 @@ export function move(p:Player,dt:number,ps:Prop[],now:number){
   const push=clamp(along,-g.brake*dt,g.accel*(charge?1.4:1)*dt),bend=side>g.grip*dt?g.grip*dt/side:1;
   vx+=ux*push+sx*bend;vy+=uy*push+sy*bend;
  }
- if(Math.hypot(vx,vy)<.02){vx=0;vy=0;}
+ if(!input&&!charge&&!leap||Math.hypot(vx,vy)<.02){vx=0;vy=0;}
  p.vx=vx*U;p.vy=vy*U;
  let x=Math.max(25,Math.min(W-25,p.x+p.vx*dt)),y=Math.max(25,Math.min(H-25,p.y+p.vy*dt));
  ({x,y}=collide(p,x,y,ps));
@@ -493,7 +494,7 @@ function dropCarcass(room:Room,x:number,y:number,now:number){room.foods=room.foo
 export function interact(p:Player,room:Room,now:number){if(p.deadUntil||p.feeding||now<p.interactReady||p.strikeId)return;if((p.stunUntil??0)>now){notify(p,'Still reeling from the kick.',now);return;}p.interactReady=now+650;p.actionUntil=now+500;
  if(p.stunUntil>now){notify(p,'Still stunned.',now);return;}
  const a=ANIMALS[p.species],ambush=p.species==='leopard'&&p.climb==='limb';
- const reach=(ambush?AMBUSH_RANGE:p.abilityUntil>now&&(p.species==='lion'||p.species==='leopard')?POUNCE_RANGE:a.catchRange)*1.2;
+ const reach=(ambush?AMBUSH_RANGE:p.abilityUntil>now&&(p.species==='lion'||p.species==='leopard')?POUNCE_RANGE:a.catchRange)*HUNT_REACH_MULTIPLIER;
  if(engagePoacher(p,room,now,reach))return;
  const victims=room.players.filter(q=>q.id!==p.id&&!q.deadUntil&&q.protectedUntil<now&&canTake(p,q,room)&&!hidden(q,room,now)&&!leaping(q,now)&&dist(p,q)<reach);victims.sort((x,y)=>dist(p,x)-dist(p,y));
  if(p.climb&&!ambush)return;
@@ -524,13 +525,12 @@ export function resolveStrike(p:Player,room:Room,now:number){
  const q=room.players.find(o=>o.id===p.strikeId&&(p.strikeTargetBorn===undefined||o.born===p.strikeTargetBorn)),a=ANIMALS[p.species],ambush=!!p.strikeAmbush,ps=props(room.seed),life=p.strikeBorn;
  p.strikeId='';p.strikeAt=0;p.strikeAmbush=false;if(p.deadUntil||life!==p.born)return;
  if((p.stunUntil??0)>now){notify(p,'Missed: knocked off balance.',now);return;}
- const reach=(ambush?a.catchRange*1.3:p.abilityUntil>now&&(p.species==='lion'||p.species==='leopard')?POUNCE_RANGE:a.catchRange)*1.15*1.2;
+ const reach=(ambush?a.catchRange*1.3:p.abilityUntil>now&&(p.species==='lion'||p.species==='leopard')?POUNCE_RANGE:a.catchRange)*1.15*HUNT_REACH_MULTIPLIER;
  const caught=!!q&&!q.deadUntil&&q.protectedUntil<now&&canTake(p,q,room)&&!hidden(q,room,now)&&!leaping(q,now)&&dist(p,q)<reach&&(ambush||lungeLine(p,q))&&!contactBlocked(ps,p,q);
  if(!q||!caught){notify(p,ambush?'Missed: the prey moved before you landed.':'Missed: it broke away.',now);if(q&&!q.deadUntil)q.threatAt=now;return;}
  if((q.hitUntil??0)>now){notify(p,'It broke free. Give chase.',now);return;}
- const damage=HUNT_DAMAGE[p.species]??25;const resilience=q.species==='zebra'?.8:q.species==='warthog'?.9:1;
- q.health=Math.max(0,(q.health??100)-damage*resilience);q.hitUntil=now+900;q.feeding=undefined;
- if(q.health>0){notify(q,'Hit! Sprint or use your defence.',now);notify(p,'Hit landed. Prey is still alive.',now);if(q.species==='warthog'&&inFront(q,p)){p.health=Math.max(1,(p.health??100)-12);p.stunUntil=now+450;notify(p,'Tusks! The warthog pushed back.',now);}return;}
+ // A valid landed hunt is lethal; range, cover, protection and defensive abilities were checked above.
+ q.health=0;q.feeding=undefined;
  die(q,room,now,'was caught by a '+a.name.toLowerCase()+'.');dropCarcass(room,q.x,q.y,now);const duration=FEED_SECONDS[p.species]*1000;p.feeding={until:now+duration,duration,last:now};p.dx=p.dy=p.vx=p.vy=0;p.hunts++;p.food++;
  const points=(savannaEvent(room,now).kind==='hunt'?15:10)+(ambush?3:0);p.score+=points;notify(p,(ambush?'Ambush! ':'Successful hunt ')+'+'+points,now);
 }
@@ -595,7 +595,7 @@ export function tick(room:Room,now:number){
  if(hidden(p,room,t)||stalking(p,t)&&(inThicket(ps,p.x,p.y)||inTallGrass(ps,p.x,p.y)))p.hiddenSeconds+=dt;
  // Being hunted means a predator is actually after you (a wild one has picked you and is charging, or a player's
  // predator within 15 m is running at you), not merely that one is somewhere nearby.
- const threat=room.players.some(q=>!q.deadUntil&&ANIMALS[q.species].prey.includes(p.species)&&(q.bot?q.mood==='chase'&&q.targetId===p.id:dist(p,q)<150&&((p.x-q.x)*(q.vx||0)+(p.y-q.y)*(q.vy||0))/Math.max(1,dist(p,q))>40));
+ const threat=room.players.some(q=>!q.deadUntil&&!hidden(q,room,t)&&ANIMALS[q.species].prey.includes(p.species)&&(q.bot?q.mood==='chase'&&q.targetId===p.id:dist(p,q)<150&&((p.x-q.x)*(q.vx||0)+(p.y-q.y)*(q.vy||0))/Math.max(1,dist(p,q))>40));
  if(threat)p.threatAt=t;else if(p.threatAt&&t-p.threatAt>3000){p.escapes++;const points=savannaEvent(room,t).kind==='escape'?10:5;p.score+=points;p.threatAt=0;notify(p,'Escaped a threat +'+points,t);}
  tasks(p,t).forEach((task,i)=>{if(i===2){if(task.value>=task.target){p.survived=(p.survived??0)+1;p.score+=task.points;notify(p,'Still alive +'+task.points,t);}return;}if(!p.claimed[i]&&task.value>=task.target){p.claimed[i]=true;if(i<2&&!p.bot)(p.done??=[]).push(p.species+':'+i);p.score+=task.points;notify(p,'Task complete +'+task.points,t);}});
  }stepPoachers(room,t,dt); }room.tick=now;if(room.duration!==0&&now>=room.ends){room.phase='finished';room.players.forEach(p=>{p.dx=0;p.dy=0;p.vx=0;p.vy=0;});room.events.unshift('Round complete. Every life counted.');}}
@@ -761,20 +761,32 @@ export function stepFeeding(p:Player,now:number){const f=p.feeding;if(!f)return;
  const elapsed=Math.max(0,Math.min(now,f.until)-f.last);p.hunger=Math.min(100,p.hunger+45*elapsed/f.duration);f.last=Math.min(now,f.until);p.vx=p.vy=0;
  if(now>=f.until){p.feeding=undefined;notify(p,'Meal finished.',now);}}
 export function finishRound(room:Room,now:number){room.phase='finished';room.ends=now;for(const p of room.players){p.dx=p.dy=p.vx=p.vy=0;p.feeding=undefined;p.strikeId='';}room.events.unshift('The host ended the round.');}
-export type Poacher={x:number;y:number;jeepX:number;jeepY:number;exitX:number;exitY:number;state:'guarding'|'detecting'|'defending'|'retreating'|'entering'|'escaping'|'gone'|'subdued';target:string;health:number;since:number;shotAt:number;nextShot:number;heading:number;steerSide?:number};
-function spawnPoachers(room:Room):Poacher[]{const ps=props(room.seed),r=rng(room.seed+room.round*17);
- for(let i=0;i<100;i++){const x=80+r()*80,y=180+r()*(H-360),a={x,y},b={x:0,y};if(room.players.some(p=>dist(p,a)<300)||blocked(ps,x,y,65)||contactBlocked(ps,a,b)||ps.some(p=>solid(p)&&Math.abs(p.y-y)<55&&p.x<x+70))continue;
- return[{x:x+35,y,jeepX:x,jeepY:y,exitX:-80,exitY:y,state:'guarding',target:'',health:100,since:0,shotAt:0,nextShot:0,heading:Math.PI}];}return[];}
+export type Poacher={x:number;y:number;jeepX:number;jeepY:number;exitX:number;exitY:number;state:'guarding'|'detecting'|'defending'|'retreating'|'entering'|'escaping'|'gone'|'subdued';target:string;health:number;since:number;shotAt:number;nextShot:number;heading:number;escapeHeading?:number;steerSide?:number};
+export function jeepDoor(n:Poacher){const rot=Math.PI/2-(n.escapeHeading??Math.PI);return{x:n.jeepX-16*Math.cos(rot)-3*Math.sin(rot),y:n.jeepY+16*Math.sin(rot)-3*Math.cos(rot)};}
+function spawnPoachers(room:Room):Poacher[]{const ps=props(room.seed),random=rng(room.seed+room.round*17),result:Poacher[]=[];
+ // One bounded encounter per map edge, with an inspected corridor to its own exit.
+ for(let side=0;side<4;side++)for(let attempt=0;attempt<160;attempt++){
+  const inset=90+random()*80,along=.3+random()*.4;
+  const x=side===0?inset:side===2?W-inset:W*along,y=side===1?inset:side===3?H-inset:H*along;
+  const exitX=side===0?-90:side===2?W+90:x,exitY=side===1?-90:side===3?H+90:y,escapeHeading=Math.atan2(exitY-y,exitX-x);
+  const n:Poacher={x:x-Math.cos(escapeHeading)*35,y:y-Math.sin(escapeHeading)*35,jeepX:x,jeepY:y,exitX,exitY,state:'guarding',target:'',health:100,since:0,shotAt:0,nextShot:0,heading:escapeHeading,escapeHeading};
+  if(room.players.some(p=>!p.bot&&dist(p,n)<300)||blocked(ps,x,y,70)||blocked(ps,n.x,n.y,15))continue;
+  const len=Math.hypot(exitX-x,exitY-y);let clear=true;
+  for(let d=0;d<len;d+=10)if(blocked(ps,x+Math.cos(escapeHeading)*d,y+Math.sin(escapeHeading)*d,40)){clear=false;break;}
+  if(!clear)continue;result.push(n);break;
+ }
+ return result;
+}
 function engagePoacher(p:Player,room:Room,now:number,reach:number){if(!ANIMALS[p.species].prey.length||p.bot)return false;
  const n=room.poachers?.find(n=>!['gone','escaping','subdued'].includes(n.state)&&dist(p,n)<reach&&inFront(p,n)&&!contactBlocked(props(room.seed),p,n));if(!n)return false;
- n.target=p.id;n.health=Math.max(0,n.health-({lion:46,leopard:38,hyena:32}[p.species as 'lion'|'leopard'|'hyena']??30));if(n.health===0){n.state='subdued';}else if(!['retreating','entering','defending'].includes(n.state)){n.state='defending';n.since=now;}p.stamina=Math.max(0,p.stamina-12);notify(p,n.health===0?'Poacher stopped. Leave the area.':'Poacher aiming! Break contact and use cover.',now);return true;}
+ n.target=p.id;n.health=Math.max(0,n.health-({lion:46,leopard:38,hyena:32}[p.species as 'lion'|'leopard'|'hyena']??30));if(n.health===0){n.state='subdued';}else if(n.health<=35&&!['retreating','entering'].includes(n.state)){n.state='retreating';n.since=now;}else if(!['retreating','entering','defending'].includes(n.state)){n.state='defending';n.since=now;}p.stamina=Math.max(0,p.stamina-12);notify(p,n.health===0?'Poacher stopped. Leave the area.':'Poacher aiming! Break contact and use cover.',now);return true;}
 export function stepPoachers(room:Room,now:number,dt:number){for(const n of room.poachers??[]){if(n.state==='gone'||n.state==='subdued')continue;const ps=props(room.seed),p=room.players.find(p=>p.id===n.target);
  if(p&&['detecting','defending'].includes(n.state))n.heading=Math.atan2(p.y-n.y,p.x-n.x);
  const sees=(p:Player)=>!p.deadUntil&&p.protectedUntil<now&&ANIMALS[p.species].prey.length>0&&!hidden(p,room,now)&&dist(p,n)<180&&!contactBlocked(ps,n,p)&&poacherSight(room,n,p);
  if(n.state==='guarding'){const q=room.players.find(p=>!p.bot&&sees(p));if(q){n.target=q.id;n.state='detecting';n.since=now;notify(q,'Poacher ahead. Stay back or use cover.',now);}}
- else if(n.state==='detecting'){if(!p||!sees(p)){n.state='guarding';n.target='';}else if(now-n.since>1800){if(now-n.since>5000){n.state='retreating';n.since=now;}}}
- else if(n.state==='defending'){if(now-n.since>2200||!p||!sees(p)){n.state='retreating';n.since=now;}else if(now-n.since>1000&&now>=n.nextShot){n.shotAt=now;n.nextShot=now+1500;p.health=Math.max(0,(p.health??100)-25);p.feeding=undefined;notify(p,'Shot! Find cover.',now);if(p.health<=0)die(p,room,now,'was stopped by a poacher.');}}
- else if(n.state==='retreating'){const door={x:n.jeepX+3,y:n.jeepY+16},d=dist(n,door);if(d<3){n.state='entering';n.since=now;}else{const k=Math.min(1,55*dt/d);n.heading=Math.atan2(door.y-n.y,door.x-n.x);n.x+=(door.x-n.x)*k;n.y+=(door.y-n.y)*k;}}
+ else if(n.state==='detecting'){if(!p||!sees(p)){n.state='guarding';n.target='';}}
+ else if(n.state==='defending'){if(now-n.since>7000||!p||!sees(p)){n.state='retreating';n.since=now;}else if(now-n.since>1200&&now>=n.nextShot){n.shotAt=now;n.nextShot=now+1500;p.health=Math.max(0,(p.health??100)-25);p.feeding=undefined;notify(p,'Shot! Find cover.',now);if(p.health<=0)die(p,room,now,'was stopped by a poacher.');}}
+ else if(n.state==='retreating'){const door=jeepDoor(n),d=dist(n,door);if(d<3){n.state='entering';n.since=now;}else{const k=Math.min(1,55*dt/d);n.heading=Math.atan2(door.y-n.y,door.x-n.x);n.x+=(door.x-n.x)*k;n.y+=(door.y-n.y)*k;}}
  else if(n.state==='entering'&&now-n.since>1200){n.state='escaping';n.since=now;}
  else if(n.state==='escaping'){driveEscape(n,room,dt);}
  }}
@@ -789,14 +801,14 @@ export function poacherSight(room:Room,a:{x:number;y:number},b:{x:number;y:numbe
 export function driveEscape(n:Poacher,room:Room,dt:number){
  const ps=props(room.seed),origin={x:n.jeepX,y:n.jeepY},step=Math.min(5,70*dt);
  // Probe a full vehicle length ahead; use one stable side to avoid left/right oscillation.
- const side=n.steerSide??(n.jeepY<H/2?1:-1);n.steerSide=side;
- for(const angle of [Math.PI,Math.PI-side*.55,Math.PI-side*1.1,Math.PI-side*Math.PI/2,Math.PI+side*.55,Math.PI+side*1.1]){
+ const side=n.steerSide??(n.jeepY<H/2?1:-1);n.steerSide=side;const goal=Math.atan2(n.exitY-n.jeepY,n.exitX-n.jeepX);
+ for(const angle of [goal,goal-side*.55,goal-side*1.1,goal-side*Math.PI/2,goal+side*.55,goal+side*1.1]){
   const dx=Math.cos(angle),dy=Math.sin(angle);let clear=true;
   for(let d=step;d<=step+35;d+=5){const q={x:origin.x+dx*d,y:origin.y+dy*d};
-   if(q.y<45||q.y>H-45||blocked(ps,q.x,q.y,29)||room.players.some(p=>!p.deadUntil&&dist(p,q)<38)){clear=false;break;}}
+   if(q.x< -150||q.x>W+150||q.y< -150||q.y>H+150||blocked(ps,q.x,q.y,29)||room.players.some(p=>!p.deadUntil&&dist(p,q)<38)){clear=false;break;}}
   if(!clear)continue;
   n.heading=angle;n.jeepX+=dx*step;n.jeepY+=dy*step;n.x=n.jeepX;n.y=n.jeepY;
-  if(n.jeepX<=n.exitX)n.state='gone';return;
+  if(Math.hypot(n.jeepX-n.exitX,n.jeepY-n.exitY)<step+5)n.state='gone';return;
  }
  // Surrounded vehicles wait safely; they never run over a player or teleport away.
 }

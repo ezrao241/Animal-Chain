@@ -228,7 +228,7 @@ test('every predator/prey matchup: only listed prey, in reach, unprotected and n
   if(hunter==='hyena'&&prey==='zebra')continue;
   if(!ANIMALS[hunter].prey.includes(prey))continue;
   const{room:r2,player:h2}=fixture(hunter);const shielded=near(h2,prey,15);shielded.protectedUntil=NOW+4000;r2.players.push(shielded);hunt(h2,r2,NOW);assert.equal(shielded.deadUntil,0,'spawn protection '+hunter+' vs '+prey);
-  const{room:r3,player:h3}=fixture(hunter);const away=near(h3,prey,ANIMALS[hunter].catchRange*1.2+5);r3.players.push(away);hunt(h3,r3,NOW);assert.equal(away.deadUntil,0,'out of reach '+hunter+' vs '+prey);
+  const{room:r3,player:h3}=fixture(hunter);const away=near(h3,prey,ANIMALS[hunter].catchRange*1.44+5);r3.players.push(away);hunt(h3,r3,NOW);assert.equal(away.deadUntil,0,'out of reach '+hunter+' vs '+prey);
  }
 });
 // a room with only wildlife: a lion placed by an impala herd that is grazing, everyone else far away

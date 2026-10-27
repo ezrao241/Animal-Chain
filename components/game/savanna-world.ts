@@ -178,7 +178,7 @@ export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
  // level of detail: trees and boulders near the player use the full-facet model, distant ones a lighter cut, and those
  // past the far clipping plane are not submitted at all (the margin covers the camera's orbit around the animal, up to
  // ~260 units, plus a canopy's width and the 40-unit relevel step)
- const NEAR_LOD=lightweight?220:420,CULL_MARGIN=440,mat=new THREE.Matrix4(),quat=new THREE.Quaternion(),eul=new THREE.Euler(),at=new THREE.Vector3(),size=new THREE.Vector3(),lodAt={x:1e9,z:1e9,far:0};
+ const NEAR_LOD=lightweight?90:420,CULL_MARGIN=440,mat=new THREE.Matrix4(),quat=new THREE.Quaternion(),eul=new THREE.Euler(),at=new THREE.Vector3(),size=new THREE.Vector3(),lodAt={x:1e9,z:1e9,far:0};
  const relevel=(x:number,z:number,far:number)=>{const reach=far+CULL_MARGIN;for(const l of lods){l.near.count=0;l.far.count=0;for(const it of l.items){const d=Math.hypot(it.x-x,it.z-z);if(d>reach)continue;quat.setFromEuler(eul.set(0,it.rot,0));mat.compose(at.set(it.x,it.y,it.z),quat,size.set(it.scale,it.scale*(it.sy??1),it.scale));const mesh=d<NEAR_LOD?l.near:l.far;mesh.setMatrixAt(mesh.count++,mat);}for(const mesh of [l.near,l.far]){mesh.instanceMatrix.needsUpdate=true;mesh.computeBoundingSphere();}}};
  // thickets: a scrub bush wrapped in tall grass (the hiding spots); half are green bush, half grey thorn scrub
  const bushes=PROPS.filter(p=>p.kind==='bush'),shrubs=[...bushes,...beyond(lightweight?40:120,2)],shrubGeo=[shrub(3),shrub(8,true)];disposables.push(...shrubGeo);
@@ -206,7 +206,7 @@ export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
  const LAYERS:[THREE.BufferGeometry,THREE.Material][]=[[shortGeo[0],grassMat],[shortGeo[1],grassMat],[shortGeo[2],grassMat],[tallGeo,grassMat],[flowerGeo,grassMat],[stoneGeo,facet]];
  const CH=400,chunks:{mesh:THREE.InstancedMesh;cx:number;cz:number;full:number}[]=[];
  const blocked=(x:number,z:number)=>WATERS.some(w=>Math.hypot(x-w.x,z-w.y)<w.size*1.05)||rocks.some(t=>Math.hypot(x-t.x,z-t.y)<t.size*30)||BURROWS.some(b=>Math.hypot(x-b.x,z-b.y)<14)||trailDistance(x,z)<10;
- const density=lightweight?.35:1;
+ const density=lightweight?.15:1;
  for(let cz=-1;cz<Math.ceil(H/CH)+1;cz++)for(let cx=-1;cx<Math.ceil(W/CH)+1;cx++){
   const per:Placed[][]=LAYERS.map(()=>[]),outside=cx<0||cz<0||cx*CH>=W||cz*CH>=H,count=Math.floor(640*density*(outside?.5:1));
   for(let i=0;i<count;i++){const x=cx*CH+hash(cx,cz,i*3)*CH,z=cz*CH+hash(cx,cz,i*3+1)*CH;if(blocked(x,z))continue;

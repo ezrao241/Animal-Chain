@@ -22,3 +22,21 @@ Current verification: 38/38 Node tests pass, TypeScript --noEmit passes, and the
 Remaining limitations: a fully surrounded jeep waits safely rather than crushing animals; this steering is local avoidance, not general pathfinding. On-foot retreat does not have full crowd avoidance. Feeding is a lowered-head procedural approximation, and canceled meals cannot be resumed. No mobile hardware or eight-device performance validation. Earlier lint failures remain outside this focused correction.
 
 Final requested damage tuning: lion 60, leopard 52, hyena 48 base prey damage; zebra receives 80% and warthog 90%. Each allowed matchup takes two or three landed hits against healthy prey. Poacher attack damage is unchanged. Added a regression test across the allowed species matchups, including the existing hyena clan requirement for zebra.
+
+## One-hit and responsiveness revision
+
+Per the latest playtest request, one valid landed hunt now catches healthy prey again. The 20% wider range and existing protection, species eligibility, cover, cooldown and escape checks remain. Feeding still uses 5/6/7 seconds with proportional restoration. Impala running speed is 7.8 m/s (from 9) and sprint is 16.2 m/s (from 17.7). Leopard Stalk now runs at 4.5 m/s (from 1) and is fully concealed from every animal sense for the existing four-second duration; this is explicitly a game ability.
+
+Release stops movement immediately, bodies face actual travel instead of future steering, reconciliation is tightened, and outdated moving snapshots no longer pull a stopped local player backward. Request cadence accounts for request time and estimates transit delay. Visual traces update at 10 Hz for visible animals; auto quality starts in performance mode. CPU compatibility rendering uses nearer foliage LOD, lower decorative grass density and shorter draw distance without reducing wildlife population.
+
+Poachers spawned in 20/20 sampled rounds. They now wait until engaged rather than retreating just for seeing a predator. Tracking shows a directional jeep marker and a minimap square, including compatibility mode.
+
+Verification: 41/41 Node tests pass; TypeScript noEmit and Sites production build pass. Browser input tested forward/sideways movement and Stalk; screenshots confirmed the jeep tracking cue. Observed compatibility-renderer FPS samples improved from 2.1 to 13.4 after the fallback-specific changes, but these are cloud-browser samples, not a hardware benchmark or a claim of smooth FPS on every device. GPU-device and multi-device performance remain unmeasured. Previous lint failures were not re-run in this scope.
+
+## Edge encounters and aiming follow-up
+
+Hunt range is now 1.44 times the original (another 20% over 1.2), with a forward aiming half-angle of 85 degrees instead of 65. All original obstacle, protection, species and cooldown gates remain. War thog model and shadow are hidden during burrow even for the owning player. Four separately rendered encounters are distributed across north/east/south/west edges with screened exit routes. The nearest jeep is shown on the tracking compass and all active jeeps appear on the minimap. Direction-aware steering and seated-driver transforms support all four exits.
+
+Engaged poachers allow 1.2 seconds of warning, fire 25-health shots at least 1.5 seconds apart for up to 7 seconds, and can defeat a predator that remains exposed. They retreat on lost contact or at 35 health or below. They do not target prey or shoot an unengaged predator.
+
+Latest checks: full suite 44/44 passes, TypeScript noEmit passes, production build passes. Tests cover four-edge spawning across 20 rounds, all four exit directions, relaxed aim boundaries, and spaced lethal fire without one-shots. Final burrow visibility and four-encounter rendering are code-checked but were not captured in a final browser screenshot after the browser session reset. Earlier movement/stalk and tracking screenshots and cloud FPS samples apply to the same performance changes, before the final edge/facing additions.
