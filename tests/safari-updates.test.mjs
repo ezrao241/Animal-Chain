@@ -16,7 +16,7 @@ test('jeep steers around a stationary animal and reaches the exit without overla
 });
 test('retreat reaches door, enters and escapes, repeated attacks do not restart warning clock',()=>{
  const {p,r}=setup();const n={x:p.x+12,y:p.y,jeepX:p.x-25,jeepY:p.y,exitX:p.x-150,exitY:p.y,state:'guarding',target:'',health:100,since:0,shotAt:0,nextShot:0,heading:0};r.poachers=[n];
- interact(p,r,T);assert.equal(n.state,'defending');const since=n.since;interact(p,r,T+700);assert.equal(n.state,'retreating');assert.ok(n.since>=since);
+ interact(p,r,T);assert.equal(n.state,'defending');const since=n.since;interact(p,r,T+1900);assert.equal(n.state,'retreating');assert.ok(n.since>=since);
  n.state='retreating';r.players=[];for(let i=0;i<300&&n.state!=='gone';i++)stepPoachers(r,T+3000+i*50,.05);assert.equal(n.state,'gone');
 });
 
@@ -34,12 +34,14 @@ test('stalking leopard cannot be sensed by any species and moves faster',()=>{
  for(let i=0;i<20;i++)move(p,.05,[],T+i*50);assert.ok(Math.abs(p.vx/10-STALK_SPEED)<.1);
  p.dx=0;move(p,.05,[],T+1000);assert.equal(p.vx,0);assert.equal(p.vy,0);
 });
-test('poachers spawn in sampled rounds and wait until engaged',()=>{
+test('poachers spawn around all edges and escalate after warning',()=>{
  for(let i=0;i<20;i++){const {p,r}=setup();r.round=i;start(r,T);assert.equal(r.poachers.length,4);assert.ok(r.poachers.some(n=>n.exitX<0));assert.ok(r.poachers.some(n=>n.exitX>W));assert.ok(r.poachers.some(n=>n.exitY<0));assert.ok(r.poachers.some(n=>n.exitY>H));}
- const {p,r}=setup();const n={x:p.x+12,y:p.y,jeepX:p.x+50,jeepY:p.y,exitX:0,exitY:p.y,state:'detecting',target:p.id,health:100,since:T,shotAt:0,nextShot:0,heading:0};r.poachers=[n];stepPoachers(r,T+10000,.1);assert.equal(n.state,'detecting');assert.equal(p.health,100);
+ const {p,r}=setup();const n={x:p.x+12,y:p.y,jeepX:p.x+50,jeepY:p.y,exitX:0,exitY:p.y,state:'detecting',target:p.id,health:100,since:T,shotAt:0,nextShot:0,heading:0};r.poachers=[n];stepPoachers(r,T+10000,.1);assert.equal(n.state,'defending');assert.equal(p.health,100);
 });
 
 test('jeeps can escape toward every map edge',()=>{for(const [dx,dy] of [[-1,0],[1,0],[0,-1],[0,1]]){const{p,r}=setup();r.players=[];const n={x:p.x,y:p.y,jeepX:p.x,jeepY:p.y,exitX:p.x+dx*70,exitY:p.y+dy*70,state:'escaping',heading:Math.atan2(dy,dx)};for(let i=0;i<100&&n.state!=='gone';i++)driveEscape(n,r,.05);assert.equal(n.state,'gone');}});
 
 test('hunt accepts a target 75 degrees to the side but rejects one behind',()=>{for(const degrees of [75,100]){const{p,q,r}=setup();q.x=p.x+20*Math.cos(degrees*Math.PI/180);q.y=p.y+20*Math.sin(degrees*Math.PI/180);hit(p,r,T);assert.equal(Boolean(q.deadUntil),degrees===75);}});
 test('engaged poacher fires spaced shots with lethal intent, never a one-shot',()=>{const{p,r}=setup();r.poachers=[{x:p.x-60,y:p.y,jeepX:p.x-100,jeepY:p.y,exitX:0,exitY:p.y,state:'defending',target:p.id,health:60,since:T,shotAt:0,nextShot:0,heading:0}];stepPoachers(r,T+1200,.1);assert.equal(p.health,100);stepPoachers(r,T+1300,.1);assert.equal(p.health,75);stepPoachers(r,T+1400,.1);assert.equal(p.health,75);for(const ms of [2800,4300,5800])stepPoachers(r,T+ms,.1);assert.ok(p.deadUntil);});
+
+test('stationary healthy lion is warned then shot without attacking the poacher',()=>{const{p,r}=setup();r.poachers=[{x:p.x-60,y:p.y,jeepX:p.x-100,jeepY:p.y,exitX:0,exitY:p.y,state:'guarding',target:'',health:100,since:T,shotAt:0,nextShot:0,heading:0}];stepPoachers(r,T,.1);assert.equal(r.poachers[0].state,'detecting');stepPoachers(r,T+1400,.1);assert.equal(p.health,100);stepPoachers(r,T+1500,.1);stepPoachers(r,T+1600,.1);assert.equal(p.health,75);for(const ms of [3100,4600,6100])stepPoachers(r,T+ms,.1);assert.ok(p.deadUntil);});

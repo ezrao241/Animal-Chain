@@ -1,4 +1,5 @@
 'use client';
+import {advanceLocalMotion,reconcileLocal} from '../../lib/client-motion';
 import {createPoacherEncounter} from './poacher-models';
 import {useEffect,useRef,useState} from 'react';
 import * as THREE from 'three';
@@ -58,7 +59,7 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
   const render=(ms:number)=>{
    if(ms-lastPreviewFrame<1000/(preview||lightweight?30:60)-1)return;
    lastPreviewFrame=ms;
-   const dt=Math.min(.075,Math.max(0,(ms-last)/1000));last=ms;if(!width||!height)return;
+   const elapsed=Math.min(.5,Math.max(0,(ms-last)/1000)),dt=Math.min(.075,elapsed);last=ms;if(!width||!height)return;
    const mode=input.current.graphics||'auto';
    const time=ms/1000,{room:r,me:m}=latest.current;cinema?.animate(time);const now=r?Date.now()+r.serverTime-(r._received||Date.now())+(r._transitMs||0):Date.now(),lag=r?Math.min(.15,Math.max(0,(now-r.serverTime)/1000)):0,players=r?.players||demo,ids=new Set(players.map(p=>p.id));
    while(encounters.length<(r?.poachers?.length??0))encounters.push(createPoacherEncounter(scene));for(let i=0;i<encounters.length;i++)encounters[i].update(r?.poachers?.[i]?[r.poachers[i]]:[],now,groundY);
@@ -100,7 +101,7 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
     else if(own&&r?.phase==='playing'){
      Object.assign(position,{species:p.species,perched:p.perched,abilityUntil:p.abilityUntil,deadUntil:p.deadUntil,stunUntil:p.stunUntil,stamina:p.stamina,exhausted:p.exhausted,...input.current,...cameraInput(input.current.dx,input.current.dy,input.current.moveYaw??input.current.cameraYaw)});
      if(p.perched){position.x=THREE.MathUtils.damp(position.x,p.x,10,dt);position.y=THREE.MathUtils.damp(position.y,p.y,10,dt);position.vx=position.vy=0;}
-     else{move(position,dt,ps,now);const tx=p.x+vx*lag,ty=p.y+vy*lag,error=Math.hypot(position.x-tx,position.y-ty),k=1-Math.exp(-(error>100?12:4)*dt);if(Math.hypot(position.dx,position.dy)>.1||Math.hypot(p.dx,p.dy)<.1){position.x+=(tx-position.x)*k;position.y+=(ty-position.y)*k;}}vx=position.vx;vy=position.vy;
+     else{advanceLocalMotion(position,elapsed,ps,now);reconcileLocal(position,p,lag,dt);}vx=position.vx;vy=position.vy;
     }else{const k=1-Math.exp(-12*dt);position.x+=(p.x+vx*lag-position.x)*k;position.y+=(p.y+vy*lag-position.y)*k;}
     const speed=Math.hypot(vx,vy);
     // Facing is separate from movement: the body swings toward where the animal is being steered (the input), or

@@ -279,7 +279,7 @@ export function move(p:Player,dt:number,ps:Prop[],now:number){
  const leap=p.species==='impala'&&active,charge=p.species==='lion'&&active,free=charge||p.species==='hyena'&&active,stalk=p.species==='leopard'&&active;
  let vx=p.vx/U,vy=p.vy/U,speed=Math.hypot(vx,vy);
  // a partly pushed stick (or a grazing herd's slow drift) moves between a walk and the normal run
- let target=!input&&!charge?0:stalk?STALK_SPEED:(p.sprint||charge)&&(free||!p.exhausted&&p.stamina>0)?g.sprint:Math.max(g.walk,g.run*Math.min(1,Math.hypot(p.dx,p.dy)));
+ let target=!input?0:stalk?STALK_SPEED:(p.sprint||charge)&&(free||!p.exhausted&&p.stamina>0)?g.sprint:Math.max(g.walk,g.run*Math.min(1,Math.hypot(p.dx,p.dy)));
  // game rule: wading through a watering hole or its mud ring slows every animal a little
  if(ofKind(ps,'water').some(t=>Math.hypot(p.x-t.x,p.y-t.y)<t.size*1.25))target*=.8;
  const dir=input?Math.atan2(p.dy,p.dx):Math.atan2(vy,vx),wx=Math.cos(dir)*target,wy=Math.sin(dir)*target;
@@ -290,7 +290,7 @@ export function move(p:Player,dt:number,ps:Prop[],now:number){
   const push=clamp(along,-g.brake*dt,g.accel*(charge?1.4:1)*dt),bend=side>g.grip*dt?g.grip*dt/side:1;
   vx+=ux*push+sx*bend;vy+=uy*push+sy*bend;
  }
- if(!input&&!charge&&!leap||Math.hypot(vx,vy)<.02){vx=0;vy=0;}
+ if(!input&&!leap||Math.hypot(vx,vy)<.02){vx=0;vy=0;}
  p.vx=vx*U;p.vy=vy*U;
  let x=Math.max(25,Math.min(W-25,p.x+p.vx*dt)),y=Math.max(25,Math.min(H-25,p.y+p.vy*dt));
  ({x,y}=collide(p,x,y,ps));
@@ -779,12 +779,12 @@ function spawnPoachers(room:Room):Poacher[]{const ps=props(room.seed),random=rng
 }
 function engagePoacher(p:Player,room:Room,now:number,reach:number){if(!ANIMALS[p.species].prey.length||p.bot)return false;
  const n=room.poachers?.find(n=>!['gone','escaping','subdued'].includes(n.state)&&dist(p,n)<reach&&inFront(p,n)&&!contactBlocked(props(room.seed),p,n));if(!n)return false;
- n.target=p.id;n.health=Math.max(0,n.health-({lion:46,leopard:38,hyena:32}[p.species as 'lion'|'leopard'|'hyena']??30));if(n.health===0){n.state='subdued';}else if(n.health<=35&&!['retreating','entering'].includes(n.state)){n.state='retreating';n.since=now;}else if(!['retreating','entering','defending'].includes(n.state)){n.state='defending';n.since=now;}p.stamina=Math.max(0,p.stamina-12);notify(p,n.health===0?'Poacher stopped. Leave the area.':'Poacher aiming! Break contact and use cover.',now);return true;}
+ n.target=p.id;n.health=Math.max(0,n.health-({lion:46,leopard:38,hyena:32}[p.species as 'lion'|'leopard'|'hyena']??30));if(n.health===0){n.state='subdued';}else if(n.health<=15&&now-n.since>1800&&!['retreating','entering'].includes(n.state)){n.state='retreating';n.since=now;}else if(!['retreating','entering','defending'].includes(n.state)){n.state='defending';n.since=now;}p.stamina=Math.max(0,p.stamina-12);notify(p,n.health===0?'Poacher stopped. Leave the area.':'Poacher aiming! Break contact and use cover.',now);return true;}
 export function stepPoachers(room:Room,now:number,dt:number){for(const n of room.poachers??[]){if(n.state==='gone'||n.state==='subdued')continue;const ps=props(room.seed),p=room.players.find(p=>p.id===n.target);
  if(p&&['detecting','defending'].includes(n.state))n.heading=Math.atan2(p.y-n.y,p.x-n.x);
  const sees=(p:Player)=>!p.deadUntil&&p.protectedUntil<now&&ANIMALS[p.species].prey.length>0&&!hidden(p,room,now)&&dist(p,n)<180&&!contactBlocked(ps,n,p)&&poacherSight(room,n,p);
- if(n.state==='guarding'){const q=room.players.find(p=>!p.bot&&sees(p));if(q){n.target=q.id;n.state='detecting';n.since=now;notify(q,'Poacher ahead. Stay back or use cover.',now);}}
- else if(n.state==='detecting'){if(!p||!sees(p)){n.state='guarding';n.target='';}}
+ if(n.state==='guarding'){const q=room.players.find(p=>!p.bot&&sees(p));if(q){n.target=q.id;n.state='detecting';n.since=now;notify(q,'Poacher aiming at you! Leave range or take cover now.',now);}}
+ else if(n.state==='detecting'){if(!p||!sees(p)){n.state='guarding';n.target='';}else if(now-n.since>=1500){n.state='defending';n.since=now-1201;n.nextShot=now;notify(p,'Poacher opening fire! Leave range or find cover.',now);}}
  else if(n.state==='defending'){if(now-n.since>7000||!p||!sees(p)){n.state='retreating';n.since=now;}else if(now-n.since>1200&&now>=n.nextShot){n.shotAt=now;n.nextShot=now+1500;p.health=Math.max(0,(p.health??100)-25);p.feeding=undefined;notify(p,'Shot! Find cover.',now);if(p.health<=0)die(p,room,now,'was stopped by a poacher.');}}
  else if(n.state==='retreating'){const door=jeepDoor(n),d=dist(n,door);if(d<3){n.state='entering';n.since=now;}else{const k=Math.min(1,55*dt/d);n.heading=Math.atan2(door.y-n.y,door.x-n.x);n.x+=(door.x-n.x)*k;n.y+=(door.y-n.y)*k;}}
  else if(n.state==='entering'&&now-n.since>1200){n.state='escaping';n.since=now;}
