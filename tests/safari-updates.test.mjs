@@ -32,7 +32,7 @@ test('stalking leopard cannot be sensed by any species and moves faster',()=>{
  const {p,q,r}=setup('leopard');Object.assign(p,{abilityUntil:T+4000,dx:1,dy:0,vx:0,vy:0});
  for(const species of Object.keys(ANIMALS)){q.species=species;assert.equal(sense(q,p,r,T+1),null,species);}
  for(let i=0;i<20;i++)move(p,.05,[],T+i*50);assert.ok(Math.abs(p.vx/10-STALK_SPEED)<.1);
- p.dx=0;move(p,.05,[],T+1000);assert.equal(p.vx,0);assert.equal(p.vy,0);
+ p.dx=0;move(p,.05,[],T+1000);assert.ok(p.vx>0&&p.vx<STALK_SPEED*10);for(let i=0;i<20;i++)move(p,.05,[],T+1050+i*50);assert.equal(p.vx,0);assert.equal(p.vy,0);
 });
 test('poachers spawn around all edges and escalate after warning',()=>{
  for(let i=0;i<20;i++){const {p,r}=setup();r.round=i;start(r,T);assert.equal(r.poachers.length,4);assert.ok(r.poachers.some(n=>n.exitX<0));assert.ok(r.poachers.some(n=>n.exitX>W));assert.ok(r.poachers.some(n=>n.exitY<0));assert.ok(r.poachers.some(n=>n.exitY>H));}

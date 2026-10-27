@@ -50,3 +50,11 @@ Movement now advances elapsed time in small physics steps (up to 0.5 seconds per
 Checks actually run: node --test tests/game.test.mjs tests/route.test.mjs tests/safari-updates.test.mjs tests/client-motion.test.mjs — 47/47 pass. node node_modules/typescript/bin/tsc --noEmit — pass. Sites build-site.mjs — pass. New tests cover equal travel at slow/fast frame rates, Charge stopping despite stale moving snapshots, and a passive lion being warned and defeated by spaced shots. No lint rerun; earlier lint failures remain.
 
 The latest local built preview launched solo practice and accepted forward/sideways keyboard input. Gameplay screenshots were inspected. The cloud compatibility renderer reported roughly 1 FPS during this check despite 16–22 ms rendering samples; the cause of that discrepancy is not established. Therefore smooth rendering is NOT verified, and these changes must not be described as eliminating all lag. Poacher damage behavior was tested in simulation in this pass, not visually replayed. No physical mobile/GPU-device or cross-device latency benchmark was performed.
+
+## Claude movement restoration
+
+Restored the complete move() implementation verbatim from Claude c78d214, including species braking and Charge behavior. Restored original steering-led body rotation, rendering cadence, capped shared time step, adaptive position correction, snapshot extrapolation cap, network polling and release handling. Removed the unused custom client-motion helper. Kept newer feeding, poacher encounters, round durations, relaxed hunt range, concealment and requested speed tuning. This intentionally supersedes earlier instant-stop and slow-frame prediction revisions. Restored braking can continue briefly after key release by design; it is distinct from indefinite drift.
+
+Verification: movement function compared byte-for-byte against c78d214. TypeScript noEmit passed. Tests and build results are reported separately after execution. No new visual playtest or hardware smoothness claim in this restoration.
+
+Restoration final checks: 46/46 tests pass; TypeScript noEmit passes; Sites production build passes.

@@ -279,7 +279,7 @@ export function move(p:Player,dt:number,ps:Prop[],now:number){
  const leap=p.species==='impala'&&active,charge=p.species==='lion'&&active,free=charge||p.species==='hyena'&&active,stalk=p.species==='leopard'&&active;
  let vx=p.vx/U,vy=p.vy/U,speed=Math.hypot(vx,vy);
  // a partly pushed stick (or a grazing herd's slow drift) moves between a walk and the normal run
- let target=!input?0:stalk?STALK_SPEED:(p.sprint||charge)&&(free||!p.exhausted&&p.stamina>0)?g.sprint:Math.max(g.walk,g.run*Math.min(1,Math.hypot(p.dx,p.dy)));
+ let target=!input&&!charge?0:stalk?STALK_SPEED:(p.sprint||charge)&&(free||!p.exhausted&&p.stamina>0)?g.sprint:Math.max(g.walk,g.run*Math.min(1,Math.hypot(p.dx,p.dy)));
  // game rule: wading through a watering hole or its mud ring slows every animal a little
  if(ofKind(ps,'water').some(t=>Math.hypot(p.x-t.x,p.y-t.y)<t.size*1.25))target*=.8;
  const dir=input?Math.atan2(p.dy,p.dx):Math.atan2(vy,vx),wx=Math.cos(dir)*target,wy=Math.sin(dir)*target;
@@ -290,7 +290,7 @@ export function move(p:Player,dt:number,ps:Prop[],now:number){
   const push=clamp(along,-g.brake*dt,g.accel*(charge?1.4:1)*dt),bend=side>g.grip*dt?g.grip*dt/side:1;
   vx+=ux*push+sx*bend;vy+=uy*push+sy*bend;
  }
- if(!input&&!leap||Math.hypot(vx,vy)<.02){vx=0;vy=0;}
+ if(Math.hypot(vx,vy)<.02){vx=0;vy=0;}
  p.vx=vx*U;p.vy=vy*U;
  let x=Math.max(25,Math.min(W-25,p.x+p.vx*dt)),y=Math.max(25,Math.min(H-25,p.y+p.vy*dt));
  ({x,y}=collide(p,x,y,ps));
