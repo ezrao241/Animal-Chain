@@ -11,7 +11,7 @@ function fixture(species='lion'){
  const player=newPlayer('test-host','Test Host',NOW,false,species);player.token='test-only-token';player.x=OPEN.x;player.y=OPEN.y;player.protectedUntil=0;
  const room=newRoom('TESTAB',player,NOW);Object.assign(room,{phase:'playing',started:NOW,ends:NOW+300000,foods:[]});return{room,player};
 }
-const near=(player,species,dx=10)=>{const q=newPlayer('q-'+species,species,NOW,true,species);Object.assign(q,{x:player.x+dx,y:player.y,protectedUntil:0});return q;};
+const near=(player,species,dx=10)=>{const q=newPlayer('q-'+species,species,NOW,true,species);Object.assign(q,{x:player.x+dx,y:player.y,protectedUntil:0,health:1});return q;}; // Finishing-hit fixtures; healthy-prey cases are in safari-updates.test.mjs.
 test('six savanna species, five-minute rounds, two humans and 60 wildlife slots',()=>{
  assert.deepEqual([...SPECIES],['lion','leopard','hyena','zebra','impala','warthog']);
  const {room,player}=fixture();room.players.push(newPlayer('friend','Friend',NOW,false,'zebra'));const previous=room.players.map(p=>p.species);start(room,NOW);
@@ -47,7 +47,7 @@ test('a kill leaves a carcass that scavengers can eat',()=>{
  const carcass=room.foods.find(f=>f.kind==='carrion');assert.ok(carcass);
  const hyena=newPlayer('h','H',NOW,true,'hyena');Object.assign(hyena,{x:carcass.x,y:carcass.y,protectedUntil:0,hunger:50});room.players.push(hyena);
  interact(hyena,room,NOW+1000);assert.equal(hyena.scavenged,0,'not ready while the hunter feeds');
- interact(hyena,room,NOW+6000);assert.equal(hyena.scavenged,1);assert.equal(hyena.score,5+2,"golden graze bonus plus the hyena scavenging bonus");
+ interact(hyena,room,NOW+8000);assert.equal(hyena.scavenged,1);assert.equal(hyena.score,5+2,"golden graze bonus plus the hyena scavenging bonus");
 });
 test('phase bonuses are real scoring',()=>{
  for(const [elapsed,points]of [[0,5],[100000,3],[200000,3]]){const{room,player}=fixture('zebra');player.hunger=50;room.foods=[{id:1,x:player.x,y:player.y,kind:'grass',ready:0}];interact(player,room,NOW+elapsed);assert.equal(player.score,points);}
@@ -228,7 +228,7 @@ test('every predator/prey matchup: only listed prey, in reach, unprotected and n
   if(hunter==='hyena'&&prey==='zebra')continue;
   if(!ANIMALS[hunter].prey.includes(prey))continue;
   const{room:r2,player:h2}=fixture(hunter);const shielded=near(h2,prey,15);shielded.protectedUntil=NOW+4000;r2.players.push(shielded);hunt(h2,r2,NOW);assert.equal(shielded.deadUntil,0,'spawn protection '+hunter+' vs '+prey);
-  const{room:r3,player:h3}=fixture(hunter);const away=near(h3,prey,ANIMALS[hunter].catchRange+5);r3.players.push(away);hunt(h3,r3,NOW);assert.equal(away.deadUntil,0,'out of reach '+hunter+' vs '+prey);
+  const{room:r3,player:h3}=fixture(hunter);const away=near(h3,prey,ANIMALS[hunter].catchRange*1.2+5);r3.players.push(away);hunt(h3,r3,NOW);assert.equal(away.deadUntil,0,'out of reach '+hunter+' vs '+prey);
  }
 });
 // a room with only wildlife: a lion placed by an impala herd that is grazing, everyone else far away

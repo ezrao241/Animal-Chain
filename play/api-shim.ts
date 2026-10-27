@@ -1,6 +1,6 @@
 // In-browser stand-in for app/api/game/route.ts: the same room logic from lib/game.ts, with rooms kept in memory instead of
 // the Cloudflare D1 database. Only solo practice makes sense here (other players can't reach this browser).
-import {newPlayer, newRoom, publicRoom, start, tick, useAbility, perch, interact, die, Room} from '@/lib/game';
+import {newPlayer, newRoom, publicRoom, finishRound,start, tick, useAbility, perch, interact, die, Room} from '@/lib/game';
 
 const rooms = new Map<string, Room>();
 // Exposed for the browser QA harness (scripted checks drive and inspect the offline room); harmless in a solo copy.
@@ -9,7 +9,7 @@ const json = (data: unknown, status = 200) => new Response(JSON.stringify(data),
 
 function handle(b: Record<string, unknown>): Response {
   const now = Date.now(), action = String(b.action || '');
-  if (!['create', 'join', 'sync', 'start', 'practice', 'leave', 'restart'].includes(action)) return json({error: 'Unknown game action.'}, 400);
+  if (!['create', 'join', 'sync', 'start', 'practice', 'leave', 'restart', 'configure', 'end'].includes(action)) return json({error: 'Unknown game action.'}, 400);
   if (action === 'create') {
     const name = String(b.name || '').trim().slice(0, 18); if (!name) return json({error: 'Choose a nickname first.'}, 400);
     const id = crypto.randomUUID(), token = crypto.randomUUID(); const host = newPlayer(id, name, now); host.token = token;
@@ -23,7 +23,11 @@ function handle(b: Record<string, unknown>): Response {
   if (action === 'join') return json({error: 'Multiplayer needs the hosted game. Create a room and choose solo practice.'}, 409);
   if (!p) return json({error: 'Your session is no longer in this room. Please rejoin.'}, 401);
   p.lastSeen = now;
-  if (action === 'start' || action === 'practice') {
+  if(action==='configure'||action==='end'){
+ if(room.host!==p.id)return json({error:'Only the host can change the round.'},403);
+ if(action==='configure'){if(room.phase==='playing')return json({error:'Choose duration before starting.'},409);if(![0,300,600].includes(b.duration as number))return json({error:'Choose 5 minutes, 10 minutes or unlimited.'},400);room.duration=b.duration as 0|300|600;}
+ else {if(room.phase!=='playing')return json({error:'No active round.'},409);finishRound(room,now);}
+ }else if (action === 'start' || action === 'practice') {
     if (room.phase === 'playing') return json({error: 'The round is already running.'}, 409);
     room.practice = true; room.players = room.players.filter(q => !q.bot && q.id === p.id); start(room, now);
   } else if (action === 'leave') {

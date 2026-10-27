@@ -24,7 +24,7 @@ test('two players: start, simultaneous syncs, stale input, an encounter and a re
  const h=state(code).players.find(p=>p.id===host.id);assert.equal(h.dx,-1);assert.equal(h.seq,5000);
  // predator meets prey: make the host a lion and the guest an impala right beside it, both unprotected
  const room=state(code);const L=room.players.find(p=>p.id===host.id),I=room.players.find(p=>p.id===guest.id);
- Object.assign(L,{species:'lion',protectedUntil:0,deadUntil:0});Object.assign(I,{species:'impala',bag:(I.bag??[]).filter(s=>s!=='impala'),protectedUntil:0,deadUntil:0,x:L.x+12,y:L.y,abilityUntil:0,heading:0});Object.assign(L,{heading:0});for(const p of room.players)if(p.bot&&Math.hypot(p.x-L.x,p.y-L.y)<200)p.x=(p.x+1500)%3900+50;save(code,room);
+ Object.assign(L,{species:'lion',protectedUntil:0,deadUntil:0});Object.assign(I,{species:'impala',health:1,bag:(I.bag??[]).filter(s=>s!=='impala'),protectedUntil:0,deadUntil:0,x:L.x+12,y:L.y,abilityUntil:0,heading:0});Object.assign(L,{heading:0});for(const p of room.players)if(p.bot&&Math.hypot(p.x-L.x,p.y-L.y)<200)p.x=(p.x+1500)%3900+50;save(code,room);
  const [a,b]=await Promise.all([call({action:'sync',...auth(host),seq:6000,dx:0,dy:0,interact:true}),call({action:'sync',...auth(guest),seq:6001,dx:0,dy:0})]);
  // the lunge lands a quarter of a second after the press
  await new Promise(r=>setTimeout(r,STRIKE_WINDUP+60));await call({action:'sync',...auth(host),seq:6002,dx:0,dy:0});

@@ -1,4 +1,5 @@
 'use client';
+import {createPoacherEncounter} from './poacher-models';
 import {useEffect,useRef,useState} from 'react';
 import * as THREE from 'three';
 import {createRenderer,SoftwareRenderer} from './software-renderer';
@@ -31,7 +32,7 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
   renderer.setPixelRatio(pixelRatio);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.12;renderer.shadowMap.enabled=false;renderer.shadowMap.type=THREE.PCFSoftShadowMap;if(renderer instanceof THREE.WebGLRenderer)renderer.shadowMap.autoUpdate=false;
   const canvas=renderer.domElement;canvas.setAttribute('aria-label',preview?'Live Golden Plains savanna preview with animated animals':'3D Golden Plains savanna. WASD moves relative to camera. Drag to look. Shift sprints, E interacts, Space uses ability, F toggles instincts, R centers camera.');canvas.tabIndex=preview?-1:0;element.appendChild(canvas);
   const overlay=document.createElement('canvas');overlay.className='world-labels';element.appendChild(overlay);const ctx=overlay.getContext('2d')!;
-  const scene=new THREE.Scene();scene.background=new THREE.Color(0xead8b2);scene.fog=new THREE.Fog(0xe8d5ae,340,800);const camera=new THREE.PerspectiveCamera(61,1,1.8,1000);
+  const scene=new THREE.Scene();const encounter=createPoacherEncounter(scene);scene.background=new THREE.Color(0xead8b2);scene.fog=new THREE.Fog(0xe8d5ae,340,800);const camera=new THREE.PerspectiveCamera(61,1,1.8,1000);
   scene.add(new THREE.HemisphereLight(0xc2daf2,0xa98a52,1.4));const sun=new THREE.DirectionalLight(0xffd49a,3.2);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);Object.assign(sun.shadow.camera,{left:-400,right:400,top:400,bottom:-400,near:10,far:1700});sun.shadow.bias=-.0003;sun.shadow.normalBias=1.5;sun.shadow.camera.updateProjectionMatrix();scene.add(sun,sun.target);
   const rim=new THREE.DirectionalLight(0x9fc0e6,.55);rim.position.set(400,200,500);scene.add(rim);
   const savanna=createSavanna(scene,lightweight),ps=props(417),previewFoods=makeFoods(417),food=new FoodField(scene),traces=new SafariTraces(scene,groundY,lightweight);
@@ -60,6 +61,7 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
    const dt=Math.min(.075,Math.max(0,(ms-last)/1000));last=ms;if(!width||!height)return;
    const mode=input.current.graphics||'auto';
    const time=ms/1000,{room:r,me:m}=latest.current;cinema?.animate(time);const now=r?Date.now()+r.serverTime-(r._received||Date.now())+(r._transitMs||0):Date.now(),lag=r?Math.min(.3,Math.max(0,(now-r.serverTime)/1000)):0,players=r?.players||demo,ids=new Set(players.map(p=>p.id));
+   encounter.update(r?.poachers,now,groundY);
    if(r?.code!==soundRoomCode){animalStates.clear();soundRoomCode=r?.code||'';}
    const tier=lightweight||preview?'performance':mode==='auto'?autoTier:mode;
    const lowBudget=tier==='performance'&&mode!=='high'&&lightweight;
@@ -113,7 +115,7 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
     const climb=preview?null:climberPose(rig,p,ps,dt,groundY);
     if(climb){position.x=climb.x;position.y=climb.y;position.vx=position.vy=0;}
     else{rig.pitch=THREE.MathUtils.damp(rig.pitch,0,8,dt);rig.altitude=THREE.MathUtils.damp(rig.altitude,0,6,dt);rig.root.rotation.set(0,rig.turn,rig.pitch);rig.root.position.set(position.x,groundY(position.x,position.y)+rig.altitude,position.y);}
-    {const a=ANIMALS[p.species],start=p.abilityUntil-a.duration*1000;animateSafari(rig,{speed:p.perched?0:speed,time,dt,ability:p.abilityUntil>now?THREE.MathUtils.clamp((now-start)/(a.duration*1000),0,1):-1,action:p.actionUntil>now,perched:!!p.perched,altitude:rig.altitude,stunned:(p.stunUntil||0)>now,alert:p.mood==='watch',grazing:headDown(p,now),crouch:p.mood==='stalk',resting:p.mood==='rest',climb:climb?.info});}
+    {const a=ANIMALS[p.species],start=p.abilityUntil-a.duration*1000;animateSafari(rig,{feeding:!!p.feeding,speed:p.perched?0:speed,time,dt,ability:p.abilityUntil>now?THREE.MathUtils.clamp((now-start)/(a.duration*1000),0,1):-1,action:p.actionUntil>now,perched:!!p.perched,altitude:rig.altitude,stunned:(p.stunUntil||0)>now,alert:p.mood==='watch',grazing:headDown(p,now),crouch:p.mood==='stalk',resting:p.mood==='rest',climb:climb?.info});}
     climberFeet(rig,climb,ps,dt,groundY);
     shadow.position.set(position.x+3,groundY(position.x,position.y)+.6,position.y+2);{const sp=cameraProfile(p.species);shadow.scale.set(sp.shadow[0],sp.shadow[1],1);shadow.rotation.z=rig.turn;}
     if(own){ownHeading=rig.turn;const headHeight=cameraProfile(p.species).head;target.set(position.x,rig.root.position.y+headHeight,position.y);if(first||ownBorn!==p.born){follow.copy(target);ownBorn=p.born;first=false;yaw=rig.turn-Math.PI/2;pitch=.24;}follow.lerp(target,1-Math.exp(-9*dt));}
@@ -162,7 +164,7 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
    ctx.save();ctx.translate(mx+m.x/W*mw,my+m.y/H*mh);ctx.rotate(-yaw);ctx.fillStyle='#fff6dc';ctx.beginPath();ctx.moveTo(0,-5);ctx.lineTo(-3,3);ctx.lineTo(3,3);ctx.closePath();ctx.fill();ctx.restore();
   };
   renderer.setAnimationLoop(render);
-  return()=>{observer.disconnect();renderer.setAnimationLoop(null);canvas.removeEventListener('pointerdown',down);canvas.removeEventListener('pointermove',drag);canvas.removeEventListener('pointerup',up);canvas.removeEventListener('pointercancel',up);canvas.removeEventListener('wheel',wheel);animalBatches?.dispose();savanna.dispose();traces.dispose();food.dispose();shadowGeo.dispose();shadowMat.dispose();renderer.dispose();renderer.forceContextLoss();canvas.remove();overlay.remove();};
+  return()=>{encounter.dispose();observer.disconnect();renderer.setAnimationLoop(null);canvas.removeEventListener('pointerdown',down);canvas.removeEventListener('pointermove',drag);canvas.removeEventListener('pointerup',up);canvas.removeEventListener('pointercancel',up);canvas.removeEventListener('wheel',wheel);animalBatches?.dispose();savanna.dispose();traces.dispose();food.dispose();shadowGeo.dispose();shadowMat.dispose();renderer.dispose();renderer.forceContextLoss();canvas.remove();overlay.remove();};
  },[preview,input]);
  return <div ref={host} className="world-scene">{failure&&<div className="graphics-error" role="alert">{failure}</div>}{software&&!preview&&<span className="render-mode">Compatibility graphics</span>}</div>;
 }
