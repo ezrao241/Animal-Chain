@@ -87,3 +87,22 @@ One-hit catches with 1.44x reach, proportional 5/6/7 s feeding and everything el
 
 Romoke confirmed the round-length picker stays: the host picks 5 minutes, 10 minutes or unlimited in the lobby and can
 end the round for everyone (configure/end in lib/net.ts, as above). Only the poachers are removed.
+
+## Changelog pass (Oct 29)
+
+- Bite reach 1.44x -> 1.70x of each species' catch range (+18 %).
+- The ring under the nearest food the animal can eat brightens and pulses once it is within eating range
+  (components/game/safari-food.ts); a fresh kill shows no ring until it is ready.
+- Creeping behind computer prey: `creptBehind` in lib/game.ts (220° forward sector, quiet human predator, valid matchup).
+- Rounds: 5 min default, 10 min (server deadline), unlimited (elapsed clock, host End round). The host picks in the
+  lobby; everyone sees the choice; replay keeps it.
+- Disconnects: a player who stops syncing is removed after 15 s in the lobby or mid-round (host passes to an active
+  player); finished results are left untouched. Wildlife stays at 60.
+- 3-step tutorial (once per browser, reopen from the room menu), Stats panel (button or P: FPS, round trip, drawing
+  time, snapshot age, "Waiting for the server…" past 1.5 s, 60-sample history), clearer round-length control.
+- Acacias: drawn bark stems join each canopy pad to its branch tip and the central crown to the fork. The climbing and
+  collision data in lib/acacia.ts is unchanged.
+- Climbing: walking round to the trunk after Q is drawn as walking on the ground (it used the perched pose and slid);
+  the HUD only says "Up in the acacia" once the animal is on the tree.
+- Not checked: real phones and GPUs (browser checks ran on a software renderer), and the AWF links (blocked here).
+

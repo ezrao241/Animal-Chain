@@ -102,6 +102,8 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
     // the menu camera tours a herd at close range: anyone wandering right up to the lens steps out of the shot
     if(preview&&Math.hypot(position.x-camera.position.x,position.y-camera.position.z)<30)rig.root.visible=shadow.visible=false;
     if(!rig.root.visible)continue;let vx=p.vx||0,vy=p.vy||0;
+    // up in the tree, or still on foot walking round to the climbing face (drawn walking, not in the perched pose)
+    const perched=!!p.perched&&p.climb!=='approach';
     if(preview){position.x=p.x;position.y=p.y;position.vx=vx;position.vy=vy;}
     else if(own&&r?.phase==='playing'){
      Object.assign(position,{species:p.species,perched:p.perched,abilityUntil:p.abilityUntil,deadUntil:p.deadUntil,stunUntil:p.stunUntil,stamina:p.stamina,exhausted:p.exhausted,...input.current,...cameraInput(input.current.dx,input.current.dy,input.current.moveYaw??input.current.cameraYaw)});
@@ -110,7 +112,8 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
      // holds the animal (in a tree, stunned) or for a moment after it refused a reported position (fix).
      // A slow frame (a busy phone) still covers its full time in 50 ms steps, so the animal keeps its real speed.
      if(p.fix!==ownFix){ownFix=p.fix;rejoinUntil=ms+450;}
-     if(p.perched||p.climb){position.x=THREE.MathUtils.damp(position.x,p.x,10,dt);position.y=THREE.MathUtils.damp(position.y,p.y,10,dt);position.vx=position.vy=0;}
+     // (walking to the trunk before a climb is still on the ground: keep the server's walking velocity for the gait)
+     if(p.perched||p.climb){position.x=THREE.MathUtils.damp(position.x,p.x,10,dt);position.y=THREE.MathUtils.damp(position.y,p.y,10,dt);position.vx=p.climb==='approach'?p.vx||0:0;position.vy=p.climb==='approach'?p.vy||0:0;}
      else{for(let left=Math.min(.25,raw);left>1e-4;left-=.05)move(position,Math.min(.05,left),ps,now);if(ms<rejoinUntil||(p.stunUntil||0)>now){const k=1-Math.exp(-10*dt);position.x+=(p.x+vx*lag-position.x)*k;position.y+=(p.y+vy*lag-position.y)*k;}}vx=position.vx;vy=position.vy;
      input.current.claim={x:position.x,y:position.y,vx:position.vx,vy:position.vy,born:p.born,at:Date.now()};
     }else{const k=1-Math.exp(-12*dt);position.x+=(p.x+vx*lag-position.x)*k;position.y+=(p.y+vy*lag-position.y)*k;}
@@ -127,7 +130,7 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
     const climb=preview?null:climberPose(rig,p,ps,dt,groundY);
     if(climb){position.x=climb.x;position.y=climb.y;position.vx=position.vy=0;}
     else{rig.pitch=THREE.MathUtils.damp(rig.pitch,0,8,dt);rig.altitude=THREE.MathUtils.damp(rig.altitude,0,6,dt);rig.root.rotation.set(0,rig.turn,rig.pitch);rig.root.position.set(position.x,groundY(position.x,position.y)+rig.altitude,position.y);}
-    {const a=ANIMALS[p.species],start=p.abilityUntil-a.duration*1000;animateSafari(rig,{feeding:!!p.feeding,speed:p.perched?0:speed,time,dt,ability:p.abilityUntil>now?THREE.MathUtils.clamp((now-start)/(a.duration*1000),0,1):-1,action:p.actionUntil>now,perched:!!p.perched,altitude:rig.altitude,stunned:(p.stunUntil||0)>now,alert:p.mood==='watch',grazing:headDown(p,now),crouch:p.mood==='stalk',resting:p.mood==='rest',climb:climb?.info});}
+    {const a=ANIMALS[p.species],start=p.abilityUntil-a.duration*1000;animateSafari(rig,{feeding:!!p.feeding,speed:perched?0:speed,time,dt,ability:p.abilityUntil>now?THREE.MathUtils.clamp((now-start)/(a.duration*1000),0,1):-1,action:p.actionUntil>now,perched,altitude:rig.altitude,stunned:(p.stunUntil||0)>now,alert:p.mood==='watch',grazing:headDown(p,now),crouch:p.mood==='stalk',resting:p.mood==='rest',climb:climb?.info});}
     climberFeet(rig,climb,ps,dt,groundY);
     /* with real shadow maps the painted shadow is only contact shade under the body; without them it stands in for the cast shadow, away from the sun */{const real=renderer.shadowMap.enabled?0:1;shadow.position.set(position.x+shadowShift.x*real,groundY(position.x,position.y)+.6,position.y+shadowShift.z*real);}{const sp=cameraProfile(p.species);shadow.scale.set(sp.shadow[0],sp.shadow[1],1);shadow.rotation.z=rig.turn;}
     if(own){ownHeading=rig.turn;const headHeight=cameraProfile(p.species).head;target.set(position.x,rig.root.position.y+headHeight,position.y);if(first||ownBorn!==p.born){follow.copy(target);ownBorn=p.born;first=false;yaw=rig.turn-Math.PI/2;pitch=.24;}follow.lerp(target,1-Math.exp(-9*dt));}

@@ -92,12 +92,20 @@ running, and the authors note animals rarely reached their limits, so the true m
   16.2 m/s and its run 7.8 m/s, below the measured 17.7 m/s in the speed table, so predators can close on it on this small
   map. While Stalk is active (4 s) a leopard moves at 4.5 m/s and is hidden from every animal sense; the 45 % figure above
   applies outside Stalk. Neither is a claim about real leopards or impala.
-- **Hunting and feeding.** A catch needs prey in front (within 85° of the lunge) and within 1.44 × the species
-  catch range, with nothing solid between. One landed catch is enough (the October 27 playtest setting). A predator that
+- **Hunting and feeding.** A catch needs prey in front (within 85° of the lunge) and within 1.70 × the species
+  catch range (the October 27 1.44 × setting, then 18 % more on October 29: `HUNT_REACH_MULTIPLIER`), with nothing solid between. One landed catch is enough (the October 27 playtest setting). A predator that
   has caught prey stays at the kill for 5 s (lion), 6 s (hyena) or 7 s (leopard) and regains up to 45 food in proportion
   to the time actually spent, and moving, an ability, a climb, a stun or death ends the meal early with only the part
   eaten. These timings and numbers are game abstractions, not
   measured feeding times or injuries.
+- **Creeping up from behind.** A computer-controlled prey animal notices a quiet player predator only inside a 220° forward
+  sector for its close-range and scent checks; a predator that isn't sprinting and is behind it (the rear 140°) is not
+  noticed by those two. Sight, sprint noise and herd alarms still work as before. Prey eyes on the sides of the head do
+  give a wide field of view, but the 220° figure and the all-or-nothing cut-off are a game rule, not a measurement.
+- **Field-guide facts.** The "The real animals" section of the field guide and the animal note in the room menu
+  (lib/species-facts.ts) use only sources already listed above, plus the African Wildlife Foundation species pages for
+  the leopard lines and the "more" links. The AWF pages could not be opened from the build environment, so those links
+  are unchecked.
 
 ## Climbing and solid objects
 

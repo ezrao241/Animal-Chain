@@ -62,8 +62,9 @@ try{
  pass(`host tab closed; the guest became host ${((Date.now()-closed)/1000).toFixed(1)} s later (15 s grace from its last sync)`);
  // the guest reloads: same session, same animal, no duplicate
  const born=state(code).players.find(p=>p.id===guest.id).born;await B.page.reload();await until('guest back in the round',async()=>await B.page.locator('.game-world').count());
- assert.equal(state(code).players.filter(p=>!p.bot).length,2);assert.equal(state(code).players.find(p=>p.id===guest.id).born,born);
- pass('guest reloaded the page and resumed the same animal, no duplicate player');
+ // the closed host was removed after the 15 s grace, so the guest is the only person left
+ assert.equal(state(code).players.filter(p=>!p.bot).length,1);assert.equal(state(code).players.find(p=>p.id===guest.id).born,born);
+ pass('guest reloaded the page and resumed the same animal, no duplicate player; the closed host was removed');
  if(shots)await B.page.screenshot({path:path.join(shots,'guest-after.png')});
 }finally{await browser.close();server.close();}
 console.log(`\n${results.length} checks passed`);

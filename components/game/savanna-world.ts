@@ -56,6 +56,11 @@ function acacia(seed:number,lod=0){
  const m=new Model(seed,lod),shape=acaciaShape(seed);
  m.loft('t#bark',shape.trunk.map(t=>({c:t.c,rz:t.r,ry:t.r})),{n:6,jitter:.04,start:'flat',end:'point'});
  shape.limbs.forEach(l=>m.spike('t#bark',l.path,l.radii,{n:5,jitter:.03}));
+ // bark stems carrying each canopy pad: from its limb's tip (pad i sits over limb i) or, for the central crown, from
+ // the fork, up into the pad's underside so no pad floats. Drawn only: the climbing rules keep the limbs above.
+ shape.canopy.forEach((c,i)=>{const l=shape.limbs[i],from=l?l.path.at(-1)!:[.15,shape.fork,0] as const,
+  to=[c.c[0],c.c[1]-c.r[1]*.4,c.c[2]] as const,mid=[(from[0]+to[0])/2,from[1]+(to[1]-from[1])*.55,(from[2]+to[2])/2] as const;
+  if(to[1]-from[1]>.05)m.spike('t#bark',[[...from],[...mid],[...to]],l?[l.radii.at(-1)!*1.1,l.radii.at(-1)!*.8,.018]:[.12,.075,.03],{n:5,jitter:.03});});
  // flat-topped umbrella canopy: overlapping faceted pads at the branch tips, a small one over the resting bough
  shape.canopy.forEach((c,i)=>m.blob('t#leaf',c.c,c.r,{detail:1,jitter:i===shape.canopy.length-1?.16:.18,rot:[0,c.rot,0]}));
  // warm bark that catches the sun on top; canopies lit gold-green above, cool olive in their own shade (never black)
