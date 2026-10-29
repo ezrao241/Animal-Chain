@@ -15,11 +15,12 @@ export class SoftwareRenderer{
  if(this.alpha)ctx.clearRect(0,0,w,h);else{ctx.fillStyle=scene.background instanceof THREE.Color?scene.background.getStyle():'#405f46';ctx.fillRect(0,0,w,h);}
  const faces:Face[]=[];
  const collect=(mesh:THREE.Mesh,transform:THREE.Matrix4,tint?:THREE.Color)=>{
- const geo=(mesh.userData.softwareGeometry||mesh.geometry) as THREE.BufferGeometry;const positions=geo.attributes.position;if(!positions)return;
+ const geo=(mesh.userData.softwareGeometry||(mesh.userData.far&&world.setFromMatrixPosition(transform).distanceToSquared(camera.position)>10000?mesh.userData.far:mesh.geometry)) as THREE.BufferGeometry;const positions=geo.attributes.position;if(!positions)return;
  if(!geo.boundingSphere)geo.computeBoundingSphere();bounds.copy(geo.boundingSphere!).applyMatrix4(transform);if(!frustum.intersectsSphere(bounds))return;
- const material=(Array.isArray(mesh.material)?mesh.material[0]:mesh.material) as THREE.MeshStandardMaterial;const base=material.color||new THREE.Color(0xffffff);const indices=geo.index,vertexColors=geo.attributes.color;const n=indices?indices.count:positions.count;
+ const material=(Array.isArray(mesh.material)?mesh.material[0]:mesh.material) as THREE.MeshStandardMaterial;if(material.fog!==false&&fog&&bounds.center.distanceTo(camera.position)-bounds.radius>fog.far)return;const base=material.color||new THREE.Color(0xffffff);const indices=geo.index,vertexColors=geo.attributes.color;const n=indices?indices.count:positions.count;
  for(let i=0;i<n;i+=3){const ia=indices?indices.getX(i):i,ib=indices?indices.getX(i+1):i+1,ic=indices?indices.getX(i+2):i+2;
  v1.fromBufferAttribute(positions,ia).applyMatrix4(transform);v2.fromBufferAttribute(positions,ib).applyMatrix4(transform);v3.fromBufferAttribute(positions,ic).applyMatrix4(transform);
+ if(v1.distanceToSquared(camera.position)>(camera as THREE.PerspectiveCamera).far**2&&v2.distanceToSquared(camera.position)>(camera as THREE.PerspectiveCamera).far**2&&v3.distanceToSquared(camera.position)>(camera as THREE.PerspectiveCamera).far**2&&material.fog!==false)continue;
  normal.subVectors(v2,v1).cross(edge.subVectors(v3,v1)).normalize();center.copy(v1).add(v2).add(v3).multiplyScalar(1/3);if(material.side!==THREE.DoubleSide&&normal.dot(edge.subVectors(camera.position,center))<=0)continue;
  color.copy(base);if(tint)color.multiply(tint);if(vertexColors){color.setRGB((vertexColors.getX(ia)+vertexColors.getX(ib)+vertexColors.getX(ic))/3,(vertexColors.getY(ia)+vertexColors.getY(ib)+vertexColors.getY(ic))/3,(vertexColors.getZ(ia)+vertexColors.getZ(ib)+vertexColors.getZ(ic))/3);}
  const illumination=('isMeshBasicMaterial' in material)?1:.58+Math.max(0,normal.dot(light))*.6;color.multiplyScalar(illumination);

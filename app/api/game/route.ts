@@ -1,10 +1,10 @@
 import { env } from 'cloudflare:workers';
-import { newPlayer,newRoom,publicRoom,start,tick,useAbility,perch,interact,die,type Room } from '@/lib/game';
+import { newPlayer,newRoom,publicRoom,finishRound,start,tick,useAbility,perch,interact,die,type Room } from '@/lib/game';
 const json=(data:unknown,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}});
 export async function POST(req:Request){try{
  if(!env.DB)return json({error:'The savanna is temporarily unavailable. Please try again.'},503);
  const b=await req.json() as Record<string,unknown>;const now=Date.now();const action=String(b.action||'');
- if(!['create','join','sync','start','practice','leave','restart'].includes(action))return json({error:'Unknown game action.'},400);
+ if(!['create','join','sync','start','practice','leave','restart','configure','end'].includes(action))return json({error:'Unknown game action.'},400);
  if(action==='create'){
  const name=String(b.name||'').trim().slice(0,18);if(!name)return json({error:'Choose a nickname first.'},400);
  const id=crypto.randomUUID(),token=crypto.randomUUID();const host=newPlayer(id,name,now);host.token=token;
@@ -22,7 +22,11 @@ export async function POST(req:Request){try{
  }else{
  if(!p)return json({error:'Your session is no longer in this room. Please rejoin.'},401);
  p.lastSeen=now;
- if(action==='start'||action==='practice'){
+ if(action==='configure'||action==='end'){
+ if(room.host!==p.id)return json({error:'Only the host can change the round.'},403);
+ if(action==='configure'){if(room.phase==='playing')return json({error:'Choose duration before starting.'},409);if(![0,300,600].includes(b.duration as number))return json({error:'Choose 5 minutes, 10 minutes or unlimited.'},400);room.duration=b.duration as 0|300|600;}
+ else {if(room.phase!=='playing')return json({error:'No active round.'},409);finishRound(room,now);}
+ }else if(action==='start'||action==='practice'){
  if(room.host!==p.id)return json({error:'Only the host can start the round.'},403);
  if(room.phase==='playing')return json({error:'The round is already running.'},409);
  const active=room.players.filter(q=>!q.bot&&now-q.lastSeen<8000);const practice=action==='practice';if(!practice&&active.length<2)return json({error:'Invite one more player to start, or choose solo practice.'},409);if(practice&&active.length!==1)return json({error:'Solo practice is for one player. Start a multiplayer round instead.'},409);room.practice=practice;room.players=active;start(room,now);

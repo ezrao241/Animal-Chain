@@ -263,7 +263,7 @@ export function makeSafariAnimal(species:Species):SafariRig{
 
 /** mood cues: alert = head high, ears forward, watching a threat; grazing = head down at the grass; crouch = a stalking
  *  hunter low to the ground; resting = lying up in the shade */
-export type SafariPose={speed:number;time:number;dt:number;ability:number;action:boolean;perched:boolean;altitude:number;stunned:boolean;alert?:boolean;grazing?:boolean;crouch?:boolean;resting?:boolean;
+export type SafariPose={feeding?:boolean;speed:number;time:number;dt:number;ability:number;action:boolean;perched:boolean;altitude:number;stunned:boolean;alert?:boolean;grazing?:boolean;crouch?:boolean;resting?:boolean;
  /** in a tree: what the body is on, how fast it moves over the bark (game units/s), lying up, pivoting, head first, pitch */
  climb?:{on:'trunk'|'limb'|'air';speed:number;rest:boolean;turning:boolean;down:boolean;pitch:number}};
 const damp=(a:number,b:number,k:number,dt:number)=>a+(b-a)*(1-Math.exp(-k*dt));
@@ -276,7 +276,7 @@ export function animateSafari(r:SafariRig,p:SafariPose){
  const strideLen=Math.max(s.stride*(1+trot*.5+gallop*.9),v/2.6);r.phase=(r.phase+dt*v/strideLen)%1;const phi=r.phase*Math.PI*2;
  const amp=Math.min(1,v/1.4)*(.3+.1*trot+.26*gallop),ab=p.ability,active=ab>=0;
  const stalk=r.species==='leopard'&&active||!!p.crouch&&!!a.prey.length,kick=r.species==='zebra'&&active?Math.sin(Math.min(1,ab)*Math.PI):0,leap=r.species==='impala'&&active?Math.sin(Math.min(1,ab)*Math.PI):0,burrow=r.species==='warthog'&&active;
- const graze=(p.action||!!p.grazing)&&v<1&&!a.prey.length&&!p.alert,lunge=p.action&&!!a.prey.length,resting=!!p.resting&&v<.5,alert=!!p.alert&&v<1;
+ const graze=!!p.feeding||(p.action||!!p.grazing)&&v<1&&!a.prey.length&&!p.alert,lunge=!p.feeding&&p.action&&!!a.prey.length,resting=!!p.resting&&v<.5,alert=!!p.alert&&v<1;
  // legs: walk is a lateral sequence, faster gaits swing the front and hind pairs together
  const walkOff={FR:.75,FL:.25,HR:.5,HL:0},trotOff={FR:.5,FL:0,HR:0,HL:.5},runOff={FR:.6,FL:.5,HR:.1,HL:0};
  for(const [id,front] of LEGS){

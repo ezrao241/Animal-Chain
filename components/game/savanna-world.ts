@@ -1,3 +1,4 @@
+import {createTerrainHeight} from '../../lib/terrain-height';
 // The Golden Plains: a faceted African savanna built in code from the shared prop table (lib/game.ts), so the
 // colliders the server uses and the acacias, kopjes, thickets, burrows and watering holes the player sees always agree.
 // Terrain is a faceted height grid; groundY() interpolates the same triangles, so animals stand exactly on the facets.
@@ -9,25 +10,8 @@ import {acaciaShape,placementAt} from '@/lib/acacia';
 const S=40,X0=-1600,Z0=-1600,NX=Math.ceil((W+3200)/S)+1,NZ=Math.ceil((H+3200)/S)+1;
 const PROPS=props(417),WATERS=PROPS.filter(p=>p.kind==='water'),KOPJES=PROPS.filter(p=>p.kind==='rock'&&p.size>=1.3),BURROWS=PROPS.filter(p=>p.kind==='burrow'),PATCHES=PROPS.filter(p=>p.kind==='tallgrass');
 const smooth=(a:number,b:number,x:number)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t);};
-function rolling(x:number,z:number){return 18*Math.sin(x*.0021+1.3)*Math.cos(z*.0017)+9*Math.sin(x*.0052+z*.0041)+4*Math.sin(x*.013-z*.011);}
-/** surface height of each watering hole (the land around it is levelled to its centre, then dished) */
-export const waterLevel=(w:Prop)=>rolling(w.x,w.y)-4;
-function height(x:number,z:number){
- let h=rolling(x,z);
- for(const w of WATERS){const d=Math.hypot(x-w.x,z-w.y);if(d<w.size*2.3){const c=rolling(w.x,w.y);h=c+(h-c)*smooth(w.size*1.2,w.size*2.2,d);const t=d/(w.size*1.35);if(t<1)h-=12*(1-t*t)**2;}}
- for(const k of KOPJES){const d=Math.hypot(x-k.x,z-k.y);if(d<230)h+=24*(1-smooth(0,230,d));}
- // outside the playable map the land rises into low hills that frame the horizon
- const out=Math.max(-x,x-W,-z,z-H,0);if(out>0)h+=smooth(0,1200,out)*140+Math.sin(x*.004)*Math.cos(z*.005)*30*smooth(0,600,out);
- return h;
-}
-let GRID:Float32Array|null=null;
-function grid(){if(GRID)return GRID;GRID=new Float32Array(NX*NZ);for(let j=0;j<NZ;j++)for(let i=0;i<NX;i++)GRID[j*NX+i]=height(X0+i*S,Z0+j*S);return GRID;}
-/** Height of the faceted ground at (x, z) in game units, on the very triangle the renderer draws. */
-export function groundY(x:number,z:number){
- const g=grid(),fx=Math.min(Math.max((x-X0)/S,0),NX-1.001),fz=Math.min(Math.max((z-Z0)/S,0),NZ-1.001),i=Math.floor(fx),j=Math.floor(fz),u=fx-i,v=fz-j,k=j*NX+i;
- const h00=g[k],h10=g[k+1],h01=g[k+NX],h11=g[k+NX+1];
- return u>=v?h00+(h10-h00)*u+(h11-h10)*v:h00+(h11-h01)*u+(h01-h00)*v;
-}
+const {groundY,grid,waterLevel}=createTerrainHeight(PROPS,W,H);
+export {groundY,waterLevel};
 const GRASS=[0xd9b660,0xcfa853,0xe2c374,0xc79d4b,0xdbb965,0xcbab58],DRY=0xc9a15a,OLIVE=0xa7a250,EARTH=0xb27b4b,GREEN=0x98a252,MUD=0x6d583b,ROCKY=0xab9f88;
 function groundColour(x:number,z:number,r:number){
  const c=hex(GRASS[Math.floor(r*GRASS.length)]);
@@ -194,7 +178,7 @@ export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
  // level of detail: trees and boulders near the player use the full-facet model, distant ones a lighter cut, and those
  // past the far clipping plane are not submitted at all (the margin covers the camera's orbit around the animal, up to
  // ~260 units, plus a canopy's width and the 40-unit relevel step)
- const NEAR_LOD=lightweight?220:420,CULL_MARGIN=440,mat=new THREE.Matrix4(),quat=new THREE.Quaternion(),eul=new THREE.Euler(),at=new THREE.Vector3(),size=new THREE.Vector3(),lodAt={x:1e9,z:1e9,far:0};
+ const NEAR_LOD=lightweight?90:420,CULL_MARGIN=440,mat=new THREE.Matrix4(),quat=new THREE.Quaternion(),eul=new THREE.Euler(),at=new THREE.Vector3(),size=new THREE.Vector3(),lodAt={x:1e9,z:1e9,far:0};
  const relevel=(x:number,z:number,far:number)=>{const reach=far+CULL_MARGIN;for(const l of lods){l.near.count=0;l.far.count=0;for(const it of l.items){const d=Math.hypot(it.x-x,it.z-z);if(d>reach)continue;quat.setFromEuler(eul.set(0,it.rot,0));mat.compose(at.set(it.x,it.y,it.z),quat,size.set(it.scale,it.scale*(it.sy??1),it.scale));const mesh=d<NEAR_LOD?l.near:l.far;mesh.setMatrixAt(mesh.count++,mat);}for(const mesh of [l.near,l.far]){mesh.instanceMatrix.needsUpdate=true;mesh.computeBoundingSphere();}}};
  // thickets: a scrub bush wrapped in tall grass (the hiding spots); half are green bush, half grey thorn scrub
  const bushes=PROPS.filter(p=>p.kind==='bush'),shrubs=[...bushes,...beyond(lightweight?40:120,2)],shrubGeo=[shrub(3),shrub(8,true)];disposables.push(...shrubGeo);
@@ -222,7 +206,7 @@ export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
  const LAYERS:[THREE.BufferGeometry,THREE.Material][]=[[shortGeo[0],grassMat],[shortGeo[1],grassMat],[shortGeo[2],grassMat],[tallGeo,grassMat],[flowerGeo,grassMat],[stoneGeo,facet]];
  const CH=400,chunks:{mesh:THREE.InstancedMesh;cx:number;cz:number;full:number}[]=[];
  const blocked=(x:number,z:number)=>WATERS.some(w=>Math.hypot(x-w.x,z-w.y)<w.size*1.05)||rocks.some(t=>Math.hypot(x-t.x,z-t.y)<t.size*30)||BURROWS.some(b=>Math.hypot(x-b.x,z-b.y)<14)||trailDistance(x,z)<10;
- const density=lightweight?.35:1;
+ const density=lightweight?.15:1;
  for(let cz=-1;cz<Math.ceil(H/CH)+1;cz++)for(let cx=-1;cx<Math.ceil(W/CH)+1;cx++){
   const per:Placed[][]=LAYERS.map(()=>[]),outside=cx<0||cz<0||cx*CH>=W||cz*CH>=H,count=Math.floor(640*density*(outside?.5:1));
   for(let i=0;i<count;i++){const x=cx*CH+hash(cx,cz,i*3)*CH,z=cz*CH+hash(cx,cz,i*3+1)*CH;if(blocked(x,z))continue;
