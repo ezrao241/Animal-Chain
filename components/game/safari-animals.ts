@@ -205,6 +205,52 @@ const warthog:Spec={
 };
 
 const SPECS:Record<Species,Spec>={lion,leopard,hyena,zebra,impala,warthog};
+
+// ---------------------------------------------------------------- natural coat colours
+// The unlockable coats (lib/rewards.ts COATS, same order, with their sources): each repaints the usual coat facet by
+// facet, so the anatomy and markings stay the same animal's. Eyes, hooves, horns and tusks keep their colour.
+type Paint=(c:THREE.Color,p:THREE.Vector3,n:THREE.Vector3,part:string)=>THREE.Color;
+const lum=(c:THREE.Color)=>c.r*.3+c.g*.59+c.b*.11;
+/** the facet's brightness relative to a reference colour of the usual coat, carried over onto a new colour */
+const retint=(c:THREE.Color,usual:number,to:number,lo=.45,hi=1.15)=>hex(to).multiplyScalar(Math.max(lo,Math.min(hi,lum(c)/lum(hex(usual)))));
+const dark=(c:THREE.Color)=>lum(c)<.06;
+const furred=(part:string)=>!/#(eye|glint|hoof|horn|tusk)/.test(part);
+const PAINT:Record<Species,Paint[]>={
+ lion:[
+  // dark-maned: the mane and tail tuft deepen towards black-brown
+  (c,p,n,part)=>part.includes('#mane')?c.clone().multiplyScalar(.42).lerp(hex(0x1c120c),.25):part.includes('#tuft')?hex(0x1a110b):c,
+  // white lion: cream all over, pink nose, the eyes keep their colour
+  (c,p,n,part)=>!furred(part)?c:part==='head'&&p.x>1.17&&n.x>.55&&p.y>1.09?hex(0xc79a8c):retint(c,0xc8914a,0xf1e6cc,.72,1.06),
+ ],
+ leopard:[
+  // strawberry (erythristic): rosettes red-brown instead of black, the gold paler and pinker
+  (c,p,n,part)=>!furred(part)?c:dark(c)?hex(0x8a4a2e):c.clone().lerp(hex(0xe9b48e),.45),
+  // black (melanistic): dark all over, the rosettes still faintly darker
+  (c,p,n,part)=>!furred(part)?c:c.clone().multiplyScalar(dark(c)?.5:.11),
+ ],
+ hyena:[
+  // elder: the spots fade to brown, the coat a little greyer
+  (c,p,n,part)=>!furred(part)?c:/^(torso|neck|leg)/.test(part)&&!part.includes('#')&&dark(c)?hex(0x8c7658):c.clone().lerp(hex(0xa69c88),.25),
+  // pale: a cream ground colour, the spots unchanged
+  (c,p,n,part)=>!furred(part)||dark(c)?c:c.clone().lerp(hex(0xe6dabf),.5),
+ ],
+ zebra:[
+  // southern: thinner, browner stripes that fade out down the legs
+  (c,p,n,part)=>!furred(part)||!dark(c)?c:part.startsWith('leg')&&p.y<.62?hex(0xd8cebd):hex(0x40302a),
+  // polka-dot (pseudomelanism): a dark coat with white dots where stripes would be
+  (c,p,n,part)=>{if(!furred(part)||part.includes('#tuft'))return c;if(part==='head'&&p.x>1.2)return c;return cellDistance(p,.06,7).d<.3&&n.y>-.6?hex(0xefe9dc):hex(0x221d1b);},
+ ],
+ impala:[
+  // black-faced: a dark blaze from the forehead down the nose
+  (c,p,n,part)=>part==='head'&&p.x>.56&&n.y>-.1&&Math.abs(p.z)<.05?hex(0x1e1712):c,
+ ],
+ warthog:[
+  // wallowed in red earth, then in pale clay
+  (c,p,n,part)=>!furred(part)||/#(mane|tuft)/.test(part)?c:retint(c,0x7a6b62,0x8e4c32),
+  (c,p,n,part)=>!furred(part)||/#(mane|tuft)/.test(part)?c:retint(c,0x7a6b62,0xb9a47c),
+ ],
+};
+export const coatCount=(s:Species)=>PAINT[s].length;
 export const cameraProfile=(s:Species):CameraProfile=>SPECS[s].camera;
 
 // ---------------------------------------------------------------- assembly
@@ -212,8 +258,8 @@ type Joint={name:string;parent:string|null;pivot:V};
 type Built={geometries:Map<string,THREE.BufferGeometry>;joints:Joint[];partJoint:Map<string,string>};
 const BUILT=new Map<string,Built>();
 const LEGS=[['FR',true,1],['FL',true,-1],['HR',false,1],['HL',false,-1]] as const;
-function build(species:Species,lod=0):Built{
- const cached=BUILT.get(species+lod);if(cached)return cached;
+function build(species:Species,lod=0,coat=0):Built{
+ const key=species+lod+':'+coat,cached=BUILT.get(key);if(cached)return cached;
  const s=SPECS[species],m=new Model(species.length*131,lod),sub=(p:string)=>s.sub[p]??0,torsoCentre:V=[(s.torso[0].c[0]+s.torso.at(-1)!.c[0])/2,s.torso[3].c[1],0];
  m.loft('torso',s.torso,{n:8,jitter:.07,start:'point',end:'flat',sub:sub('torso')});
  m.loft('neck',s.neck,{n:8,jitter:.06,start:'flat',end:'flat',sub:sub('neck')});
@@ -240,25 +286,25 @@ function build(species:Species,lod=0):Built{
   joints.push({name:name+'0',parent:'body',pivot:z(L.hip)},{name:name+'1',parent:name+'0',pivot:z(L.knee)},{name:name+'2',parent:name+'1',pivot:z(L.ankle)});
  }
  const pivots:Record<string,V>={torso:torsoCentre};for(const j of joints)pivots[j.name]=j.pivot;
- const geometries=m.build(s.coat,pivots),partJoint=new Map<string,string>();
+ const paint=PAINT[species][coat-1],geometries=m.build(paint?(p,n,part,r)=>paint(s.coat(p,n,part,r),p,n,part):s.coat,pivots),partJoint=new Map<string,string>();
  for(const part of geometries.keys())partJoint.set(part,part==='torso'?'body':part);
- const out={geometries,joints,partJoint};BUILT.set(species+lod,out);return out;
+ const out={geometries,joints,partJoint};BUILT.set(key,out);return out;
 }
 
-export type SafariRig={root:THREE.Group;model:THREE.Group;j:Record<string,THREE.Group>;meshes:THREE.Mesh[];species:Species;phase:number;turn:number;born:number;altitude:number;seed:number;blink:number;
+export type SafariRig={root:THREE.Group;model:THREE.Group;j:Record<string,THREE.Group>;meshes:THREE.Mesh[];species:Species;coat:number;phase:number;turn:number;born:number;altitude:number;seed:number;blink:number;
  /** climbing: 0..1 weight of the tree pose, the limb-cycle phase, and the smoothed body pose the renderer keeps */
  climbWeight:number;climbPhase:number;pitch:number;climb?:{x:number;y:number;h:number;yaw:number;pitch:number;speed:number;still:number;on:'trunk'|'limb'|'air'}};
 let sharedMaterial:THREE.MeshStandardMaterial|null=null;
 export const animalMaterial=()=>sharedMaterial||=facetMaterial();
-export function makeSafariAnimal(species:Species):SafariRig{
- const b=build(species),root=new THREE.Group(),model=new THREE.Group(),j:Record<string,THREE.Group>={},meshes:THREE.Mesh[]=[];
+export function makeSafariAnimal(species:Species,coat=0):SafariRig{
+ const b=build(species,0,coat),root=new THREE.Group(),model=new THREE.Group(),j:Record<string,THREE.Group>={},meshes:THREE.Mesh[]=[];
  model.scale.setScalar(10);root.add(model);
  for(const joint of b.joints){const g=new THREE.Group();g.name=joint.name;const parent=joint.parent?b.joints.find(x=>x.name===joint.parent)!.pivot:[0,0,0];g.position.set(joint.pivot[0]-parent[0],joint.pivot[1]-parent[1],joint.pivot[2]-parent[2]);g.userData.rest=g.position.clone();(joint.parent?j[joint.parent]:model).add(g);j[joint.name]=g;}
- const far=build(species,1);
+ const far=build(species,1,coat);
  for(const [part,geometry] of b.geometries){const mesh=new THREE.Mesh(geometry,animalMaterial());mesh.userData.far=far.geometries.get(part);mesh.castShadow=true;mesh.receiveShadow=true;j[b.partJoint.get(part)!].add(mesh);meshes.push(mesh);}
  // remember each leg's rest geometry for the foot-placement solver: the foot segment from ankle to the ground point
  for(const [id,front,side] of LEGS){const L=front?SPECS[species].front:SPECS[species].hind;j['leg'+id+'2'].userData.toe=new THREE.Vector3(L.ground[0]-L.ankle[0],L.ground[1]-L.ankle[1],(L.ground[2]-L.ankle[2])*side);j['leg'+id+'0'].userData.side=side;}
- return{root,model,j,meshes,species,phase:Math.random(),turn:0,born:0,altitude:0,seed:Math.random()*100,blink:0,climbWeight:0,climbPhase:0,pitch:0};
+ return{root,model,j,meshes,species,coat,phase:Math.random(),turn:0,born:0,altitude:0,seed:Math.random()*100,blink:0,climbWeight:0,climbPhase:0,pitch:0};
 }
 
 /** mood cues: alert = head high, ears forward, watching a threat; grazing = head down at the grass; crouch = a stalking
@@ -377,11 +423,11 @@ export function plantFeet(r:SafariRig,p:{dt:number;on:'trunk'|'limb';speed:numbe
 }
 
 /** A head-and-shoulders portrait, rendered once per species for the menus and HUD. */
-let portraitRenderer:THREE.WebGLRenderer|SoftwareRenderer|undefined;const portraitCache=new Map<Species,string>();
-export function animalPortrait(species:Species){if(portraitCache.has(species))return portraitCache.get(species)!;
+let portraitRenderer:THREE.WebGLRenderer|SoftwareRenderer|undefined;const portraitCache=new Map<string,string>();
+export function animalPortrait(species:Species,coat=0){const key=species+coat;if(portraitCache.has(key))return portraitCache.get(key)!;
  try{if(!portraitRenderer){portraitRenderer=createRenderer({alpha:true,antialias:true,preserveDrawingBuffer:true});portraitRenderer.setSize(192,160);portraitRenderer.setPixelRatio(1);portraitRenderer.outputColorSpace=THREE.SRGBColorSpace;}
   const scene=new THREE.Scene();scene.add(new THREE.HemisphereLight(0xcfe0f5,0x6b5230,1.6));const sun=new THREE.DirectionalLight(0xffe2b0,3.2);sun.position.set(60,90,70);scene.add(sun);
-  const rig=makeSafariAnimal(species);scene.add(rig.root);rig.j.head.rotation.y=.25;
+  const rig=makeSafariAnimal(species,coat);scene.add(rig.root);rig.j.head.rotation.y=.25;
   const h=SPECS[species].headPivot,size=ANIMALS[species].size*10,camera=new THREE.PerspectiveCamera(30,192/160,.1,500);
   camera.position.set(h[0]*10+size*1.25,h[1]*10+size*.18,size*1.05);camera.lookAt(h[0]*10-size*.1,h[1]*10-size*.12,0);
-  scene.updateMatrixWorld(true);portraitRenderer.render(scene,camera);const url=portraitRenderer.domElement.toDataURL('image/png');portraitCache.set(species,url);return url;}catch{return '';}}
+  scene.updateMatrixWorld(true);portraitRenderer.render(scene,camera);const url=portraitRenderer.domElement.toDataURL('image/png');portraitCache.set(key,url);return url;}catch{return '';}}

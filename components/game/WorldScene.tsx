@@ -11,6 +11,7 @@ import {FoodField} from './safari-food';
 import {AnimalBatches} from './animal-batches';
 import {MenuCinema} from './menu-cinema';
 import type {AnimalSoundEvent} from '@/lib/animal-sounds';
+import {coatOf} from '@/lib/rewards';
 export type GraphicsMode='auto'|'performance'|'balanced'|'high';
 export type PerformanceStats={fps:number;renderMs:number;renderer:string;quality:string;drawCalls:number};
 /** each real player's tag and minimap colour, stable for the player */
@@ -22,7 +23,7 @@ export type WorldRoom=Omit<Room,'players'>&{serverTime:number;_received?:number;
 /** `?graphics=performance|balanced|high` pins the quality tier (for testing and for players who want to choose) */
 const forcedGraphics=(():GraphicsMode|undefined=>{try{const g=new URLSearchParams(location.search).get('graphics');return g==='performance'||g==='balanced'||g==='high'?g:undefined;}catch{return undefined;}})();
 export type WorldInput={dx:number;dy:number;interact:boolean;ability:boolean;perch:boolean;sprint:boolean;cameraYaw:number;moveYaw?:number;instinct?:boolean;recenter?:boolean;graphics?:GraphicsMode;claim?:{x:number;y:number;vx:number;vy:number;born:number;at:number}};
-export function ModelPortrait({species,size=70}:{species:Species;size?:number}){const [src,setSrc]=useState('');useEffect(()=>{setSrc(animalPortrait(species));},[species]);return src?<img className="portrait" src={src} alt={ANIMALS[species].name} width={size} height={size}/>:<span className="portrait-loading" style={{width:size,height:size}} aria-label={ANIMALS[species].name}>{ANIMALS[species].name.slice(0,1)}</span>;}
+export function ModelPortrait({species,size=70,coat=0}:{species:Species;size?:number;coat?:number}){const [src,setSrc]=useState('');useEffect(()=>{setSrc(animalPortrait(species,coat));},[species,coat]);return src?<img className="portrait" src={src} alt={ANIMALS[species].name} width={size} height={size}/>:<span className="portrait-loading" style={{width:size,height:size}} aria-label={ANIMALS[species].name}>{ANIMALS[species].name.slice(0,1)}</span>;}
 // preview is the home screen backdrop: focus holds its camera on one species, onShot reports which species is on screen
 export default function WorldScene({room,me,input,preview=false,focus=null,onShot,onPerformance,onAnimalSound}:{room:WorldRoom|null;me:Player|undefined;input:React.RefObject<WorldInput>;preview?:boolean;focus?:Species|null;onShot?:(species:Species|null)=>void;onPerformance?:(stats:PerformanceStats)=>void;onAnimalSound?:(species:Species,event:AnimalSoundEvent,volume:number,pan:number)=>void}){
  const host=useRef<HTMLDivElement>(null),latest=useRef({room,me,focus,onShot,onPerformance,onAnimalSound});latest.current={room,me,focus,onShot,onPerformance,onAnimalSound};const [failure,setFailure]=useState(''),[software,setSoftware]=useState(false);
@@ -96,7 +97,7 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
    for(const [id,rig]of rigs)if(!ids.has(id)){scene.remove(rig.root);rigs.delete(id);positions.delete(id);const shadow=shadows.get(id);if(shadow)scene.remove(shadow);shadows.delete(id);}
    for(const p of players){
     const own=p.id===m?.id;let rig=rigs.get(p.id);
-    if(!rig||rig.species!==p.species){if(rig)scene.remove(rig.root);rig=makeSafariAnimal(p.species);rig.born=p.born;rig.turn=own?Math.PI/2:0;rigs.set(p.id,rig);positions.set(p.id,{...p});if(!animalBatches)scene.add(rig.root);if(!shadows.has(p.id)){const shadow=new THREE.Mesh(shadowGeo,shadowMat);shadow.rotation.x=-Math.PI/2;scene.add(shadow);shadows.set(p.id,shadow);}}
+    const coat=coatOf(p.coats,p.species);if(!rig||rig.species!==p.species||rig.coat!==coat){if(rig)scene.remove(rig.root);rig=makeSafariAnimal(p.species,coat);rig.born=p.born;rig.turn=own?Math.PI/2:0;rigs.set(p.id,rig);positions.set(p.id,{...p});if(!animalBatches)scene.add(rig.root);if(!shadows.has(p.id)){const shadow=new THREE.Mesh(shadowGeo,shadowMat);shadow.rotation.x=-Math.PI/2;scene.add(shadow);shadows.set(p.id,shadow);}}
     const position=positions.get(p.id)!;if(position.born!==p.born||Math.hypot(position.x-p.x,position.y-p.y)>(own?600:220)){Object.assign(position,p);rig.altitude=0;}
     const concealed=(p as Player&{concealed?:boolean}).concealed;rig.root.visible=!p.deadUntil&&!(p.species==='warthog'&&p.abilityUntil>now)&&(!concealed||own)&&(own||!m||dist(m,p)<drawRange-60);const shadow=shadows.get(p.id)!;shadow.visible=rig.root.visible;
     // the menu camera tours a herd at close range: anyone wandering right up to the lens steps out of the shot

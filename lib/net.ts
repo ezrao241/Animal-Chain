@@ -56,6 +56,8 @@ export function roomRequest(room:Room,b:Record<string,unknown>,action:string,now
  now=Math.max(now,room.tick||0);
  let p=room.players.find(q=>!q.bot&&typeof b.token==='string'&&q.id===b.id&&q.token===b.token);
  const seenBefore=p?.lastSeen??0;if(p)p.lastSeen=now;
+ // the coat colour chosen for each species (lib/rewards.ts coatCode): cosmetic, so the device's word is taken
+ const coats=typeof b.coats==='string'&&/^[0-2]{6}$/.test(b.coats)?b.coats:undefined,recoated=!!p&&!!coats&&p.coats!==coats;if(recoated)p!.coats=coats;
  const settled=settleRoom(room,now);
  if(action==='join'){
   // a player who still holds a valid session for this room gets it back instead of a second animal
@@ -63,11 +65,11 @@ export function roomRequest(room:Room,b:Record<string,unknown>,action:string,now
   const name=String(b.name||'').trim().slice(0,18);if(!name)return fail(400,'Choose a nickname first.');
   if(room.phase==='playing')return fail(409,'This round has started. Join the next room or ask the host to play again.');
   if(humans(room).length>=MAX_PLAYERS)return fail(409,`This room is full (${MAX_PLAYERS} players).`);
-  p=newPlayer(uuid(),name,now);p.token=uuid();room.players.push(p);settleRoom(room,now);
+  p=newPlayer(uuid(),name,now);p.token=uuid();if(coats)p.coats=coats;room.players.push(p);settleRoom(room,now);
   return{status:200,body:{room:viewFor(room,p.id,now),id:p.id,token:p.token},save:true};
  }
  if(!p)return fail(401,'Your session is no longer in this room. Please rejoin.');
- if(action==='sync'&&!settled&&quiet(p,seenBefore,room,b,now))return{status:200,body:{room:viewFor(room,p.id,room.phase==='playing'?room.tick:now)},save:false};
+ if(action==='sync'&&!settled&&!recoated&&quiet(p,seenBefore,room,b,now))return{status:200,body:{room:viewFor(room,p.id,room.phase==='playing'?room.tick:now)},save:false};
  tick(room,now);
  if(action==='configure'){
   // round length is chosen in the lobby by the host and kept for play-again; everyone sees it in the room state
@@ -138,7 +140,7 @@ function quiet(p:Player,seenBefore:number,room:Room,b:Record<string,unknown>,now
 // Fields only the server (and the animal's own player) may see: credentials, input, AI plans and targets, task progress,
 // private messages. Everything else describes what any animal on the plains could observe.
 const SERVER_ONLY=['token','anchorX','anchorY','anchorAt','anchorBorn','slack','bag','seq','act','inputAt','lastSeen','strikeId','strikeBorn','strikeTargetBorn','strikeDir'] as const;
-const OWNER_ONLY=['dx','fix','dy','targetX','targetY','targetId','threatX','threatY','lastThreatAt','threatAt','homeX','homeY','nextDrink','chaseStart','thinkAt','stuckX','stuckY','stuckAt','unstickUntil','moodUntil','alarmAt','message','messageUntil','hunger','thirst','claimed','food','hunts','drinks','scavenged','escapes','hiddenSeconds','survivalSeconds','abilityReady','interactReady','done','carry','lives','lifeStart','survived'] as const;
+const OWNER_ONLY=['dx','fix','dy','targetX','targetY','targetId','threatX','threatY','lastThreatAt','threatAt','homeX','homeY','nextDrink','chaseStart','thinkAt','stuckX','stuckY','stuckAt','unstickUntil','moodUntil','alarmAt','message','messageUntil','hunger','thirst','claimed','food','hunts','drinks','scavenged','escapes','hiddenSeconds','survivalSeconds','abilityReady','interactReady','done','carry','lives','lifeStart','survived','badges'] as const;
 // Beyond FAR_VIEW (past the largest draw range, sound and sense ranges) an animal is never drawn or heard; it is sent with just
 // what its tracks need (components/game/safari-traces.ts), about a quarter of the size.
 export const FAR_VIEW=1150;

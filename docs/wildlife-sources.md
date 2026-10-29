@@ -127,3 +127,37 @@ Game numbers (in `CLIMB` and `BODY`, lib/game.ts):
   out of trunks and boulders, not just its centre point.
 - Each acacia's trunk and limbs come from one shared description (lib/acacia.ts), so the bark the paws land on is the
   bark that is drawn.
+
+## Badges and coat colours
+
+Badges (lib/rewards.ts `BADGES`, awarded in lib/game.ts by `award`) are for behaviour the real animals show; each
+quotes the field-guide fact it rests on. The thresholds are game rules:
+- **Unseen at 10 m**: a player's predator within 10 m of prey it could take that does not sense it at that moment, by
+  the same `sense()` rule the wildlife uses. Lions really do stalk to about 30 m before charging (LionAlert); 10 m is a
+  game threshold.
+- **Out of the canopy** (leopard drops from a bough and lands the catch), **Clan hunt** (hyena takes a zebra with two
+  more hyenas close), **Hind-leg kick** (zebra kick lands), **Ten-metre bound** (impala in the air from Leap when a
+  lunge lands), **Tusks first** (warthog backs into a burrow within 3 s of being hunted), **Followed the vultures**
+  (a predator eats from a fresh kill's carcass, which circling vultures mark). The leopard drop is the game's ambush
+  rule: leopards do rest in and cache kills in trees, but most of their hunts are stalks on the ground.
+
+Coat colours (lib/rewards.ts `COATS`, drawn by `PAINT` in components/game/safari-animals.ts) are real variants of the
+wild species. In the game anyone can earn them; in the wild several are very rare.
+
+| Coat | What the references say | Source |
+| --- | --- | --- |
+| Lion: dark-maned | Mane colour ranges from blond to near black; darker manes are commoner where it is cooler and signal condition. | [West & Packer 2002, Science](https://doi.org/10.1126/science.1073257) |
+| Lion: white | Cream coat from a recessive TYR variant (leucism, not albinism), Timbavati area. | [OMIA 000202-9689, citing Cho et al. 2013](https://omia.org/4133) |
+| Leopard: strawberry | Erythristic leopards, black pigment replaced by red-brown; 2 of 28 leopards at Thaba Tholo, Mpumalanga. | [Pirie, Thomas & Fellowes 2016, Bothalia](https://library.aosis.co.za/index.php/record/view/33448) |
+| Leopard: black | Melanistic leopards confirmed by camera traps in Laikipia, Kenya, in 2019; rosettes visible under infrared. | [Pilfold et al. 2019, via National Geographic](https://www.nationalgeographic.com/animals/article/rare-black-panther-spotted-in-africa-century) |
+| Spotted hyena: elder | Each hyena's spot pattern is fixed, but in very old animals short hair makes the spots fade (and brown). | [Hyena Project methods](https://hyena-project.com/methods), [hyaenidae.org](https://www.hyaenidae.org/the-hyaenidae/spotted-hyena-crocuta-crocuta/crocuta-physical-description/) |
+| Spotted hyena: pale | Background coat from cream to light brown. | [hyaenidae.org](https://www.hyaenidae.org/the-hyaenidae/spotted-hyena-crocuta-crocuta/crocuta-physical-description/) |
+| Plains zebra: southern stripes | Striping varies regionally, from heavy black-and-white to thinner, lighter stripes with less coverage. | [Larison et al. 2015, R. Soc. Open Sci.](https://doi.org/10.1098/rsos.140452) |
+| Plains zebra: polka-dot | Pseudomelanism: melanin forms dots instead of stripes; a foal photographed in the Masai Mara in 2019. | [National Geographic 2019](https://www.nationalgeographic.com/animals/article/zebra-pseudo-melanism-kenya-masai) |
+| Impala: black-faced | Aepyceros melampus petersi of north-west Namibia and south-west Angola, with a dark facial blaze. | [Mammal Diversity Database](https://www.mammaldiversity.org/taxon/1006130) |
+| Warthog: red earth, pale clay | Warthogs have little hair and wallow; their skin takes on the colour of the local soil (yellowish or reddish). | [Maryland Zoo](https://www.marylandzoo.org/animal/common-warthog) |
+
+These were checked through search results on 2026-10-29; the pages themselves could not be opened from the build
+environment (blocked hosts), like the AWF links above. The painted colours are approximations of the photographs, on
+the game's faceted models (the white lion keeps its usual eye colour; the polka-dot zebra is an adult here, though the
+documented animals were foals).

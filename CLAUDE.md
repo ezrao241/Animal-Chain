@@ -12,7 +12,7 @@ There is no Blender or game engine at runtime, and no model or texture files: ev
 
 ```bash
 pnpm install                                   # Node >= 22.13
-node --test tests/game.test.mjs tests/route.test.mjs   # all tests (node --test tests/ also picks up helper files and fails)
+node --test tests/game.test.mjs tests/route.test.mjs tests/rewards.test.mjs   # all tests (node --test tests/ also picks up helper files and fails)
 node scripts/mp-playtest.mjs [shots-dir]       # two browser sessions vs the real route on a local server (needs the play build below)
 node --test --test-name-pattern "zebra" tests/game.test.mjs   # a single test by name
 pnpm lint                                      # reports pre-existing React-hooks errors in WorldScene.tsx; compare against main rather than expecting zero
