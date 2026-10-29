@@ -40,7 +40,7 @@ type MenuView='main'|'join'|'animals';
 type MenuItem={id:string;label:string;hint:string;run:()=>void};
 // The title screen: wordmark on top, a ring of the six animals round a short game-style menu, the live savanna behind.
 function TitleScreen({name,setName,code,setCode,busy,error,enter,shot,focus,setFocus,sound,roundLength,setRoundLength}:{roundLength:number;setRoundLength:(v:number)=>void;name:string;setName:(v:string)=>void;code:string;setCode:(v:string)=>void;busy:boolean;error:string;enter:(a:'create'|'join'|'practice')=>void;shot:Species|null;focus:Species|null;setFocus:(s:Species|null)=>void;sound:(k:'move'|'select'|'back')=>void}){
- const [view,setView]=useState<MenuView>('main'),[active,setActive]=useState(0),[nudge,setNudge]=useState(0),nameField=useRef<HTMLInputElement>(null),codeField=useRef<HTMLInputElement>(null),guideButton=useRef<HTMLButtonElement>(null);
+ const [roundsOpen,setRoundsOpen]=useState(false),[view,setView]=useState<MenuView>('main'),[active,setActive]=useState(0),[nudge,setNudge]=useState(0),nameField=useRef<HTMLInputElement>(null),codeField=useRef<HTMLInputElement>(null),guideButton=useRef<HTMLButtonElement>(null);
  const named=(run:()=>void)=>()=>{if(!name.trim()){setNudge(n=>n+1);nameField.current?.focus();sound('back');return;}sound('select');run();};
  const go=(v:MenuView)=>{setView(v);setActive(0);if(v!=='animals')setFocus(null);};
  const items:MenuItem[]=view==='main'?[
@@ -74,14 +74,16 @@ function TitleScreen({name,setName,code,setCode,busy,error,enter,shot,focus,setF
     {view!=='animals'&&<><label className={`name-line ${nudge?'nudge':''}`} key={nudge}><span>{nudge&&!name.trim()?'Choose a name first':'Your name'}</span><input ref={nameField} value={name} onChange={e=>setName(e.target.value)} maxLength={18} placeholder="Nickname" autoComplete="off" aria-label="Your name on the plains" onKeyDown={e=>{if(e.key==='Enter'&&name.trim()&&view==='main'){e.preventDefault();sound('select');enter('practice');}}}/></label>
     {view==='join'&&<input ref={codeField} className="code-line" aria-label="Room code" placeholder="ROOM CODE" value={code} onChange={e=>setCode(e.target.value.toUpperCase().replace(/[^A-Z2-9]/g,'').slice(0,6))} maxLength={6} autoComplete="off" onKeyDown={e=>{if(e.key==='Enter'&&code.length===6&&name.trim()){e.preventDefault();sound('select');enter('join');}}}/>}
     <nav className="menu-list" aria-label="Main menu">{items.map((it,i)=><button key={it.id} className={`menu-item ${i===active?'active':''} ${it.id==='solo'?'lead':''}`} disabled={busy&&it.id!=='back'} onMouseEnter={()=>{if(i!==active){setActive(i);sound('move');}}} onFocus={()=>setActive(i)} onClick={it.run}>{it.label}</button>)}</nav>
-    {view==='main'&&<label className="round-setting menu-round"><span>Round length · for Solo practice and new rooms</span><select aria-label="Round length" value={roundLength} disabled={busy} onChange={e=>{setRoundLength(Number(e.target.value));sound('move');}}><option value={300}>5 minutes</option><option value={600}>10 minutes</option><option value={0}>Unlimited</option></select></label>}
     <p className="menu-hint" aria-live="polite">{busy?'Opening the plains…':error||items[active]?.hint}</p></>}
    </div>
   </div>
   <Guide trigger={<button ref={guideButton} className="hidden-guide" tabIndex={-1} aria-hidden="true"/>}/>
   {view==='animals'&&<AnimalCards focus={focus||'lion'} setFocus={s=>{setFocus(s);sound('move');}} back={()=>{sound('back');go('main');}}/>}
   <div className="now-watching" aria-live="polite"><span className="live-dot"/><span className="eyebrow">{watching?'NOW WATCHING':'LIVE FROM THE PLAINS'}</span><strong>{watching?ANIMALS[watching].name:'Golden Plains'}</strong><small>{SHOT_CAPTION[watching||'plains']}</small></div>
-  <div className="title-meta"><span>2–8 players · 5, 10 or unlimited minutes</span><span>SAVANNA EDITION</span></div>
+  <div className="title-meta"><span>2–8 players</span><span>SAVANNA EDITION</span>
+   {/* the round length used by Solo practice and by a room this player creates (the host can still change it in the lobby) */}
+   <div className="round-chip">{roundsOpen&&<div className="round-options" role="radiogroup" aria-label="Round length">{([[300,'5 minutes'],[600,'10 minutes'],[0,'Unlimited']] as const).map(([v,l])=><button key={v} role="radio" aria-checked={roundLength===v} className={roundLength===v?'on':''} onClick={()=>{setRoundLength(v);setRoundsOpen(false);sound('select');}}>{l}</button>)}</div>}
+    <b>{roundLength===0?'Unlimited':`${roundLength/60} minutes`}</b><button className="round-open" aria-expanded={roundsOpen} disabled={busy} onClick={()=>{setRoundsOpen(o=>!o);sound('move');}}>Round settings ↗</button></div></div>
  </section>;
 }
 function AnimalCards({focus,setFocus,back}:{focus:Species;setFocus:(s:Species)=>void;back:()=>void}){
