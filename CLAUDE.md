@@ -13,6 +13,7 @@ There is no Blender or game engine at runtime, and no model or texture files: ev
 ```bash
 pnpm install                                   # Node >= 22.13
 node --test tests/game.test.mjs tests/route.test.mjs   # all tests (node --test tests/ also picks up helper files and fails)
+node scripts/mp-playtest.mjs [shots-dir]       # two browser sessions vs the real route on a local server (needs the play build below)
 node --test --test-name-pattern "zebra" tests/game.test.mjs   # a single test by name
 pnpm lint                                      # reports pre-existing React-hooks errors in WorldScene.tsx; compare against main rather than expecting zero
 ```
@@ -31,6 +32,7 @@ node node_modules/vite/bin/vite.js build --config play/vite.config.mjs && node p
 
 ```bash
 node scripts/perf/tick-bench.mjs [rounds]          # simulation cost: mean/worst tick() with 60 wildlife, + publicRoom JSON
+node scripts/perf/sync-bench.mjs [players] [secs]  # multiplayer sync through the real route: bytes per poll, D1 reads/writes, server ms
 node node_modules/vite/bin/vite.js build --config play/vite.config.mjs --minify false && node play/split.mjs
 node scripts/perf/profile.mjs [seconds] [out.json] # headless Chromium practice round: frame times, fps, triangles, draw calls, top CPU functions
 ```
@@ -45,7 +47,9 @@ node scripts/perf/profile.mjs [seconds] [out.json] # headless Chromium practice 
 - The prop table must stay identical across server and client: the renderer places acacias, kopjes, burrows, thickets and watering holes from the same `props(417)` the server collides against. Changing `layout()` (or anything it calls, such as `dist`) moves the whole map; hash `props(417)` / `trails()` / `makeFoods(417)` before and after any change that might touch it.
 - Collisions and steering use the uniform grid behind `solidNear()`; `ofKind(ps, kind)` caches per-kind prop lists. Prefer these over scanning the whole prop table in per-step code.
 
-**Client loop.** `app/page.tsx` polls `/api/game` (`action:'sync'`) every ~140 ms while playing and keeps the room in React state. `WorldScene.tsx` owns one `requestAnimationFrame` loop: it predicts the player's own animal locally with the same `move()` (then eases toward the server position), interpolates others, poses rigs, places the camera, and draws a 2D overlay canvas (labels, minimap) at ~20 Hz. Graphics tiers (`performance`/`balanced`/`high`) change pixel ratio, draw range, fog and whether real shadow maps are on; `auto` drops to `performance` after two slow 2-second samples. A `SoftwareRenderer` fallback is used when WebGL is unavailable.
+**Room sessions (`lib/net.ts`).** Shared by the route and the shim: `roomRequest` handles join/sync/start/leave/restart against a loaded room (host succession after a 10 s grace, stale lobby removal, reconnect with a valid token, idempotent start, empty-room deletion); `applyActions` runs one-shot presses (ability/interact/perch) at most once by per-player increasing id, dropping presses from an earlier life (`born`), while dead, outside a round or older than 1.5 s; `viewFor` builds what one player is sent (concealed animals omitted for others, server-only and owner-only fields stripped, far animals trimmed, food as changes from `makeFoods(seed)`), and the client rebuilds the food table with `expandView`. New private `Player` fields must be added to `SERVER_ONLY` or `OWNER_ONLY` there. Issue log and measurements: `docs/multiplayer-issues.md`.
+
+**Client loop.** `app/page.tsx` polls `/api/game` (`action:'sync'`) every ~140 ms while playing and keeps the room in React state; E/Space/Q presses wait in a queue and are resent until the server acknowledges them (`act`). `WorldScene.tsx` owns one `requestAnimationFrame` loop: it predicts the player's own animal locally with the same `move()` (then eases toward the server position), interpolates others, poses rigs, places the camera, and draws a 2D overlay canvas (labels, minimap) at ~20 Hz. Graphics tiers (`performance`/`balanced`/`high`) change pixel ratio, draw range, fog and whether real shadow maps are on; `auto` drops to `performance` after two slow 2-second samples. A `SoftwareRenderer` fallback is used when WebGL is unavailable.
 
 **Procedural art (`components/game/`).**
 - `faceted.ts`: the modelling kit (`Model.loft` / `blob` / `spike` / `mirror`, per-triangle coat colours, `lod` parameter that cuts ring sides and subdivision). Everything is flat-shaded vertex colour on one shared `MeshStandardMaterial`.

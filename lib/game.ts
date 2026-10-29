@@ -51,18 +51,21 @@ export type Player={id:string;token?:string;name:string;bot:boolean;species:Spec
  carry?:{hunger:number;thirst:number};
  /** whole minutes this life has been paid for staying alive */
  survived?:number;
+ /** the last one-shot action id processed for this player (lib/net.ts applyActions), so retries never run twice */
+ act?:number;
  tree?:number;climb?:Climb;ch?:number;side?:number;limb?:number;along?:number;limbDir?:number;goal?:number;mount?:number;climbHold?:number;vh?:number};
 /** one finished life: what it was, how long it lasted, what it earned and how it ended */
 export type LifeRecord={species:Species;seconds:number;points:number;food:number;hunts:number;cause:string};
-export type Room={code:string;host:string;phase:'lobby'|'playing'|'finished';started:number;ends:number;tick:number;players:Player[];foods:Food[];events:string[];seed:number;round:number;practice?:boolean;duration?:300|600|0;poachers?:Poacher[];rs?:number};
+export type Room={code:string;host:string;phase:'lobby'|'playing'|'finished';started:number;ends:number;tick:number;players:Player[];foods:Food[];events:string[];seed:number;round:number;practice?:boolean;duration?:300|600|0;/** set when the host ended the round early (or ended an unlimited round) */endedBy?:'host';poachers?:Poacher[];rs?:number};
 // Computer-controlled wildlife keeps savanna proportions: plenty of grazers, a few predators.
 const WILDLIFE_MIX:Species[]=['impala','zebra','impala','warthog','zebra','impala','hyena','impala','warthog','zebra','lion','impala','warthog','zebra','leopard','lion','warthog','hyena','zebra','impala'];
 export const WILDLIFE:Species[]=Array.from({length:60},(_,i)=>WILDLIFE_MIX[i%WILDLIFE_MIX.length]);
-export function savannaEvent(room:Pick<Room,'started'>,now:number){const stage=Math.min(2,Math.floor(Math.max(0,now-room.started)/100000));return [
- {name:'GOLDEN GRAZE',detail:'Food is worth +2 extra points',kind:'forage',next:room.started+100000},
- {name:'THE HUNT',detail:'Successful hunts earn +5 extra points',kind:'hunt',next:room.started+200000},
- {name:'DUSK RUN',detail:'Escape a predator for double points',kind:'escape',next:room.started+300000}
- ][stage];}
+// the three 100 s phases repeat in rounds longer than five minutes (10 minutes, unlimited); a 5-minute round sees each once
+export function savannaEvent(room:Pick<Room,'started'>,now:number){const k=Math.floor(Math.max(0,now-room.started)/100000),next=room.started+(k+1)*100000;return [
+ {name:'GOLDEN GRAZE',detail:'Food is worth +2 extra points',kind:'forage',next},
+ {name:'THE HUNT',detail:'Successful hunts earn +5 extra points',kind:'hunt',next},
+ {name:'DUSK RUN',detail:'Escape a predator for double points',kind:'escape',next}
+ ][k%3];}
 export function cameraInput(dx:number,dy:number,yaw=0){return{dx:dx*Math.cos(yaw)+dy*Math.sin(yaw),dy:-dx*Math.sin(yaw)+dy*Math.cos(yaw)};}
 export const dist=(a:{x:number;y:number},b:{x:number;y:number})=>{const dx=a.x-b.x,dy=a.y-b.y;return Math.sqrt(dx*dx+dy*dy);};
 export function rng(seed:number){let a=seed;return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
@@ -183,7 +186,7 @@ export function nextSpecies(p:Pick<Player,'species'|'bag'>):Species{
  return p.bag.shift()!;
 }
 export function respawn(p:Player,now:number,room?:Room){const species=p.bot?(WILDLIFE[Number(p.id.replace('wild-',''))]||p.species):nextSpecies(p);const fresh=newPlayer(p.id,p.bot?ANIMALS[species].name:p.name,now,p.bot,species,room);const carry=p.carry;Object.assign(p,fresh,{bag:p.bag,lives:p.lives,lifeStart:p.score,carry:undefined,score:p.score,deaths:p.deaths,token:p.token,lastSeen:p.lastSeen,seq:p.seq,herd:p.herd,homeX:p.homeX,homeY:p.homeY});if(carry){p.hunger=Math.min(p.hunger,Math.max(25,carry.hunger));p.thirst=Math.min(p.thirst??100,Math.max(25,carry.thirst));}if(p.bot&&room)rejoinHerd(p,room,now);p.claimed=p.claimed.map((_,i)=>i<2&&!!p.done?.includes(p.species+':'+i));notify(p,'New life. New animal.',now);}
-export function start(room:Room,now:number){room.phase='playing';room.started=now;room.ends=room.duration===0?0:now+(room.duration??300)*1000;room.tick=now;room.round++;room.foods=makeFoods(room.seed);room.players=room.players.filter(p=>!p.bot);for(const p of room.players){const token=p.token,species=nextSpecies(p),bag=p.bag;Object.assign(p,newPlayer(p.id,p.name,now,false,species,room),{token,bag,done:[],lives:[],lifeStart:0});}room.rs=room.seed*977+room.round*131;placeWildlife(room,now);room.poachers=spawnPoachers(room);room.events=['Golden graze. Find food, complete tasks, survive.'];}
+export function start(room:Room,now:number){room.phase='playing';room.started=now;room.endedBy=undefined;room.ends=room.duration===0?0:now+(room.duration??300)*1000;room.tick=now;room.round++;room.foods=makeFoods(room.seed);room.players=room.players.filter(p=>!p.bot);for(const p of room.players){const token=p.token,species=nextSpecies(p),bag=p.bag;Object.assign(p,newPlayer(p.id,p.name,now,false,species,room),{token,bag,done:[],lives:[],lifeStart:0});}room.rs=room.seed*977+room.round*131;placeWildlife(room,now);room.poachers=spawnPoachers(room);room.events=['Golden graze. Find food, complete tasks, survive.'];}
 export const leaping=(p:Player,now:number)=>p.species==='impala'&&p.abilityUntil>now;
 const stalking=(p:Player,now:number)=>p.species==='leopard'&&p.abilityUntil>now&&!p.perched;
 const inThicket=(ps:Prop[],x:number,y:number)=>bushNear(ps,x,y,26);
@@ -760,7 +763,9 @@ export function stepFeeding(p:Player,now:number){const f=p.feeding;if(!f)return;
  if(p.deadUntil||p.stunUntil>now||Math.hypot(p.dx,p.dy)>.1){p.feeding=undefined;notify(p,'Feeding stopped. You can move.',now);return;}
  const elapsed=Math.max(0,Math.min(now,f.until)-f.last);p.hunger=Math.min(100,p.hunger+45*elapsed/f.duration);f.last=Math.min(now,f.until);p.vx=p.vy=0;
  if(now>=f.until){p.feeding=undefined;notify(p,'Meal finished.',now);}}
-export function finishRound(room:Room,now:number){room.phase='finished';room.ends=now;for(const p of room.players){p.dx=p.dy=p.vx=p.vy=0;p.feeding=undefined;p.strikeId='';}room.events.unshift('The host ended the round.');}
+/** Round lengths the host can pick, in seconds; 0 = no time limit (the host ends it). Rooms saved before this default to 300. */
+export const DURATIONS=[300,600,0] as const;
+export function finishRound(room:Room,now:number,_by:'host'='host'){room.phase='finished';room.ends=now;room.endedBy='host';for(const p of room.players){p.dx=p.dy=p.vx=p.vy=0;p.feeding=undefined;p.strikeId='';}room.events.unshift('The host ended the round.');}
 export type Poacher={x:number;y:number;jeepX:number;jeepY:number;exitX:number;exitY:number;state:'guarding'|'detecting'|'defending'|'retreating'|'entering'|'escaping'|'gone'|'subdued';target:string;health:number;since:number;shotAt:number;nextShot:number;heading:number;escapeHeading?:number;steerSide?:number};
 export function jeepDoor(n:Poacher){const rot=Math.PI/2-(n.escapeHeading??Math.PI);return{x:n.jeepX-16*Math.cos(rot)-3*Math.sin(rot),y:n.jeepY+16*Math.sin(rot)-3*Math.cos(rot)};}
 function spawnPoachers(room:Room):Poacher[]{const ps=props(room.seed),random=rng(room.seed+room.round*17),result:Poacher[]=[];

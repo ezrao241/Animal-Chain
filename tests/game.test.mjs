@@ -52,7 +52,8 @@ test('a kill leaves a carcass that scavengers can eat',()=>{
 test('phase bonuses are real scoring',()=>{
  for(const [elapsed,points]of [[0,5],[100000,3],[200000,3]]){const{room,player}=fixture('zebra');player.hunger=50;room.foods=[{id:1,x:player.x,y:player.y,kind:'grass',ready:0}];interact(player,room,NOW+elapsed);assert.equal(player.score,points);}
  for(const [elapsed,points]of [[0,10],[100000,15],[200000,10]]){const{room,player}=fixture('lion');const victim=near(player,'impala');room.players.push(victim);hunt(player,room,NOW+elapsed);assert.equal(player.score,points);}
- assert.deepEqual([0,100000,200000,300000].map(t=>savannaEvent({started:NOW},NOW+t).kind),['forage','hunt','escape','escape']);
+ // a 5-minute round sees each phase once; 10-minute and unlimited rounds keep cycling them
+ assert.deepEqual([0,100000,200000,300000,400000,599000].map(t=>savannaEvent({started:NOW},NOW+t).kind),['forage','hunt','escape','forage','hunt','escape']);
 });
 // ---- the outside review's exploits, reproduced and kept fixed
 test('water: drinking at full thirst scores nothing, never stands in for food, and thirst runs down on its own',()=>{
