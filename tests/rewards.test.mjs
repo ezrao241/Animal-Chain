@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {newPlayer,newRoom,start,tick,props,interact,resolveStrike,useAbility,STRIKE_WINDUP,STALK_BADGE_RANGE,sense,H,W,SPECIES} from '../lib/game.ts';
+import {newPlayer,newRoom,start,tick,props,interact,resolveStrike,useAbility,STRIKE_WINDUP,STALK_BADGE_RANGE,sense,stalkedClose,H,W,SPECIES} from '../lib/game.ts';
 import {roomRequest,viewFor} from '../lib/net.ts';
-import {BADGES,COATS,RARE,coatUnlocked,coatCode,coatOf} from '../lib/rewards.ts';
+import {BADGES,COATS,RARE,SKINS,SKIN_BASE,coatUnlocked,coatCode,coatOf,unlockedKeys} from '../lib/rewards.ts';
 import {SPECIES_FACTS} from '../lib/species-facts.ts';
 
 const NOW=1800000000000;
@@ -16,16 +16,21 @@ const wild=(room,species,x,y,extra={})=>{const q=newPlayer('wild-'+species+room.
 test('unseen at 10 m: earned exactly when the prey can\'t sense the predator, within 10 m, as a predator',()=>{
  // a grazing impala 8 m away: with its head down it misses a still lion (the same sense() the wildlife uses)
  {const{room,me}=fixture('lion');me.lastSeen=me.inputAt=Infinity;const q=wild(room,'impala',me.x+80,me.y,{heading:0});
-  let t=NOW;while(sense(q,me,room,t+100))t+=50;room.tick=t;tick(room,t+100);assert.ok(me.badges?.includes('stalk10'));}
+  // standing still while it grazes close is not a stalk; creeping towards it slowly (0.6 m/s) unnoticed is
+  let t=NOW;while(sense(q,me,room,t))t+=50;const ps=props(417);
+  stalkedClose(me,room,ps,t);assert.ok(!me.badges?.includes('stalk10'),'standing still');
+  me.vx=6;assert.equal(sense(q,me,room,t),null,'a slow creep is as hard to see as standing still');stalkedClose(me,room,ps,t);assert.ok(me.badges?.includes('stalk10'));
+  me.badges=[];me.vx=-6;stalkedClose(me,room,ps,t);assert.ok(!me.badges.length,'backing away is not a stalk');
+  me.vx=6;me.protectedUntil=t+1000;stalkedClose(me,room,ps,t);assert.ok(!me.badges.length,'not during spawn protection');}
  // the same impala watching (head up): it sees the lion, no badge
  {const{room,me}=fixture('lion');me.lastSeen=me.inputAt=Infinity;const q=wild(room,'impala',me.x+80,me.y,{heading:Math.PI,mood:'watch'});
   assert.ok(sense(q,me,room,NOW+100));tick(room,NOW+100);assert.ok(!me.badges?.includes('stalk10'));}
  {const{room,me}=fixture('lion');me.lastSeen=me.inputAt=Infinity;
-  wild(room,'impala',me.x+STALK_BADGE_RANGE+40,me.y,{heading:0});tick(room,NOW+100);assert.ok(!me.badges?.includes('stalk10'),'beyond 10 m does not count');}
+  const q=wild(room,'impala',me.x+STALK_BADGE_RANGE+40,me.y,{heading:0});me.vx=6;let t=NOW;while(sense(q,me,room,t))t+=50;stalkedClose(me,room,props(417),t);assert.ok(!me.badges?.includes('stalk10'),'beyond 10 m does not count');}
  {const{room,me}=fixture('zebra');me.lastSeen=me.inputAt=Infinity;wild(room,'impala',me.x+80,me.y,{heading:0});tick(room,NOW+100);assert.ok(!me.badges?.length,'prey animals do not stalk');}
  // a leopard can't take a zebra, so sneaking up on one isn't stalking prey
  {const{room,me}=fixture('leopard');me.lastSeen=me.inputAt=Infinity;const q=wild(room,'zebra',me.x+80,me.y,{heading:0});
-  let t=NOW;while(sense(q,me,room,t+100))t+=50;room.tick=t;tick(room,t+100);assert.ok(!me.badges?.length);}
+  me.vx=6;let t=NOW;while(sense(q,me,room,t))t+=50;stalkedClose(me,room,props(417),t);assert.ok(!me.badges?.length);}
 });
 
 test('a zebra kick, an impala leap and a warthog burrow under threat each earn their badge, once a round',()=>{
@@ -60,7 +65,8 @@ test('coat choices travel with sync, everyone sees them, and bad codes are ignor
  let out=roomRequest(room,{id:'me',token:'t',coats:'201010'},'sync',NOW,()=>'x');assert.equal(out.status,200);assert.equal(me.coats,'201010');
  assert.equal(viewFor(room,'other',NOW).players.find(p=>p.id==='me').coats,'201010');
  roomRequest(room,{id:'me',token:'t',coats:'999999'},'sync',NOW+10,()=>'x');assert.equal(me.coats,'201010');
- roomRequest(room,{id:'me',token:'t',coats:'<b>'},'sync',NOW+20,()=>'x');assert.equal(me.coats,'201010');
+ roomRequest(room,{id:'me',token:'t',coats:'345000'},'sync',NOW+15,()=>'x');assert.equal(me.coats,'345000','legendary skins travel too');
+ roomRequest(room,{id:'me',token:'t',coats:'<b>'},'sync',NOW+20,()=>'x');assert.equal(me.coats,'345000');
  out=roomRequest(room,{name:'New',coats:'000200'},'join',NOW+30,()=>'new-'+Math.random());assert.equal(room.players.find(p=>p.name==='New').coats,'000200');
 });
 
@@ -76,4 +82,16 @@ test('every badge and coat cites a source, and every species has a natural coat'
  for(const b of BADGES){assert.match(b.url,/^https:\/\//);assert.ok(b.why&&b.source&&b.species.length);}
  for(const s of SPECIES){assert.ok(COATS[s].length>=1&&COATS[s].length<=2);for(const c of COATS[s])assert.match(c.url,/^https:\/\//);}
  assert.ok(Object.values(SPECIES_FACTS).length===6);
+});
+
+test('legendary skins: every badge once, 25 badges in all, 3 badges in one round; open to every species',()=>{
+ assert.equal(SKIN_BASE,3);assert.deepEqual(SKINS.map(k=>k.id),['gilded','ember','starlight']);
+ const p={badges:{},earnedAs:{},coats:{}};for(let i=0;i<3;i++)assert.ok(!coatUnlocked(p,'lion',SKIN_BASE+i));
+ for(const b of BADGES)p.badges[b.id]=1;assert.ok(coatUnlocked(p,'warthog',3),'all seven badges: gilded');assert.ok(!coatUnlocked(p,'warthog',4));
+ p.badges.kick=19;assert.ok(coatUnlocked(p,'zebra',4),'25 badges: ember');
+ p.bestRound=3;assert.ok(coatUnlocked(p,'impala',5),'three in a round: starlight');
+ p.coats={lion:3,leopard:4,hyena:5,zebra:0,impala:5,warthog:3};assert.equal(coatCode(p),'345053');
+ for(const s of ['lion','impala'])for(const i of [3,4,5])assert.equal(coatOf('333333'.replace(/3/g,String(i)),s),i);
+ assert.equal(coatOf('600000','lion'),0);
+ assert.ok(unlockedKeys(p).includes('lion:3')&&!unlockedKeys(p).includes('lion:0'),'the usual coat is never "new"');
 });

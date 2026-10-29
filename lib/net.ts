@@ -57,7 +57,7 @@ export function roomRequest(room:Room,b:Record<string,unknown>,action:string,now
  let p=room.players.find(q=>!q.bot&&typeof b.token==='string'&&q.id===b.id&&q.token===b.token);
  const seenBefore=p?.lastSeen??0;if(p)p.lastSeen=now;
  // the coat colour chosen for each species (lib/rewards.ts coatCode): cosmetic, so the device's word is taken
- const coats=typeof b.coats==='string'&&/^[0-2]{6}$/.test(b.coats)?b.coats:undefined,recoated=!!p&&!!coats&&p.coats!==coats;if(recoated)p!.coats=coats;
+ const coats=typeof b.coats==='string'&&/^[0-5]{6}$/.test(b.coats)?b.coats:undefined,recoated=!!p&&!!coats&&p.coats!==coats;if(recoated)p!.coats=coats;
  const settled=settleRoom(room,now);
  if(action==='join'){
   // a player who still holds a valid session for this room gets it back instead of a second animal

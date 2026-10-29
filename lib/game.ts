@@ -595,11 +595,14 @@ export function resolveStrike(p:Player,room:Room,now:number){
  const points=(savannaEvent(room,now).kind==='hunt'?15:10)+(ambush?3:0);p.score+=points;notify(p,(ambush?'Ambush! ':'Successful hunt ')+'+'+points,now);
 }
 export const STRIKE_WINDUP=250;
-/** Badge 'Unseen at 10 m': a player's predator within 10 m of live prey it could take, which neither sees, smells nor
- *  hears it right now (the same sense() the wildlife uses) and isn't already running from something. */
+/** Badge 'Unseen at 10 m': a player's predator closing in (moving towards it at 0.3 m/s or more, past its spawn
+ *  protection) within 10 m of live prey it could take, which neither sees, smells nor hears it right now (the same
+ *  sense() the wildlife uses) and isn't already running from something. Standing still while prey wanders close
+ *  isn't a stalk. */
 export const STALK_BADGE_RANGE=10*UNITS_PER_METRE;
-function stalkedClose(p:Player,room:Room,ps:Prop[],t:number){
- for(const q of room.players)if(q!==p&&!q.deadUntil&&q.mood!=='flee'&&Math.abs(q.x-p.x)<STALK_BADGE_RANGE&&dist(p,q)<STALK_BADGE_RANGE&&canTake(p,q,room)&&!hidden(q,room,t)&&!sense(q,p,room,t,ps)){award(p,'stalk10');return;}
+export function stalkedClose(p:Player,room:Room,ps:Prop[],t:number){
+ if(p.protectedUntil>t)return;
+ for(const q of room.players)if(q!==p&&!q.deadUntil&&q.mood!=='flee'&&Math.abs(q.x-p.x)<STALK_BADGE_RANGE&&dist(p,q)<STALK_BADGE_RANGE&&((q.x-p.x)*p.vx+(q.y-p.y)*p.vy)/Math.max(1,dist(p,q))>=.3*UNITS_PER_METRE&&canTake(p,q,room)&&!hidden(q,room,t)&&!sense(q,p,room,t,ps)){award(p,'stalk10');return;}
 }
 /** The first-seconds coaching line for each animal: what to do, in the order a new player needs it. */
 export const COACH:Record<Species,string>={

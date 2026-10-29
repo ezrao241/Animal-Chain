@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {animalMaterial,type SafariRig} from './safari-animals';
+import {tickSkins,type SafariRig} from './safari-animals';
 import {ANIMALS} from '@/lib/game';
 
 // Keep the articulated skeletons, but submit matching body parts together: every lion's left foreleg is one
@@ -13,6 +13,7 @@ export class AnimalBatches{
  constructor(private scene:THREE.Scene){}
  update(rigs:Iterable<SafariRig>,camera:THREE.Camera,cull=true){
   for(const batch of this.batches.values())batch.count=0;
+  tickSkins(performance.now()/1000);
   if(cull){camera.updateMatrixWorld();this.frustum.setFromProjectionMatrix(this.view.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse));}
   for(const rig of rigs){
    if(!rig.root.visible)continue;
@@ -21,7 +22,7 @@ export class AnimalBatches{
    rig.root.updateMatrixWorld(true);const far=rig.root.position.distanceTo(camera.position)>FAR_LOD;
    for(const part of rig.meshes){
     const geometry:THREE.BufferGeometry=far&&part.userData.far||part.geometry;let batch=this.batches.get(geometry);
-    if(!batch){batch=new THREE.InstancedMesh(geometry,animalMaterial(),160);batch.instanceMatrix.setUsage(THREE.DynamicDrawUsage);batch.count=0;batch.frustumCulled=false;batch.castShadow=true;batch.receiveShadow=true;batch.matrixAutoUpdate=false;this.batches.set(geometry,batch);this.scene.add(batch);}
+    if(!batch){batch=new THREE.InstancedMesh(geometry,part.material as THREE.Material,160);batch.instanceMatrix.setUsage(THREE.DynamicDrawUsage);batch.count=0;batch.frustumCulled=false;batch.castShadow=true;batch.receiveShadow=true;batch.matrixAutoUpdate=false;this.batches.set(geometry,batch);this.scene.add(batch);}
     if(batch.count<160)batch.setMatrixAt(batch.count++,part.matrixWorld);
    }
   }

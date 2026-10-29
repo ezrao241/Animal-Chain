@@ -159,8 +159,8 @@ Game numbers (in `CLIMB` and `BODY`, lib/game.ts):
 
 Badges (lib/rewards.ts `BADGES`, awarded in lib/game.ts by `award`) are for behaviour the real animals show; each
 quotes the field-guide fact it rests on. The thresholds are game rules:
-- **Unseen at 10 m**: a player's predator within 10 m of prey it could take that does not sense it at that moment, by
-  the same `sense()` rule the wildlife uses. Lions really do stalk to about 30 m before charging (LionAlert); 10 m is a
+- **Unseen at 10 m**: a player's predator moving towards prey it could take (at 0.3 m/s or more, after spawn
+  protection), within 10 m, while that prey does not sense it, by the same `sense()` rule the wildlife uses. Lions really do stalk to about 30 m before charging (LionAlert); 10 m is a
   game threshold.
 - **Out of the canopy** (leopard drops from a bough and lands the catch), **Clan hunt** (hyena takes a zebra with two
   more hyenas close), **Hind-leg kick** (zebra kick lands), **Ten-metre bound** (impala in the air from Leap when a
@@ -169,7 +169,13 @@ quotes the field-guide fact it rests on. The thresholds are game rules:
   rule: leopards do rest in and cache kills in trees, but most of their hunts are stalks on the ground.
 
 Coat colours (lib/rewards.ts `COATS`, drawn by `PAINT` in components/game/safari-animals.ts) are real variants of the
-wild species. In the game anyone can earn them; in the wild several are very rare.
+wild species. In the game anyone can earn them; in the wild several are very rare. The Rare / Epic tiers and showcase
+titles ("Timbavati Ghost", "Black Panther") are game labels; each card also gives the variant's plain name.
+
+**Legendary skins are not real.** Sun-Gilded, Emberhide and Starlight (`SKINS`, drawn by `SKIN_PAINT`) are fantasy
+finishes for the hardest goals (every badge once, 25 badges, 3 badges in one round). The coat book labels them
+"Cosmetic skin: not a real animal colour" and they cite no source. They change nothing in the rules: senses and
+detection ignore coats.
 
 | Coat | What the references say | Source |
 | --- | --- | --- |

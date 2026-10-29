@@ -250,6 +250,17 @@ const PAINT:Record<Species,Paint[]>={
   (c,p,n,part)=>!furred(part)||/#(mane|tuft)/.test(part)?c:retint(c,0x7a6b62,0xb9a47c),
  ],
 };
+// Legendary skins (lib/rewards.ts SKINS, cosmetic, not real animals): one finish for every species, in coat code
+// digits 3, 4, 5. The markings each animal already has (rosettes, stripes, spots) carry through, and the bright parts
+// of ember and starlight glow (skinMaterial).
+const SKIN_PAINT:Paint[]=[
+ // sun-gilded: polished gold, markings in dark bronze
+ (c,p,n,part)=>!furred(part)&&!part.includes('#hoof')?c:dark(c)?hex(0x5a3c0e):retint(c,0xc8914a,0xe0b04a,.6,1.12),
+ // emberhide: charcoal hide split by glowing cracks; the animal's own markings burn too
+ (c,p,n,part)=>{if(part.includes('#eye'))return hex(0xffb347);if(!furred(part))return c;const {d}=cellDistance(p,.07,5);return dark(c)||d>.55?hex(0xff6a12):retint(c,0xc8914a,0x24170f,.55,1.1);},
+ // starlight: night-blue coat full of stars, markings in violet
+ (c,p,n,part)=>{if(part.includes('#eye'))return hex(0xcfe0ff);if(!furred(part))return c;if(cellDistance(p,.04,11).d<.11)return hex(0xf2f6ff);return dark(c)?hex(0x7a6cff):retint(c,0xc8914a,0x182050,.6,1.2);},
+];
 export const coatCount=(s:Species)=>PAINT[s].length;
 export const cameraProfile=(s:Species):CameraProfile=>SPECS[s].camera;
 
@@ -286,7 +297,7 @@ function build(species:Species,lod=0,coat=0):Built{
   joints.push({name:name+'0',parent:'body',pivot:z(L.hip)},{name:name+'1',parent:name+'0',pivot:z(L.knee)},{name:name+'2',parent:name+'1',pivot:z(L.ankle)});
  }
  const pivots:Record<string,V>={torso:torsoCentre};for(const j of joints)pivots[j.name]=j.pivot;
- const paint=PAINT[species][coat-1],geometries=m.build(paint?(p,n,part,r)=>paint(s.coat(p,n,part,r),p,n,part):s.coat,pivots),partJoint=new Map<string,string>();
+ const paint=coat>=3?SKIN_PAINT[coat-3]:PAINT[species][coat-1],geometries=m.build(paint?(p,n,part,r)=>paint(s.coat(p,n,part,r),p,n,part):s.coat,pivots),partJoint=new Map<string,string>();
  for(const part of geometries.keys())partJoint.set(part,part==='torso'?'body':part);
  const out={geometries,joints,partJoint};BUILT.set(key,out);return out;
 }
@@ -296,12 +307,30 @@ export type SafariRig={root:THREE.Group;model:THREE.Group;j:Record<string,THREE.
  climbWeight:number;climbPhase:number;pitch:number;climb?:{x:number;y:number;h:number;yaw:number;pitch:number;speed:number;still:number;on:'trunk'|'limb'|'air'}};
 let sharedMaterial:THREE.MeshStandardMaterial|null=null;
 export const animalMaterial=()=>sharedMaterial||=facetMaterial();
+// Legendary skin finishes: gold is metallic; ember and starlight glow where the coat is bright, pulsing slowly.
+const skinTime={value:0},skinMaterials=new Map<number,THREE.MeshStandardMaterial>();
+export const tickSkins=(seconds:number)=>{skinTime.value=seconds;};
+function skinMaterial(coat:number){
+ let m=skinMaterials.get(coat);if(m)return m;
+ m=facetMaterial();
+ // no environment map in the scene, so the gold is only part metal (full metal would read black) plus a slow glint
+ if(coat===3){m.metalness=.45;m.roughness=.3;}
+ {const strength=coat===3?.3:coat===4?1.6:1.1,from=coat===3?.4:.22;
+  m.onBeforeCompile=shader=>{shader.uniforms.skinTime=skinTime;
+   shader.fragmentShader='uniform float skinTime;\n'+shader.fragmentShader.replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
+   #ifdef USE_COLOR
+   totalEmissiveRadiance+=vColor.rgb*smoothstep(${from.toFixed(2)},.6,dot(vColor.rgb,vec3(.3,.59,.11)))*${strength.toFixed(2)}*(.72+.28*sin(skinTime*2.4+vViewPosition.y*.15+vViewPosition.x*.07));
+   #endif`);};
+  m.customProgramCacheKey=()=>'animal-skin-'+coat;}
+ skinMaterials.set(coat,m);return m;
+}
+export const materialFor=(coat:number)=>coat>=3?skinMaterial(coat):animalMaterial();
 export function makeSafariAnimal(species:Species,coat=0):SafariRig{
  const b=build(species,0,coat),root=new THREE.Group(),model=new THREE.Group(),j:Record<string,THREE.Group>={},meshes:THREE.Mesh[]=[];
  model.scale.setScalar(10);root.add(model);
  for(const joint of b.joints){const g=new THREE.Group();g.name=joint.name;const parent=joint.parent?b.joints.find(x=>x.name===joint.parent)!.pivot:[0,0,0];g.position.set(joint.pivot[0]-parent[0],joint.pivot[1]-parent[1],joint.pivot[2]-parent[2]);g.userData.rest=g.position.clone();(joint.parent?j[joint.parent]:model).add(g);j[joint.name]=g;}
  const far=build(species,1,coat);
- for(const [part,geometry] of b.geometries){const mesh=new THREE.Mesh(geometry,animalMaterial());mesh.userData.far=far.geometries.get(part);mesh.castShadow=true;mesh.receiveShadow=true;j[b.partJoint.get(part)!].add(mesh);meshes.push(mesh);}
+ for(const [part,geometry] of b.geometries){const mesh=new THREE.Mesh(geometry,materialFor(coat));mesh.userData.far=far.geometries.get(part);mesh.castShadow=true;mesh.receiveShadow=true;j[b.partJoint.get(part)!].add(mesh);meshes.push(mesh);}
  // remember each leg's rest geometry for the foot-placement solver: the foot segment from ankle to the ground point
  for(const [id,front,side] of LEGS){const L=front?SPECS[species].front:SPECS[species].hind;j['leg'+id+'2'].userData.toe=new THREE.Vector3(L.ground[0]-L.ankle[0],L.ground[1]-L.ankle[1],(L.ground[2]-L.ankle[2])*side);j['leg'+id+'0'].userData.side=side;}
  return{root,model,j,meshes,species,coat,phase:Math.random(),turn:0,born:0,altitude:0,seed:Math.random()*100,blink:0,climbWeight:0,climbPhase:0,pitch:0};
