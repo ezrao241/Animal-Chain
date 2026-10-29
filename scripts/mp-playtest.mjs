@@ -59,7 +59,7 @@ try{
  // the host's tab closes: after the grace period the guest becomes host
  await A.ctx.close();const closed=Date.now();
  await until('host hand-off',()=>state(code).host===guest.id,25000);
- pass(`host tab closed; the guest became host ${((Date.now()-closed)/1000).toFixed(1)} s later (10 s grace from its last sync)`);
+ pass(`host tab closed; the guest became host ${((Date.now()-closed)/1000).toFixed(1)} s later (15 s grace from its last sync)`);
  // the guest reloads: same session, same animal, no duplicate
  const born=state(code).players.find(p=>p.id===guest.id).born;await B.page.reload();await until('guest back in the round',async()=>await B.page.locator('.game-world').count());
  assert.equal(state(code).players.filter(p=>!p.bot).length,2);assert.equal(state(code).players.find(p=>p.id===guest.id).born,born);

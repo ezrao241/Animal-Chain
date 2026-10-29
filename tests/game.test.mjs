@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {move,UNITS_PER_METRE,spawnPoint,W,H,ANIMALS,SPECIES,WILDLIFE,newPlayer,newRoom,start,respawn,die,tick,props,interact,savannaEvent,useAbility,perch,hidden,publicRoom,makeFoods,solid,solidRadius,KICK_RANGE,TREE_REACH,climbPose,canClimb,BODY,resolveStrike,STRIKE_WINDUP} from '../lib/game.ts';
+import {HUNT_REACH_MULTIPLIER,move,UNITS_PER_METRE,spawnPoint,W,H,ANIMALS,SPECIES,WILDLIFE,newPlayer,newRoom,start,respawn,die,tick,props,interact,savannaEvent,useAbility,perch,hidden,publicRoom,makeFoods,solid,solidRadius,KICK_RANGE,TREE_REACH,climbPose,canClimb,BODY,resolveStrike,STRIKE_WINDUP} from '../lib/game.ts';
 /** press E and let the lunge land */
 const hunt=(p,room,t)=>{interact(p,room,t);if(p.strikeId&&p.strikeAt)resolveStrike(p,room,t+STRIKE_WINDUP);};
 import {tree as acaciaTree,limbPoint} from '../lib/acacia.ts';
@@ -229,7 +229,7 @@ test('every predator/prey matchup: only listed prey, in reach, unprotected and n
   if(hunter==='hyena'&&prey==='zebra')continue;
   if(!ANIMALS[hunter].prey.includes(prey))continue;
   const{room:r2,player:h2}=fixture(hunter);const shielded=near(h2,prey,15);shielded.protectedUntil=NOW+4000;r2.players.push(shielded);hunt(h2,r2,NOW);assert.equal(shielded.deadUntil,0,'spawn protection '+hunter+' vs '+prey);
-  const{room:r3,player:h3}=fixture(hunter);const away=near(h3,prey,ANIMALS[hunter].catchRange*1.44+5);r3.players.push(away);hunt(h3,r3,NOW);assert.equal(away.deadUntil,0,'out of reach '+hunter+' vs '+prey);
+  const{room:r3,player:h3}=fixture(hunter);const away=near(h3,prey,ANIMALS[hunter].catchRange*HUNT_REACH_MULTIPLIER+5);r3.players.push(away);hunt(h3,r3,NOW);assert.equal(away.deadUntil,0,'out of reach '+hunter+' vs '+prey);
  }
 });
 // a room with only wildlife: a lion placed by an impala herd that is grazing, everyone else far away

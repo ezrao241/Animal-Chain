@@ -65,12 +65,15 @@ test('an away host hands the lobby to an online player after the grace period, n
  edit(code,room=>{find(room,host.id).lastSeen=Date.now()-5000;});
  let view=(await call({action:'sync',...auth(g1)})).room;assert.equal(view.host,host.id);
  await call({action:'start',...auth(g1)},403);
- // 12 s: past the grace period, the earliest-joined online player takes over and can start the round
+ // 12 s: still inside the 15 s grace, so a reload would get the room back
  edit(code,room=>{find(room,host.id).lastSeen=Date.now()-12000;});
- view=(await call({action:'sync',...auth(g2)})).room;assert.equal(view.host,g1.id);
- // the old host comes back: still in the room under the same session (no duplicate), just not the host any more
- const again=await call({action:'join',...auth(host),name:'Host'});assert.equal(again.id,host.id);assert.equal(again.room.host,g1.id);assert.equal(state(code).players.filter(p=>!p.bot).length,3);
- const started=await call({action:'start',...auth(g1)});assert.equal(started.room.phase,'playing');assert.equal(started.room.roster.length,3);
+ view=(await call({action:'sync',...auth(g2)})).room;assert.equal(view.host,host.id);
+ const again=await call({action:'join',...auth(host),name:'Host'});assert.equal(again.id,host.id);assert.equal(again.room.host,host.id);assert.equal(state(code).players.filter(p=>!p.bot).length,3);
+ // 16 s quiet: past the grace period the host is removed and the earliest-joined online player takes over and can start
+ edit(code,room=>{find(room,host.id).lastSeen=Date.now()-16000;});
+ view=(await call({action:'sync',...auth(g2)})).room;assert.equal(view.host,g1.id);assert.equal(view.roster.length,2);
+ await call({action:'sync',...auth(host)},401);
+ const started=await call({action:'start',...auth(g1)});assert.equal(started.room.phase,'playing');assert.equal(started.room.roster.length,2);assert.equal(state(code).players.length,62,'two players still get the full 60 wildlife');
 });
 
 test('a host removed as stale is replaced; a reconnecting player keeps their animal; repeated starts make one round',async()=>{
@@ -203,4 +206,15 @@ test('round length: only the host picks 5, 10 or unlimited in the lobby; guests 
  edit(code,room=>{const back=3600000;room.started-=back;room.tick-=back;for(const p of room.players){p.born-=back;}});
  const later=await call({action:'sync',...auth(guest),seq:4});assert.equal(later.room.phase,'playing');
  await call({action:'end',...auth(host)});assert.equal(state(code).phase,'finished');
+});
+test('a player disconnected mid-round is removed after 15 s and the host passes on; finished results keep everyone',async()=>{
+ const {host,guests:[guest],code}=await lobby(2);await call({action:'start',...auth(host)});
+ edit(code,room=>{find(room,host.id).lastSeen=Date.now()-14000;});
+ let view=(await call({action:'sync',...auth(guest),seq:1})).room;assert.equal(view.roster.length,2,'inside the grace period');
+ edit(code,room=>{find(room,host.id).lastSeen=Date.now()-16000;});
+ view=(await call({action:'sync',...auth(guest),seq:2})).room;assert.equal(view.roster.length,1);assert.equal(view.host,guest.id);assert.equal(state(code).players.filter(p=>p.bot).length,60);
+ // results: a player who drops after the round ends still shows in the results
+ const g2=await lobby(2);await call({action:'start',...auth(g2.host)});await call({action:'end',...auth(g2.host)});
+ edit(g2.code,room=>{find(room,g2.guests[0].id).lastSeen=Date.now()-60000;});
+ view=(await call({action:'sync',...auth(g2.host),seq:3})).room;assert.equal(view.phase,'finished');assert.equal(view.roster.length,2);
 });

@@ -4,8 +4,9 @@
 import {newPlayer,start,tick,finishRound,useAbility as startAbility,perch,interact,restartLife,hidden,makeFoods,DURATIONS,stepFeeding,ANIMALS,LEAP_SPEED,UNITS_PER_METRE,W,H,type Room,type Player,type Food} from './game.ts';
 
 export const ONLINE_MS=8000,        // a human who hasn't synced for this long is shown as away (tick() also freezes their input)
- HOST_GRACE_MS=10000,               // an away host keeps the room this long (a reload or a tunnel), then an online player takes over
- STALE_MS=90000,                    // away this long outside a round: dropped from the lobby / results
+ GRACE_MS=15000,                    // a disconnected player keeps their place this long (a reload, a tunnel), then is removed
+ HOST_GRACE_MS=GRACE_MS,            // and an away host keeps the room as long, then an online player takes over
+ STALE_MS=GRACE_MS,                 // (kept as names for the two uses)
  IDLE_ROOM_MS=30*60000,             // nobody has synced for this long: the room is gone
  ACTION_MAX_AGE=1500,               // a one-shot press older than this (a long outage) is dropped rather than replayed late
  COALESCE_MS=60,                    // a sync carrying nothing new within this long of the last tick is answered from the stored state
@@ -22,7 +23,8 @@ const humans=(room:Room)=>room.players.filter(p=>!p.bot);
  *  host has been away past the grace period, or has gone. The new host is the earliest-joined online player. */
 export function settleRoom(room:Room,now:number){
  let changed=false;
- if(room.phase!=='playing'){const keep=room.players.filter(p=>p.bot||now-p.lastSeen<STALE_MS);if(keep.length!==room.players.length){room.players=keep;changed=true;}}
+ // finished results keep everyone who played; in the lobby and during a round a player gone past the grace period is removed
+ if(room.phase!=='finished'){const keep=room.players.filter(p=>p.bot||now-p.lastSeen<STALE_MS);if(keep.length!==room.players.length){room.players=keep;changed=true;}}
  const people=humans(room),host=people.find(p=>p.id===room.host);
  if(host&&now-host.lastSeen<HOST_GRACE_MS)return changed;
  const next=people.find(p=>p.id!==room.host&&online(p,now))||(!host?people.slice().sort((a,b)=>b.lastSeen-a.lastSeen)[0]:undefined);

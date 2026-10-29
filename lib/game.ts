@@ -240,13 +240,21 @@ export const CLOSE_RANGE=45,SCENT_RANGE=170,SOUND_RANGE=190;
  *  - sight: within the observer's sight range scaled by how conspicuous t is, unless a boulder blocks the line;
  *  - scent: within 17 m when the breeze blows from t towards o (game rule: approach from downwind);
  *  - sound: within 19 m when t is sprinting (no exact position, just a direction). */
+/** Sneaking up from behind (a game rule): a player's predator that is not sprinting, outside the 220° arc a
+ *  computer-controlled prey animal faces, can't set off its close-range or scent alert. Sight, the sound of a sprint and
+ *  herd alarm calls still work as usual. Only for a hunter that could actually take this prey. */
+export const FORWARD_ARC=220;
+export function creptBehind(o:Player,t:Player,room:Room,now:number){
+ if(!o.bot||t.bot||!canTake(t,o,room)||sprinting(t,now))return false;
+ return Math.cos(Math.atan2(t.y-o.y,t.x-o.x)-(o.heading??0))<Math.cos(FORWARD_ARC/2*Math.PI/180);
+}
 export function sense(o:Player,t:Player,room:Room,now:number,ps=props(room.seed)):Cue|null{
  if(t.deadUntil||hidden(t,room,now))return null;
- const d=dist(o,t);if(d<CLOSE_RANGE)return{how:'close',range:d};
+ const d=dist(o,t),unnoticed=creptBehind(o,t,room,now);if(d<CLOSE_RANGE&&!unnoticed)return{how:'close',range:d};
  if(d>400)return null;
  const sight=ANIMALS[o.species].sight*(headDown(o,now)?.7:1)*conspicuity(t,ps,now);
  if(d<sight&&!sightBlocked(ps,o,t))return{how:'sight',range:d};
- const w=wind(room);if(d<SCENT_RANGE&&((o.x-t.x)*w.x+(o.y-t.y)*w.y)/d>.64)return{how:'scent',range:d};
+ const w=wind(room);if(d<SCENT_RANGE&&!unnoticed&&((o.x-t.x)*w.x+(o.y-t.y)*w.y)/d>.64)return{how:'scent',range:d};
  if(d<SOUND_RANGE&&speedOf(t)>walkPace(t.species)*1.05)return{how:'sound',range:d};
  return null;
 }
@@ -268,7 +276,8 @@ export function canTake(p:Player,q:{species:Species},room:Room,range=CLAN_RANGE)
  *  a chase once the hunter is properly hungry. */
 const PREFERENCE:Partial<Record<Species,Partial<Record<Species,number>>>>={lion:{zebra:3,impala:1,warthog:.35},hyena:{zebra:2.2,impala:1,warthog:.6}};
 export const HUNGER_RATE:Record<Species,number>={lion:.35,leopard:.4,hyena:.45,zebra:.6,impala:.6,warthog:.6};
-export const HUNT_REACH_MULTIPLIER=1.44;
+/** catch reach over each species' catchRange: 1.2 and then 1.44 in the Oct 27 playtests, then 18% more (Oct 29) */
+export const HUNT_REACH_MULTIPLIER=1.44*1.18;
 export const UNITS_PER_METRE=10,TRUNK_RADIUS=7,POUNCE_RANGE=42,AMBUSH_RANGE=60,KICK_RANGE=40,FOOD_RANGE=18,BURROW_REACH=45,TREE_REACH=40,WATER_REACH=30,THREAT_RANGE=300,LEAP_SPEED=11,STALK_SPEED=4.5;
 const wrap=(a:number)=>Math.atan2(Math.sin(a),Math.cos(a)),clamp=(v:number,a:number,b:number)=>Math.max(a,Math.min(b,v));
 /** True while the animal is running flat out on its stamina (Charge and Tireless sprint for free). */
