@@ -269,8 +269,8 @@ export function contactBlocked(ps:Prop[],a:{x:number;y:number},b:{x:number;y:num
 }
 /** The way an animal's attack goes: where the player is steering, else the way it is moving or last faced. */
 export const strikeDirection=(p:Player)=>Math.hypot(p.dx,p.dy)>.1?Math.atan2(p.dy,p.dx):p.heading??0;
-/** Animals walk through each other (only trunks and boulders are solid), so a hunter can end up with its prey's centre
- *  inside its own body, nose to rump. That is contact whichever way it faces. */
+/** A hunter can still end up with its prey's centre inside its own body (a leopard dropping onto it, a kick or a spawn
+ *  on top of it): that is contact whichever way it faces. */
 export const touching=(p:Player,q:{x:number;y:number})=>dist(p,q)<BODY[p.species][1]*UNITS_PER_METRE;
 /** Prey in front of the hunter: within 85° either side of the way it attacks, or already inside its body. */
 export const inFront=(p:Player,q:{x:number;y:number})=>touching(p,q)||Math.cos(Math.atan2(q.y-p.y,q.x-p.x)-strikeDirection(p))>=Math.cos(85*Math.PI/180);
@@ -332,7 +332,8 @@ export const sprinting=(p:Player,now:number)=>{const g=ANIMALS[p.species].gait,f
 // is limited by accel (speeding up) or brake (slowing down), the sideways part by grip. A reversal therefore plants
 // and pushes off the other way instead of looping round, and a sideways input bends the path within a few metres.
 // Facing is separate (the renderer turns the body at the species' turnRate), so movement never waits on rotation.
-export function move(p:Player,dt:number,ps:Prop[],now:number){
+/** `others`: animals near enough to touch (see bodyGrid); their bodies are solid to this one. */
+export function move(p:Player,dt:number,ps:Prop[],now:number,others:readonly Player[]=[]){
  p.vx??=0;p.vy??=0;p.stamina??=100;
  if(p.climb){climbStep(p,dt,ps,now);return;}
  if(p.perched||p.species==='warthog'&&p.abilityUntil>now||(p.stunUntil??0)>now){p.vx=0;p.vy=0;return;}
@@ -354,6 +355,7 @@ export function move(p:Player,dt:number,ps:Prop[],now:number){
  if(Math.hypot(vx,vy)<.02){vx=0;vy=0;}
  p.vx=vx*U;p.vy=vy*U;
  let x=Math.max(25,Math.min(W-25,p.x+p.vx*dt)),y=Math.max(25,Math.min(H-25,p.y+p.vy*dt));
+ if(others.length&&solidBody(p,now))({x,y}=shoulder(p,x,y,others,now));
  ({x,y}=collide(p,x,y,ps));
  p.x=x;p.y=y;if(Math.abs(p.vx)>1)p.face=p.vx>0?1:-1;if(Math.hypot(p.vx,p.vy)>5)p.heading=Math.atan2(p.vy,p.vx);
 }
@@ -377,6 +379,54 @@ function collide(p:Player,x:number,y:number,ps:Prop[]){
   const inward=p.vx*nx+p.vy*ny;if(inward<0){p.vx-=inward*nx;p.vy-=inward*ny;}
  }
  return{x:Math.max(25,Math.min(W-25,x)),y:Math.max(25,Math.min(H-25,y))};
+}
+/** Does this animal have a body others bump into? Not while dead, up a tree, down a burrow or in the air mid-leap (an
+ *  impala clears other animals in its bound). */
+export const solidBody=(p:Player,now:number)=>!p.deadUntil&&(!p.climb||p.climb==='approach')&&!p.perched&&!(p.species==='warthog'&&p.abilityUntil>now)&&!leaping(p,now);
+const bodyHeading=(p:Player)=>Math.hypot(p.vx||0,p.vy||0)>5?Math.atan2(p.vy,p.vx):p.heading??0;
+/** Closest points of two segments a+u·s (s in a0..a1) and b+v·t (t in b0..b1), u and v unit vectors: the gap from b's to a's. */
+function segmentGap(ax:number,ay:number,ux:number,uy:number,a0:number,a1:number,bx:number,by:number,vx:number,vy:number,b0:number,b1:number){
+ const rx=ax-bx,ry=ay-by,b=ux*vx+uy*vy,c=ux*rx+uy*ry,f=vx*rx+vy*ry,den=1-b*b;
+ // parallel: B's extent seen along A; take the middle of where they overlap (or A's end nearest to B)
+ const lo=Math.min(b*b0,b*b1)-c,hi=Math.max(b*b0,b*b1)-c;
+ let sa=den>1e-6?clamp((b*f-c)/den,a0,a1):clamp((Math.max(lo,a0)+Math.min(hi,a1))/2,a0,a1);const tb=clamp(b*sa+f,b0,b1);sa=clamp(b*tb-c,a0,a1);
+ return{dx:ax+ux*sa-bx-vx*tb,dy:ay+uy*sa-by-vy*tb};
+}
+/** Animals are solid to each other: push a body (its rump-to-nose capsule) out of every other animal's it overlaps and
+ *  drop the part of its velocity that drives into them, so it slides along a flank instead of passing through. Each
+ *  animal only moves itself, so a lion can't shove a standing zebra aside; it has to go round. */
+function shoulder(p:Player,x:number,y:number,others:readonly Player[],now:number){
+ const U=UNITS_PER_METRE,[front,rear,half]=BODY[p.species],h=bodyHeading(p),hx=Math.cos(h),hy=Math.sin(h);
+ for(const q of others){
+  if(q===p||Math.abs(q.x-x)>40||Math.abs(q.y-y)>40||!solidBody(q,now))continue;
+  const [qf,qr,qh]=BODY[q.species],g=bodyHeading(q),r=(half+qh)*U;
+  const {dx,dy}=segmentGap(x,y,hx,hy,-rear*U,front*U,q.x,q.y,Math.cos(g),Math.sin(g),-qr*U,qf*U),d=Math.hypot(dx,dy);
+  if(d>=r)continue;
+  let nx:number,ny:number,depth:number;
+  if(d>.001){nx=dx/d;ny=dy/d;depth=r-d;}
+  else{
+   // the two spines cross or lie end to end (nose into rump on one line): part along the line between their centres,
+   // as far as their extents along it overlap; right on top of each other, step out sideways
+   const cx=x-q.x,cy=y-q.y,c=Math.hypot(cx,cy);if(c>.001){nx=cx/c;ny=cy/c;}else{nx=-hy;ny=hx;}
+   const k=hx*nx+hy*ny,k2=Math.cos(g)*nx+Math.sin(g)*ny;
+   depth=(Math.max(k*rear,-k*front)+half+Math.max(-k2*qr,k2*qf)+qh)*U-c;if(depth<=0)continue;
+  }
+  x+=nx*depth;y+=ny*depth;
+  const inward=p.vx*nx+p.vy*ny;if(inward<0){p.vx-=inward*nx;p.vy-=inward*ny;}
+ }
+ return{x,y};
+}
+const BODY_CELL=80;
+/** Animals bucketed by 8 m cell, so each body only checks its neighbours (68 animals: a handful each instead of all). */
+export function bodyGrid(players:readonly Player[]){
+ const grid=new Map<number,Player[]>();
+ for(const p of players){if(p.deadUntil)continue;const k=Math.floor(p.x/BODY_CELL)*1024+Math.floor(p.y/BODY_CELL),cell=grid.get(k);if(cell)cell.push(p);else grid.set(k,[p]);}
+ return grid;
+}
+export function bodiesNear(grid:Map<number,Player[]>,x:number,y:number){
+ const cx=Math.floor(x/BODY_CELL),cy=Math.floor(y/BODY_CELL),out:Player[]=[];
+ for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++){const cell=grid.get((cx+i)*1024+cy+j);if(cell)out.push(...cell);}
+ return out;
 }
 export type Climb=''|'approach'|'trunk'|'mount'|'limb'|'drop'|'slip';
 /** Who climbs, and how (metres, m/s). Leopards are true climbers: up a trunk at about 2 m/s (forelimbs pulling, hind
@@ -649,14 +699,14 @@ export function tick(room:Room,now:number){
  const humans=room.players.filter(p=>!p.bot&&!p.deadUntil);
  const total=Math.min(1.5,Math.max(0,(Math.min(now,limit)-room.tick)/1000)),ps=props(room.seed),steps=Math.ceil(total/.1);
  for(let s=0;s<steps;s++){
- const dt=total/steps,t=Math.min(now,limit)-(steps-1-s)*dt*1000;
+ const dt=total/steps,t=Math.min(now,limit)-(steps-1-s)*dt*1000,bodies=bodyGrid(room.players);
  for(const p of room.players){
  if(!p.bot&&t-p.lastSeen>8000){p.dx=0;p.dy=0;p.feeding=undefined;continue;}
  if(p.deadUntil){if(t>=p.deadUntil)respawn(p,t,room);continue;}
  if(p.bot&&!p.feeding)steer(p,room,ps,t,dt,humans);
  // a player's keys are kept through a slow request or two (a phone on mobile data); a dropped connection stops the animal
  else if(t-p.inputAt>2000){p.dx=0;p.dy=0;}
- stepFeeding(p,t);move(p,dt,ps,t);breathe(p,dt,t);
+ stepFeeding(p,t);move(p,dt,ps,t,bodiesNear(bodies,p.x,p.y));breathe(p,dt,t);
  p.survivalSeconds+=dt;p.thirst=Math.max(0,(p.thirst??100)-dt*THIRST_RATE);
  // food runs down at its own pace; a parched animal burns through it twice as fast
  p.hunger-=dt*HUNGER_RATE[p.species]*(p.thirst<=0?2:1);

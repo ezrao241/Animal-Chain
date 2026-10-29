@@ -132,7 +132,10 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
      if(p.fix!==ownFix){ownFix=p.fix;rejoinUntil=ms+450;}
      // (walking to the trunk before a climb is still on the ground: keep the server's walking velocity for the gait)
      if(p.perched||p.climb){position.x=THREE.MathUtils.damp(position.x,p.x,10,dt);position.y=THREE.MathUtils.damp(position.y,p.y,10,dt);position.vx=p.climb==='approach'?p.vx||0:0;position.vy=p.climb==='approach'?p.vy||0:0;}
-     else{for(let left=Math.min(.25,raw);left>1e-4;left-=.05)move(position,Math.min(.05,left),ps,now);if(ms<rejoinUntil||(p.stunUntil||0)>now){const k=1-Math.exp(-10*dt);position.x+=(p.x+vx*lag-position.x)*k;position.y+=(p.y+vy*lag-position.y)*k;}}vx=position.vx;vy=position.vy;
+     else{
+      // other animals' bodies are solid: bump against them where they are drawn (the server does the same with its copies)
+      const near:Player[]=[];for(const q of players){const at=q.id!==p.id&&positions.get(q.id);if(at&&Math.abs(at.x-position.x)<70&&Math.abs(at.y-position.y)<70)near.push({...q,x:at.x,y:at.y});}
+      for(let left=Math.min(.25,raw);left>1e-4;left-=.05)move(position,Math.min(.05,left),ps,now,near);if(ms<rejoinUntil||(p.stunUntil||0)>now){const k=1-Math.exp(-10*dt);position.x+=(p.x+vx*lag-position.x)*k;position.y+=(p.y+vy*lag-position.y)*k;}}vx=position.vx;vy=position.vy;
      input.current.claim={x:position.x,y:position.y,vx:position.vx,vy:position.vy,born:p.born,at:Date.now()};
     }else{const k=1-Math.exp(-12*dt);position.x+=(p.x+vx*lag-position.x)*k;position.y+=(p.y+vy*lag-position.y)*k;}
     const speed=Math.hypot(vx,vy);
