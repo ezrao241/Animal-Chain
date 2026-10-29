@@ -165,3 +165,23 @@ test('the client rebuilds exactly the server food table from the seed layout and
  const client=expandFoods(view);const live=fs=>fs.map(f=>({...f,ready:f.ready>view.serverTime?f.ready:0}));
  assert.deepEqual(live(client),live(server));
 });
+test('round length: only the host picks 5, 10 or unlimited in the lobby; guests see it; unlimited never expires until the host ends it',async()=>{
+ const {host,guests:[guest],code}=await lobby(2);
+ assert.equal((await call({action:'sync',...auth(guest),seq:1})).room.duration??300,300,'old and new rooms default to five minutes');
+ await call({action:'configure',...auth(guest),duration:0},403);
+ await call({action:'configure',...auth(host),duration:450},400);
+ await call({action:'configure',...auth(host),duration:'600'},400);
+ await call({action:'configure',...auth(host),duration:600});
+ assert.equal((await call({action:'sync',...auth(guest),seq:2})).room.duration,600,'the guest is told the chosen length');
+ let s=await call({action:'start',...auth(host)});assert.equal(s.room.ends-s.room.started,600000,'ten minutes of server time');
+ await call({action:'configure',...auth(host),duration:0},409);
+ await call({action:'end',...auth(guest)},403);
+ await call({action:'end',...auth(host)});const ended=await call({action:'sync',...auth(guest),seq:3});assert.equal(ended.room.phase,'finished');assert.equal(ended.room.endedBy,'host');
+ await call({action:'end',...auth(host)},409);
+ await call({action:'configure',...auth(host),duration:0});
+ s=await call({action:'start',...auth(host)});assert.equal(s.room.duration,0,'play again keeps the chosen length');assert.equal(s.room.ends,0);assert.equal(s.room.endedBy,undefined);
+ // an hour later (both players still connected) the unlimited round is still running
+ edit(code,room=>{const back=3600000;room.started-=back;room.tick-=back;for(const p of room.players){p.born-=back;}});
+ const later=await call({action:'sync',...auth(guest),seq:4});assert.equal(later.room.phase,'playing');
+ await call({action:'end',...auth(host)});assert.equal(state(code).phase,'finished');
+});
