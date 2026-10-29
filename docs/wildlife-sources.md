@@ -88,6 +88,22 @@ running, and the authors note animals rarely reached their limits, so the true m
 - **Mud.** Wading through a watering hole or its mud ring slows every animal to 80 %.
 - **Tracks.** Footprints are drawn about four times life size so they read from the follow camera. They fade within 55 s, or
   110 s in mud.
+- **October 27 playtest tuning (game rules that depart from the facts above).** The impala's in-game sprint is
+  16.2 m/s and its run 7.8 m/s, below the measured 17.7 m/s in the speed table, so predators can close on it on this small
+  map. While Stalk is active (4 s) a leopard moves at 4.5 m/s and is hidden from every animal sense; the 45 % figure above
+  applies outside Stalk. Neither is a claim about real leopards or impala.
+- **Hunting, feeding and health.** A catch needs prey in front (within 85° of the lunge) and within 1.44 × the species
+  catch range, with nothing solid between. One landed catch is enough (the October 27 playtest setting). A predator that
+  has caught prey stays at the kill for 5 s (lion), 6 s (hyena) or 7 s (leopard) and regains up to 45 food in proportion
+  to the time actually spent; moving, an ability, a climb, a stun, a shot or death ends the meal early with only the part
+  eaten. Health (100) exists only for the poacher encounter. These timings and numbers are game abstractions, not
+  measured feeding times or injuries.
+- **Poachers.** Each round places up to four armed people on foot, each by a parked jeep near a map edge. Poaching is a
+  real threat to African wildlife, but the encounter is a game mechanic, not a depiction of real poachers: a poacher
+  aims at a visible, unprotected player predator within 18 m that it can see (no line through boulders, trunks or
+  rising ground), warns for 1.5 s, then fires every 1.5 s for 25 health, retreats to the jeep after a few seconds or
+  once it loses sight, climbs in and drives off the map. Prey animals and computer-controlled wildlife are never
+  targeted. Nothing graphic is shown.
 
 ## Climbing and solid objects
 

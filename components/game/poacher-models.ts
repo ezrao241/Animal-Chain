@@ -24,8 +24,9 @@ export function createPoacherEncounter(scene:THREE.Scene){
  jeep.position.set(n.jeepX,ground(n.jeepX,n.jeepY),n.jeepY);jeep.rotation.y=Math.PI/2-(driving?n.heading:n.escapeHeading??Math.PI);
  person.visible=n.state!=='gone';person.scale.setScalar(1);person.position.set(n.x,ground(n.x,n.y),n.y);person.rotation.y=Math.PI/2-n.heading;
  const run=n.state==='retreating';legs.forEach((l,i)=>l.rotation.x=run?Math.sin(now*.013+i*Math.PI)*.7:entry?-u*1.3:driving?-1.3:0);
- arms.rotation.x=n.state==='defending'?-.2:driving?-.7:0;gun.visible=!entry&&!driving;gun.rotation.y=-Math.PI/2;
- flash.visible=n.shotAt>0&&now>=n.shotAt&&now-n.shotAt<110;
+ // rifle raised to the shoulder while aiming (the warning) and firing, so the threat reads before the first shot
+ arms.rotation.x=n.state==='detecting'||n.state==='defending'?-.45:driving?-.7:0;gun.visible=!entry&&!driving;gun.rotation.y=-Math.PI/2;
+ flash.visible=n.shotAt>0&&now>=n.shotAt-40&&now-n.shotAt<260;flash.scale.setScalar(1.6);
  if(entry){const seat=new THREE.Vector3(-5,10,-3).applyAxisAngle(new THREE.Vector3(0,1,0),jeep.rotation.y);person.position.set(THREE.MathUtils.lerp(n.x,n.jeepX+seat.x,u),ground(n.jeepX,n.jeepY)+10*u+Math.sin(u*Math.PI)*2,THREE.MathUtils.lerp(n.y,n.jeepY+seat.z,u));person.rotation.y=jeep.rotation.y;}
  if(driving){const seat=new THREE.Vector3(-5,10,-3).applyAxisAngle(new THREE.Vector3(0,1,0),jeep.rotation.y);person.position.copy(jeep.position).add(seat);person.rotation.y=jeep.rotation.y;}
  if(n.state==='subdued'){person.position.y-=6;legs.forEach(l=>l.rotation.x=-1);gun.visible=false;}

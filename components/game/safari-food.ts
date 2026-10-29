@@ -31,10 +31,11 @@ export class FoodField{
  update(foods:FoodItem[],now:number,focus:{x:number;y:number}|null,range:number,ground:(x:number,z:number)=>number,edible:(kind:string)=>boolean,showRings:(f:FoodItem)=>boolean){
   for(const mesh of this.meshes.values())mesh.count=0;this.rings.count=0;
   for(const f of foods){
-   if(f.ready>now||f.until&&f.until<=now)continue;if(focus&&Math.hypot(focus.x-f.x,focus.y-f.y)>range)continue;
+   // a fresh kill (a carcass that isn't open to scavengers yet) is drawn at once, so the hunter is seen feeding at it
+   if(f.ready>now&&!f.until||f.until&&f.until<=now)continue;if(focus&&Math.hypot(focus.x-f.x,focus.y-f.y)>range)continue;
    const mesh=this.meshes.get(f.kind);if(!mesh)continue;const y=ground(f.x,f.y);
    this.q.setFromEuler(this.e.set(0,hash(f.id,3,7)*6.28,0));this.s.setScalar(.85+hash(f.id,5,1)*.35);this.m.compose(this.v.set(f.x,y,f.y),this.q,this.s);mesh.setMatrixAt(mesh.count++,this.m);
-   if(edible(f.kind)&&showRings(f)){this.s.setScalar(1);this.m.compose(this.v.set(f.x,y+.8,f.y),this.q.identity(),this.s);this.rings.setMatrixAt(this.rings.count++,this.m);}
+   if(f.ready<=now&&edible(f.kind)&&showRings(f)){this.s.setScalar(1);this.m.compose(this.v.set(f.x,y+.8,f.y),this.q.identity(),this.s);this.rings.setMatrixAt(this.rings.count++,this.m);}
   }
   for(const mesh of [...this.meshes.values(),this.rings])mesh.instanceMatrix.needsUpdate=true;
  }

@@ -58,3 +58,20 @@ Restored the complete move() implementation verbatim from Claude c78d214, includ
 Verification: movement function compared byte-for-byte against c78d214. TypeScript noEmit passed. Tests and build results are reported separately after execution. No new visual playtest or hardware smoothness claim in this restoration.
 
 Restoration final checks: 46/46 tests pass; TypeScript noEmit passes; Sites production build passes.
+
+## Integration with the lighting and multiplayer branches (Oct 29)
+
+This branch is codex/safari-finish (a449234) merged with the sunny savanna lighting branch (claude/project-thread-size0c, c1bdbf3)
+and the multiplayer session branch (claude/project-thread-0jajev, bb1ea7c). The terrain height module from this branch is
+kept; the lighting branch's colours and sun are kept. Round length (`configure`) and the host's `end` now go through
+`roomRequest` in lib/net.ts, so the hosted route and the offline shim share one implementation: host only, lobby only for
+`configure`, accepted values 300, 600 and 0 (unlimited), 5 minutes when a room has no value. `room.endedBy` records a host
+ending; the results screen reads it. The three 100 s phases now repeat in rounds longer than five minutes instead of staying
+on Dusk Run. A fresh kill is drawn while the hunter feeds (it opens to scavengers after 7.5 s as before). The poacher raises
+the rifle while aiming and its muzzle flash lasts about a quarter of a second, so a 140 ms poll still shows it.
+
+Checks run: 55 Node tests (game, route, safari-updates, client-motion), tsc --noEmit, the play build, scripts/mp-playtest.mjs
+(7/7, two browsers through the real route), and a headless browser pass over the play build: unlimited chosen in the
+lobby, ELAPSED clock counting up, host ending the round with the explanation on results, a lion catch with the 5 s
+feeding HUD and pose, and a poacher guarding by its jeep, warning, firing (lion 100 -> 75), retreating, driving away and
+leaving the map. Screens are software-rendered (SwiftShader); real-GPU and phone checks have not been done.
