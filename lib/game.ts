@@ -33,7 +33,11 @@ export type Player={id:string;token?:string;name:string;bot:boolean;species:Spec
   *  along it and which way the animal faces on it, the limb it is heading for (-1 = down), the mount progress, and
   *  vertical speed while jumping down. Optional so rooms saved before climbing existed still load. */
  /** the species still to come for a human player, so every animal comes up once in each run of six lives */
- bag?:Species[]; feeding?:{until:number;duration:number;last:number};
+ bag?:Species[];
+ /** client-reported movement (lib/net.ts claim): the last accepted position, when and in which life, the banked jitter
+  *  allowance, and how many reported positions the server has refused (the device then rejoins the server's animal) */
+ anchorX?:number; anchorY?:number; anchorAt?:number; anchorBorn?:number; slack?:number; fix?:number;
+ feeding?:{until:number;duration:number;last:number};
  /** water, 100 = just drunk; it runs down on its own, separately from food */
  thirst?:number;
  /** a committed catch attempt: the prey it is aimed at and when the lunge lands (or a leopard's leap, on landing) */

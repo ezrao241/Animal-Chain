@@ -21,7 +21,7 @@ export type WorldRoom=Omit<Room,'players'>&{serverTime:number;_received?:number;
 // swing round behind a turning animal without the held key suddenly meaning a different way.
 /** `?graphics=performance|balanced|high` pins the quality tier (for testing and for players who want to choose) */
 const forcedGraphics=(():GraphicsMode|undefined=>{try{const g=new URLSearchParams(location.search).get('graphics');return g==='performance'||g==='balanced'||g==='high'?g:undefined;}catch{return undefined;}})();
-export type WorldInput={dx:number;dy:number;interact:boolean;ability:boolean;perch:boolean;sprint:boolean;cameraYaw:number;moveYaw?:number;instinct?:boolean;recenter?:boolean;graphics?:GraphicsMode};
+export type WorldInput={dx:number;dy:number;interact:boolean;ability:boolean;perch:boolean;sprint:boolean;cameraYaw:number;moveYaw?:number;instinct?:boolean;recenter?:boolean;graphics?:GraphicsMode;claim?:{x:number;y:number;vx:number;vy:number;born:number;at:number}};
 export function ModelPortrait({species,size=70}:{species:Species;size?:number}){const [src,setSrc]=useState('');useEffect(()=>{setSrc(animalPortrait(species));},[species]);return src?<img className="portrait" src={src} alt={ANIMALS[species].name} width={size} height={size}/>:<span className="portrait-loading" style={{width:size,height:size}} aria-label={ANIMALS[species].name}>{ANIMALS[species].name.slice(0,1)}</span>;}
 // preview is the home screen backdrop: focus holds its camera on one species, onShot reports which species is on screen
 export default function WorldScene({room,me,input,preview=false,focus=null,onShot,onPerformance,onAnimalSound}:{room:WorldRoom|null;me:Player|undefined;input:React.RefObject<WorldInput>;preview?:boolean;focus?:Species|null;onShot?:(species:Species|null)=>void;onPerformance?:(stats:PerformanceStats)=>void;onAnimalSound?:(species:Species,event:AnimalSoundEvent,volume:number,pan:number)=>void}){
@@ -44,7 +44,7 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
   const cinema=preview?new MenuCinema():null,demo=cinema?.players||[];let shownShot:Species|null|undefined;
   // the menu backdrop is graded to late golden hour: lower, redder sun, cooler sky fill and a warm haze
   if(preview){sun.color.set(0xffa65c);sun.intensity=3.4;rim.color.set(0x8f9be0);rim.intensity=.7;renderer.toneMappingExposure=1.18;scene.traverse(o=>{if(o instanceof THREE.HemisphereLight){o.color.set(0xb7b9e0);o.groundColor.set(0x9a6a3e);o.intensity=1.15;}});savanna.dusk();scene.background=new THREE.Color(0xd9a77a);(scene.fog as THREE.Fog).color.set(0xd8a47a);}
-  let width=0,height=0,last=performance.now(),lastPreviewFrame=0,lastTraceFrame=0,yaw=0,pitch=.24,distance=155,shownDistance=0,dragging=false,lastX=0,lastY=0,ownHeading=Math.PI/2,first=true,ownBorn=0,frameCost=16,dragPointer=-1,lastLook=-1e9,latchKey='',moveYaw=0;
+  let width=0,height=0,last=performance.now(),lastPreviewFrame=0,lastTraceFrame=0,yaw=0,pitch=.24,distance=155,shownDistance=0,dragging=false,lastX=0,lastY=0,ownHeading=Math.PI/2,first=true,ownBorn=0,frameCost=16,dragPointer=-1,lastLook=-1e9,latchKey='',moveYaw=0,ownFix:number|undefined,rejoinUntil=0,lastServerTime=0,updateGap=.2,reach=.3;
   const follow=new THREE.Vector3(1600,20,820),target=new THREE.Vector3(),projected=new THREE.Vector3(),view=new THREE.Vector3();
   const qualityCaps={high:1.5,balanced:1.12,performance:.78};
   const resize=()=>{const bounds=element.getBoundingClientRect();width=bounds.width;height=bounds.height;if(!width||!height)return;renderer.setSize(width,height);camera.aspect=width/height;camera.updateProjectionMatrix();overlay.width=Math.round(width);overlay.height=Math.round(height);};
@@ -62,7 +62,12 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
    if(preview)lastPreviewFrame=ms;
    const dt=Math.min(.075,Math.max(0,(ms-last)/1000));last=ms;if(!width||!height)return;
    const mode=input.current.graphics||forcedGraphics||'auto';
-   const time=ms/1000,{room:r,me:m}=latest.current;cinema?.animate(time);const now=r?Date.now()+r.serverTime-(r._received||Date.now())+(r._transitMs||0):Date.now(),lag=r?Math.min(.3,Math.max(0,(now-r.serverTime)/1000)):0,players=r?.players||demo,ids=new Set(players.map(p=>p.id));
+   const time=ms/1000,{room:r,me:m}=latest.current;
+   // Other animals are carried forward along their last reported velocity until the next update, at most about one
+   // update interval (measured: a slow connection updates less often), so they keep moving smoothly between updates
+   // without running far past an animal that has just stopped.
+   if(r&&r.serverTime!==lastServerTime){if(lastServerTime&&r.serverTime>lastServerTime)updateGap+=(Math.min(1,(r.serverTime-lastServerTime)/1000)-updateGap)*.2;lastServerTime=r.serverTime;reach=THREE.MathUtils.clamp(updateGap*1.25,.15,.6);}
+   cinema?.animate(time);const now=r?Date.now()+r.serverTime-(r._received||Date.now())+(r._transitMs||0):Date.now(),lag=r?Math.min(reach,Math.max(0,(now-r.serverTime)/1000)):0,players=r?.players||demo,ids=new Set(players.map(p=>p.id));
    if(r?.code!==soundRoomCode){animalStates.clear();soundRoomCode=r?.code||'';}
    const tier=lightweight||preview?'performance':mode==='auto'?autoTier:mode;
    const lowBudget=tier==='performance'&&mode!=='high'&&lightweight;
@@ -92,7 +97,7 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
    for(const p of players){
     const own=p.id===m?.id;let rig=rigs.get(p.id);
     if(!rig||rig.species!==p.species){if(rig)scene.remove(rig.root);rig=makeSafariAnimal(p.species);rig.born=p.born;rig.turn=own?Math.PI/2:0;rigs.set(p.id,rig);positions.set(p.id,{...p});if(!animalBatches)scene.add(rig.root);if(!shadows.has(p.id)){const shadow=new THREE.Mesh(shadowGeo,shadowMat);shadow.rotation.x=-Math.PI/2;scene.add(shadow);shadows.set(p.id,shadow);}}
-    const position=positions.get(p.id)!;if(position.born!==p.born||Math.hypot(position.x-p.x,position.y-p.y)>220){Object.assign(position,p);rig.altitude=0;}
+    const position=positions.get(p.id)!;if(position.born!==p.born||Math.hypot(position.x-p.x,position.y-p.y)>(own?600:220)){Object.assign(position,p);rig.altitude=0;}
     const concealed=(p as Player&{concealed?:boolean}).concealed;rig.root.visible=!p.deadUntil&&!(p.species==='warthog'&&p.abilityUntil>now)&&(!concealed||own)&&(own||!m||dist(m,p)<drawRange-60);const shadow=shadows.get(p.id)!;shadow.visible=rig.root.visible;
     // the menu camera tours a herd at close range: anyone wandering right up to the lens steps out of the shot
     if(preview&&Math.hypot(position.x-camera.position.x,position.y-camera.position.z)<30)rig.root.visible=shadow.visible=false;
@@ -100,8 +105,13 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
     if(preview){position.x=p.x;position.y=p.y;position.vx=vx;position.vy=vy;}
     else if(own&&r?.phase==='playing'){
      Object.assign(position,{species:p.species,perched:p.perched,abilityUntil:p.abilityUntil,deadUntil:p.deadUntil,stunUntil:p.stunUntil,stamina:p.stamina,exhausted:p.exhausted,...input.current,...cameraInput(input.current.dx,input.current.dy,input.current.moveYaw??input.current.cameraYaw)});
-     if(p.perched){position.x=THREE.MathUtils.damp(position.x,p.x,10,dt);position.y=THREE.MathUtils.damp(position.y,p.y,10,dt);position.vx=position.vy=0;}
-     else{move(position,dt,ps,now);const tx=p.x+vx*lag,ty=p.y+vy*lag,error=Math.hypot(position.x-tx,position.y-ty),k=1-Math.exp(-(error>100?12:1.4)*dt);position.x+=(tx-position.x)*k;position.y+=(ty-position.y)*k;}vx=position.vx;vy=position.vy;
+     // This device moves its own animal (the same move() the server runs) and reports where it got to (lib/net.ts claim),
+     // so the server's copy, a moment old, is never pulled back toward. The server's position is only rejoined while it
+     // holds the animal (in a tree, stunned) or for a moment after it refused a reported position (fix).
+     if(p.fix!==ownFix){ownFix=p.fix;rejoinUntil=ms+450;}
+     if(p.perched||p.climb){position.x=THREE.MathUtils.damp(position.x,p.x,10,dt);position.y=THREE.MathUtils.damp(position.y,p.y,10,dt);position.vx=position.vy=0;}
+     else{move(position,dt,ps,now);if(ms<rejoinUntil||(p.stunUntil||0)>now){const k=1-Math.exp(-10*dt);position.x+=(p.x+vx*lag-position.x)*k;position.y+=(p.y+vy*lag-position.y)*k;}}vx=position.vx;vy=position.vy;
+     input.current.claim={x:position.x,y:position.y,vx:position.vx,vy:position.vy,born:p.born,at:Date.now()};
     }else{const k=1-Math.exp(-12*dt);position.x+=(p.x+vx*lag-position.x)*k;position.y+=(p.y+vy*lag-position.y)*k;}
     const speed=Math.hypot(vx,vy);
     // Facing is separate from movement: the body swings toward where the animal is being steered (the input), or

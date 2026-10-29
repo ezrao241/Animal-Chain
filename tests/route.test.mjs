@@ -165,3 +165,21 @@ test('the client rebuilds exactly the server food table from the seed layout and
  const client=expandFoods(view);const live=fs=>fs.map(f=>({...f,ready:f.ready>view.serverTime?f.ready:0}));
  assert.deepEqual(live(client),live(server));
 });
+
+test('a player\'s own reported position is taken when the animal could have run there; teleports, held animals and earlier lives are refused',async()=>{
+ const {ANIMALS,UNITS_PER_METRE}=await import('../lib/game.ts');
+ const host=await call({action:'create',name:'Runner'});await call({action:'practice',...auth(host)});const code=host.room.code,g=openGround();
+ const me=()=>find(state(code),host.id);
+ edit(code,room=>{Object.assign(find(room,host.id),{species:'lion',x:g.x,y:g.y,vx:0,vy:0,dx:0,dy:0,deadUntil:0,stunUntil:0,climb:'',perched:false,protectedUntil:Date.now()+60000});for(const p of room.players)if(p.bot&&Math.hypot(p.x-g.x,p.y-g.y)<400)p.x=(p.x+1600)%3900+50;});
+ const {born}=me(),top=ANIMALS.lion.gait.sprint*UNITS_PER_METRE;let seq=100,x=g.x;
+ const report=async(at,extra={})=>{await wait(110);return call({action:'sync',...auth(host),seq:++seq,dx:1,dy:0,sprint:true,x:at,y:g.y,vx:top,vy:0,born,...extra});};
+ await report(x+=5);assert.equal(me().x,x,'a small step is taken as reported');assert.equal(me().fix,undefined);
+ await report(x+=top*.1);assert.equal(me().x,x,'a full-speed stride between syncs is taken');
+ const r=await report(x+500);assert.notEqual(me().x,x+500,'a 50 m jump is refused');assert.equal(me().fix,1);assert.equal(find(r.room,host.id).fix,1,'the owner is told to rejoin');
+ x=me().x;await report(x+5,{born:born-1});assert.equal(me().fix,1,'a report from an earlier life is ignored');
+ edit(code,room=>{find(room,host.id).stunUntil=Date.now()+5000;});x=me().x;await report(x+40);assert.ok(Math.abs(me().x-x)<1,'a kicked, stunned animal stays where the server holds it');assert.equal(me().fix,2);
+ edit(code,room=>{find(room,host.id).stunUntil=0;});
+ // running at 1.6x the species' top speed is accepted only until the jitter allowance runs out
+ let refused=false,last=Date.now();x=me().x;for(let i=0;i<12&&!refused;i++){const before=me().fix;await wait(110);const t=Date.now();x+=top*1.6*(t-last)/1000;last=t;await call({action:'sync',...auth(host),seq:++seq,dx:1,dy:0,sprint:true,x,y:g.y,vx:top,vy:0,born});refused=me().fix!==before;}
+ assert.ok(refused,'sustained over-speed is refused');
+});
