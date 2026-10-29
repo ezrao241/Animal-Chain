@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {HUNT_REACH_MULTIPLIER,move,UNITS_PER_METRE,spawnPoint,W,H,ANIMALS,SPECIES,WILDLIFE,newPlayer,newRoom,start,respawn,die,tick,props,interact,savannaEvent,useAbility,perch,hidden,publicRoom,makeFoods,solid,solidRadius,KICK_RANGE,TREE_REACH,climbPose,canClimb,BODY,resolveStrike,STRIKE_WINDUP} from '../lib/game.ts';
+import {HUNT_REACH_MULTIPLIER,move,UNITS_PER_METRE,spawnPoint,W,H,ANIMALS,SPECIES,WILDLIFE,newPlayer,newRoom,start,respawn,die,tick,props,interact,savannaEvent,useAbility,perch,hidden,publicRoom,makeFoods,solid,solidRadius,KICK_RANGE,TREE_REACH,climbPose,canClimb,BODY,resolveStrike,STRIKE_WINDUP,lightAt as lightAtSync} from '../lib/game.ts';
 /** press E and let the lunge land */
 const hunt=(p,room,t)=>{interact(p,room,t);if(p.strikeId&&p.strikeAt)resolveStrike(p,room,t+STRIKE_WINDUP);};
 import {tree as acaciaTree,limbPoint} from '../lib/acacia.ts';
@@ -317,4 +317,30 @@ test('species are dealt fairly: every animal once in each run of six lives, neve
  for(let i=1;i<seen.length;i++)assert.notEqual(seen[i],seen[i-1]);
  for(const s of SPECIES){const n=seen.filter(x=>x===s).length;assert.ok(n>=9&&n<=11,s+' came up '+n+' times in 60 lives');}
  assert.equal(publicRoom(room,NOW).players.some(p=>'bag' in p),false,'upcoming animals stay secret');
+});
+// ---- day and night
+test('day and night: a round opens at 10:00, a day passes every 5 minutes, and the sun takes its real path at 2.3° S',async()=>{
+ const {clockHour,sunAt,lightAt,DAY_MS}=await import('../lib/game.ts');
+ assert.equal(DAY_MS,300000);
+ assert.deepEqual([0,100000,200000,300000].map(t=>Math.round(clockHour({started:NOW},NOW+t)*100)/100),[10,18,2,10],'the bonus phases fall at 10:00, 18:00 and 02:00');
+ // 10:00 is the late-morning sun the world was lit by before: altitude 51°, azimuth 47° east of north
+ const s=sunAt(10);assert.ok(Math.abs(Math.asin(s.up)*180/Math.PI-51)<1);assert.ok(Math.abs(Math.atan2(s.east,s.north)*180/Math.PI-47)<1.5);
+ // near the equator the sun rises close to 06:00 and sets close to 18:00 (about 06:04 and 17:56 in late June)
+ const rise=[...Array(2400).keys()].map(i=>i/100).find(h=>h>3&&sunAt(h).up>0),set=[...Array(2400).keys()].map(i=>i/100).find(h=>h>12&&sunAt(h).up<0);
+ assert.ok(Math.abs(rise-6.07)<.05&&Math.abs(set-17.93)<.05,`sunrise ${rise}, sunset ${set}`);
+ const room={started:NOW,seed:417,round:1};
+ assert.equal(lightAt(room,NOW).day,1);assert.equal(lightAt(room,NOW+150000).day,0,"22:00 is dark");
+});
+test('day and night: in the dark, prey notice a lion much later; a lion still sees prey nearly as far as by day',()=>{
+ const{room,player}=fixture('impala');room.round=1;
+ const lion=newPlayer('wild-lion','Lion',NOW,true,'lion');Object.assign(lion,{x:player.x+110,y:player.y,vx:50,vy:0,dx:1,dy:0,protectedUntil:0});room.players.push(lion);
+ const LATE=NOW+150000; // 22:00
+ // a walking lion 11 m off in the open: seen by day, missed on a dark night
+ assert.equal(sense(player,lion,room,NOW)?.how,'sight');
+ const night=[...Array(40).keys()].map(r=>({...room,round:r})).find(r=>{const{moonlight}=lightAtSync(r,LATE);return moonlight<.1;});
+ assert.ok(night,'some round has a dark midnight');
+ assert.notEqual(sense(player,lion,night,LATE)?.how,'sight');
+ // the lion keeps most of its sight: it still sees the impala walking at the same distance
+ Object.assign(player,{vx:40,vy:0,dx:1,dy:0});
+ assert.equal(sense(lion,player,night,LATE)?.how,'sight');
 });

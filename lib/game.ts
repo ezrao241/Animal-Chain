@@ -67,8 +67,45 @@ export const WILDLIFE:Species[]=Array.from({length:60},(_,i)=>WILDLIFE_MIX[i%WIL
 export function savannaEvent(room:Pick<Room,'started'>,now:number){const k=Math.floor(Math.max(0,now-room.started)/100000),next=room.started+(k+1)*100000;return [
  {name:'GOLDEN GRAZE',detail:'Food is worth +2 extra points',kind:'forage',next},
  {name:'THE HUNT',detail:'Successful hunts earn +5 extra points',kind:'hunt',next},
- {name:'DUSK RUN',detail:'Escape a predator for double points',kind:'escape',next}
+ {name:'DAWN RUN',detail:'Escape a predator for double points',kind:'escape',next}
  ][k%3];}
+/** Day and night. Every round opens at 10:00 and a whole savanna day passes in DAY_MS (5 real minutes: a game
+ *  compression), so the bonus phases fall at their natural times: Golden graze 10:00–18:00, the Hunt 18:00–02:00 in the
+ *  dark, Dawn run 02:00–10:00. The sun takes its real path for 2.3° S in late June (computed below: it rises about 06:04
+ *  and sets about 17:56 local solar time); docs/wildlife-sources.md has what is fact and what is game rule. */
+export const DAY_MS=300000,DAY_START=10,LATITUDE=-2.3,DECLINATION=23.4;
+/** Hour of the day, 0..24, in local solar time. A lobby (not started) shows the opening hour. */
+export function clockHour(room:Pick<Room,'started'>,now:number){return(DAY_START+(room.started?Math.max(0,now-room.started):0)/DAY_MS*24)%24;}
+/** Unit direction to the sun at a solar hour: east, north and up components (the map has east +x, north -y). */
+export function sunAt(hour:number){
+ const r=Math.PI/180,h=(hour-12)*15*r,lat=LATITUDE*r,dec=DECLINATION*r;
+ return{east:-Math.cos(dec)*Math.sin(h),north:Math.cos(lat)*Math.sin(dec)-Math.sin(lat)*Math.cos(dec)*Math.cos(h),up:Math.sin(lat)*Math.sin(dec)+Math.cos(lat)*Math.cos(dec)*Math.cos(h)};
+}
+const smoothstep=(a:number,b:number,v:number)=>{const k=Math.max(0,Math.min(1,(v-a)/(b-a)));return k*k*(3-2*k);};
+/** The round's moon, 0 = new, .5 = full: fixed for a round, new each round. The moon trails the sun by its phase
+ *  times a day (a full moon rises at sunset; a few nights later it rises late, so the evening is dark). */
+export function moonPhase(room:Pick<Room,'seed'|'round'>){return rng(room.seed*53+(room.round||0)*4513)();}
+export type Light={hour:number;sun:ReturnType<typeof sunAt>;moon:ReturnType<typeof sunAt>;phase:number;
+ /** 0 at night .. 1 in daylight: civil twilight (sun 6° below to 6° above the horizon) is the change-over */
+ day:number;
+ /** moonlight on the ground, 0..1: how full the moon is and whether it is up */
+ moonlight:number};
+let memoAt=NaN,memoStarted=NaN,memoSeed=NaN,memoRound=NaN,lightMemo:Light|undefined;
+export function lightAt(room:Pick<Room,'started'|'seed'|'round'>,now:number):Light{
+ if(lightMemo&&now===memoAt&&room.started===memoStarted&&room.seed===memoSeed&&room.round===memoRound)return lightMemo;
+ const hour=clockHour(room,now),sun=sunAt(hour),phase=moonPhase(room),moon=sunAt((hour-phase*24+24)%24);
+ const full=(1-Math.cos(phase*Math.PI*2))/2;
+ memoAt=now;memoStarted=room.started;memoSeed=room.seed;memoRound=room.round;return lightMemo={hour,sun,moon,phase,day:smoothstep(-.105,.105,sun.up),moonlight:full*smoothstep(-.02,.2,moon.up)};
+}
+export const isPredator=(s:Species)=>ANIMALS[s].prey.length>0;
+/** How much of its daylight sight range an animal keeps in the dark (game values, real ordering): lions, leopards and
+ *  hyenas have eyes built for low light and do most of their hunting at night; the grazers see far less on a dark
+ *  night and a little more under a bright moon (lions catch more on dark, moonless nights). */
+export const NIGHT_SIGHT={predator:.85,prey:.4,preyMoon:.3};
+export function sightInLight(s:Species,l:Light){
+ const night=isPredator(s)?NIGHT_SIGHT.predator+.1*l.moonlight:NIGHT_SIGHT.prey+NIGHT_SIGHT.preyMoon*l.moonlight;
+ return l.day+(1-l.day)*night;
+}
 export function cameraInput(dx:number,dy:number,yaw=0){return{dx:dx*Math.cos(yaw)+dy*Math.sin(yaw),dy:-dx*Math.sin(yaw)+dy*Math.cos(yaw)};}
 export const dist=(a:{x:number;y:number},b:{x:number;y:number})=>{const dx=a.x-b.x,dy=a.y-b.y;return Math.sqrt(dx*dx+dy*dy);};
 export function rng(seed:number){let a=seed;return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
@@ -252,7 +289,7 @@ export function sense(o:Player,t:Player,room:Room,now:number,ps=props(room.seed)
  if(t.deadUntil||hidden(t,room,now))return null;
  const d=dist(o,t),unnoticed=creptBehind(o,t,room,now);if(d<CLOSE_RANGE&&!unnoticed)return{how:'close',range:d};
  if(d>400)return null;
- const sight=ANIMALS[o.species].sight*(headDown(o,now)?.7:1)*conspicuity(t,ps,now);
+ const sight=ANIMALS[o.species].sight*(headDown(o,now)?.7:1)*conspicuity(t,ps,now)*sightInLight(o.species,lightAt(room,now));
  if(d<sight&&!sightBlocked(ps,o,t))return{how:'sight',range:d};
  const w=wind(room);if(d<SCENT_RANGE&&!unnoticed&&((o.x-t.x)*w.x+(o.y-t.y)*w.y)/d>.64)return{how:'scent',range:d};
  if(d<SOUND_RANGE&&speedOf(t)>walkPace(t.species)*1.05)return{how:'sound',range:d};
@@ -691,9 +728,13 @@ function grazer(p:Player,room:Room,ps:Prop[],t:number,think:number):Plan{
 /** Below this food level a wild predator goes looking for prey. Lions and hyena clans take any good chance at a
  *  zebra herd (real lions hunt opportunistically when prey comes close, even after eating); leopards are choosier. */
 const KEEN:Partial<Record<Species,number>>={lion:97,hyena:97,leopard:85};
+/** By day the wild hunters mostly lie up: lions rest through much of the day and do most of their hunting after dark,
+ *  hyenas are mainly nocturnal, leopards hunt by night and at dawn and dusk but also by day. All of them still take a
+ *  good chance in daylight, so in full day they only set out when this much hungrier (game values). */
+export const DAY_REST:Partial<Record<Species,number>>={lion:22,hyena:16,leopard:10};
 export const CHASE={lion:{start:150,give:5000,walk:.35},leopard:{start:110,give:4000,walk:.3},hyena:{start:230,give:12000,walk:.55}} as const;
 function hunter(p:Player,room:Room,ps:Prop[],t:number):Plan{
- const a=ANIMALS[p.species],c=CHASE[p.species as keyof typeof CHASE],keen=KEEN[p.species]??85;
+ const a=ANIMALS[p.species],c=CHASE[p.species as keyof typeof CHASE],keen=(KEEN[p.species]??85)-(DAY_REST[p.species]??0)*lightAt(room,t).day;
  if(p.mood==='rest'&&t<p.moodUntil){const tree=nearest(ofKind(ps,'tree'),p,500);return{goal:tree?{x:tree.x+22,y:tree.y+6}:undefined,pace:.3};}
  let q=p.targetId?room.players.find(o=>o.id===p.targetId):undefined;
  if(q&&(q.deadUntil||hidden(q,room,t)))q=undefined;

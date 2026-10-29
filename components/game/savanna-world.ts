@@ -172,7 +172,7 @@ function pool(size:number,seed:number){
  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));g.computeVertexNormals();return g;
 }
 
-export type Savanna={/** direction to the sun now (late morning in play, low in the west on the home screen) */sun:THREE.Vector3;update(time:number,x:number,z:number,range:number,cameraFar:number,camera:THREE.Vector3,wind?:{x:number;y:number}):void;realShadows(on:boolean):void;dusk():void;dispose():void};
+export type Savanna={/** direction to the sun now (late morning in play, low in the west on the home screen) */sun:THREE.Vector3;update(time:number,x:number,z:number,range:number,cameraFar:number,camera:THREE.Vector3,wind?:{x:number;y:number}):void;realShadows(on:boolean):void;dusk():void;/** time of day in play: sun and moon directions (x east, y up, z south), how light it is (0 night, 1 day) and the moonlight */daylight(sun:THREE.Vector3,moon:THREE.Vector3,day:number,moonlight:number):void;dispose():void};
 export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
  const disposables:{dispose():void}[]=[],add=<T extends THREE.Object3D>(o:T)=>{scene.add(o);return o;};
  const facet=facetMaterial();disposables.push(facet);
@@ -244,12 +244,18 @@ export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
  const waters=WATERS.map((w,i)=>{const geo=pool(w.size,i+1);const mesh=add(new THREE.Mesh(geo,waterMat));mesh.position.set(w.x,waterLevel(w),w.y);mesh.receiveShadow=true;disposables.push(geo);return{mesh,base:Float32Array.from(geo.getAttribute('position').array as Float32Array)};});
  // sky dome: pale dusty haze at the horizon, a clean blue overhead, and a soft glow around the sun
  const skyGeo=new THREE.SphereGeometry(1,40,20),skyCol:number[]=[],sp=skyGeo.getAttribute('position'),sv=new THREE.Vector3();
- for(let i=0;i<sp.count;i++){sv.fromBufferAttribute(sp,i);const y=sv.y,c=hex(0xe3e6df).lerp(hex(0xbfd6e8),smooth(.0,.12,y)).lerp(hex(0x7fb0de),smooth(.1,.45,y)).lerp(hex(0x4f86c9),smooth(.45,1,y));c.lerp(hex(0xfdf8ea),smooth(.82,1,sv.normalize().dot(SUN))*.6);skyCol.push(c.r,c.g,c.b);}
+ const daySky=(y:number,toSun:number)=>hex(0xe3e6df).lerp(hex(0xbfd6e8),smooth(.0,.12,y)).lerp(hex(0x7fb0de),smooth(.1,.45,y)).lerp(hex(0x4f86c9),smooth(.45,1,y)).lerp(hex(0xfdf8ea),smooth(.82,1,toSun)*.6);
+ for(let i=0;i<sp.count;i++){sv.fromBufferAttribute(sp,i);const c=daySky(sv.y,sv.normalize().dot(SUN));skyCol.push(c.r,c.g,c.b);}
  skyGeo.setAttribute('color',new THREE.Float32BufferAttribute(skyCol,3));const skyMat=new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.BackSide,fog:false,depthWrite:false});
  const sky=add(new THREE.Mesh(skyGeo,skyMat));sky.renderOrder=-3;disposables.push(skyGeo,skyMat);
  const cloudGeo=clouds(lightweight),cloudMat=new THREE.MeshBasicMaterial({vertexColors:true,fog:false,depthWrite:false});const cloudMesh=add(new THREE.Mesh(cloudGeo,cloudMat));cloudMesh.renderOrder=-2;disposables.push(cloudGeo,cloudMat);
  const sunDir=SUN.clone(),sunMat=new THREE.MeshBasicMaterial({color:0xfff6dc,fog:false,depthWrite:false}),sunGeo=new THREE.CircleGeometry(.04,16),haloMat=new THREE.MeshBasicMaterial({color:0xfff0c8,fog:false,depthWrite:false,transparent:true,opacity:.28}),haloGeo=new THREE.CircleGeometry(.075,16);
  const sunDisc=add(new THREE.Mesh(sunGeo,sunMat)),sunHalo=add(new THREE.Mesh(haloGeo,haloMat));sunDisc.renderOrder=-2;sunHalo.renderOrder=-2;disposables.push(sunMat,sunGeo,haloMat,haloGeo);
+ // the moon (its own disc, cool white) and a field of stars fixed to the sky dome, both only seen after dark
+ const moonDir=new THREE.Vector3(0,-1,0),moonMat=new THREE.MeshBasicMaterial({color:0xeef1f8,fog:false,depthWrite:false,transparent:true,opacity:0}),moonGeo=new THREE.CircleGeometry(.03,20),moonDisc=add(new THREE.Mesh(moonGeo,moonMat));moonDisc.renderOrder=-2;moonDisc.visible=false;disposables.push(moonMat,moonGeo);
+ const starPos:number[]=[];for(let i=0;i<(lightweight?350:900);i++){const u=hash(i,1,71),a=hash(i,2,72)*Math.PI*2,y=.04+u*.96,r=Math.sqrt(1-y*y);starPos.push(Math.cos(a)*r,y,Math.sin(a)*r);}
+ const starGeo=new THREE.BufferGeometry();starGeo.setAttribute('position',new THREE.Float32BufferAttribute(starPos,3));const starMat=new THREE.PointsMaterial({color:0xdfe6ff,size:1.6,sizeAttenuation:false,fog:false,depthWrite:false,transparent:true,opacity:0});
+ const stars=add(new THREE.Points(starGeo,starMat));stars.renderOrder=-2;stars.visible=false;disposables.push(starGeo,starMat);
  const hillGeo=horizon(lightweight),hillMat=new THREE.MeshBasicMaterial({vertexColors:true,fog:false,side:THREE.DoubleSide,depthWrite:false});const hills=add(new THREE.Mesh(hillGeo,hillMat));hills.renderOrder=-1;disposables.push(hillGeo,hillMat);
  let lastWater=0;
  return{
@@ -259,6 +265,8 @@ export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
    const radius=far*.92;sky.position.copy(cam);sky.scale.setScalar(radius);hills.position.set(cam.x,cam.y-radius*.04,cam.z);hills.scale.set(radius*.97,radius,radius*.97);
    cloudMesh.position.copy(cam);cloudMesh.scale.setScalar(radius);cloudMesh.rotation.y=t*.0015;
    for(const [disc,d] of [[sunDisc,.95],[sunHalo,.96]] as const){disc.position.copy(cam).addScaledVector(sunDir,radius*d);disc.scale.setScalar(radius);disc.lookAt(cam);}
+   if(moonDisc.visible){moonDisc.position.copy(cam).addScaledVector(moonDir,radius*.95);moonDisc.scale.setScalar(radius);moonDisc.lookAt(cam);}
+   if(stars.visible){stars.position.copy(cam);stars.scale.setScalar(radius*.97);}
    // grass thins out with distance (instances are in random order, so drawing fewer keeps an even spread)
    for(const c of chunks){const d=Math.hypot(c.cx-x,c.cz-z),reach=range*(lightweight?.6:.85)+CH*.7;c.mesh.visible=d<reach;c.mesh.count=Math.ceil(c.full*(d<CH*1.1?1:d<reach*.6?.45:.2));}
    if(Math.hypot(x-lodAt.x,z-lodAt.z)>40||far!==lodAt.far){lodAt.x=x;lodAt.z=z;lodAt.far=far;relevel(x,z,far);}
@@ -271,6 +279,22 @@ export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
    const col=skyGeo.getAttribute('color') as THREE.BufferAttribute;
    for(let i=0;i<sp.count;i++){sv.fromBufferAttribute(sp,i);const y=sv.y,c=hex(0xffb36a).lerp(hex(0xf08a5c),smooth(.0,.1,y)).lerp(hex(0xa8607a),smooth(.08,.32,y)).lerp(hex(0x4a3f78),smooth(.3,.7,y)).lerp(hex(0x1f2450),smooth(.7,1,y));c.lerp(hex(0xffe0a8),smooth(.75,1,sv.normalize().dot(DUSK_SUN))*.75);col.setXYZ(i,c.r,c.g,c.b);}
    col.needsUpdate=true;cloudMat.color.set(0xffb9a0);hillMat.color.set(0x8a6f86);sunMat.color.set(0xffe2a6);haloMat.color.set(0xffb070);haloMat.opacity=.45;
+  },
+  // the clock in play: the sky dome is repainted from three palettes (day, the ember band of sunset and dawn on the sun's
+  // side, a moonlit navy night), the sun and moon discs ride their real paths, stars come out, and the painted ground
+  // shade fades as the sun gets low (it was laid for the late-morning sun; at night there is only moonlight)
+  daylight(sunNow,moon,day,moonlight){
+   const up=sunNow.y,ember=smooth(-.2,.02,up)*(1-smooth(.05,.4,up)),col=skyGeo.getAttribute('color') as THREE.BufferAttribute,hs=Math.hypot(sunNow.x,sunNow.z)||1;
+   for(let i=0;i<sp.count;i++){sv.fromBufferAttribute(sp,i);const y=sv.y,v=sv.normalize(),toSun=v.dot(sunNow),side=.5+.5*(v.x*sunNow.x+v.z*sunNow.z)/(Math.hypot(v.x,v.z)*hs||1);
+    const night=hex(0x1a2744).lerp(hex(0x0d1630),smooth(.0,.35,y)).lerp(hex(0x060b1c),smooth(.35,1,y)).lerp(hex(0x2c3a5c),smooth(.9,1,v.dot(moon))*moonlight*.8),
+     glow=hex(0xffb36a).lerp(hex(0xf08a5c),smooth(.0,.1,y)).lerp(hex(0xa8607a),smooth(.08,.32,y)).lerp(hex(0x4a3f78),smooth(.3,.7,y)).lerp(hex(0x1f2450),smooth(.7,1,y)).lerp(hex(0xffe0a8),smooth(.75,1,toSun)*.75);
+    const c=night.lerp(daySky(y,toSun),day).lerp(glow,ember*(.25+.75*side*side)*(1-smooth(.2,.8,y)*.5));col.setXYZ(i,c.r,c.g,c.b);}
+   col.needsUpdate=true;
+   const tint=hex(0x27304a).lerp(hex(0xffffff),day).lerp(hex(0xffb9a0),ember*.8);cloudMat.color.copy(tint);hillMat.color.copy(hex(0x2a3248).lerp(hex(0xffffff),day).lerp(hex(0x8a6f86),ember*.7));
+   sunDir.copy(sunNow);sunMat.color.set(0xfff6dc).lerp(hex(0xffb070),ember);haloMat.color.set(0xfff0c8).lerp(hex(0xff9a50),ember);haloMat.opacity=.28+ember*.25;sunDisc.visible=sunHalo.visible=up>-.06;
+   moonDir.copy(moon);moonDisc.visible=moon.y>-.03&&moonlight>.02;moonMat.opacity=Math.min(1,.25+moonlight*.9)*(1-day*.7);
+   starMat.opacity=(1-smooth(-.25,.05,up))*(1-moonlight*.45);stars.visible=starMat.opacity>.01;
+   shadeMat.opacity=.2*smooth(.15,.6,up);
   },
   dispose(){disposables.forEach(d=>d.dispose());},
  };
