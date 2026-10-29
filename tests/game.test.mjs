@@ -344,3 +344,19 @@ test('day and night: in the dark, prey notice a lion much later; a lion still se
  Object.assign(player,{vx:40,vy:0,dx:1,dy:0});
  assert.equal(sense(lion,player,night,LATE)?.how,'sight');
 });
+test('animals walk through each other: no body blocks another, trunks and boulders still do, and a catch still lands',()=>{
+ const ps=props(417);
+ // a player runs straight through a standing zebra and through another player, in the rules and on its own device (move)
+ for(const s of SPECIES){const{room,player}=fixture(s);const z=near(player,'zebra',60),other=near(player,'warthog',120);other.bot=false;room.players.push(z,other);let now=NOW,closest=Infinity;
+  for(let i=0;i<60;i++){player.dx=1;player.dy=0;move(player,.05,ps,now);now+=50;closest=Math.min(closest,Math.hypot(player.x-z.x,player.y-z.y));}
+  assert.ok(closest<3,`${s} passes through a zebra (closest ${closest.toFixed(1)})`);assert.ok(player.x>other.x+20,`${s} passes through another player`);}
+ // the whole room ticking: a human impala crosses a wild zebra's body
+ {let now=NOW;const me=newPlayer('h1','me',now,false,'impala');const room=newRoom('WALKTH',me,now);start(room,now);const p=room.players.find(x=>x.id==='h1'),z=room.players.find(x=>x.bot&&x.species==='zebra');
+  const zx=z.x,zy=z.y;Object.assign(p,{species:'impala',x:zx-60,y:zy,protectedUntil:now+1e6});let closest=Infinity;
+  for(let i=0;i<40;i++){p.dx=1;p.dy=0;p.inputAt=now;p.lastSeen=now;Object.assign(z,{x:zx,y:zy,vx:0,vy:0,protectedUntil:now+1e6});now+=100;tick(room,now);closest=Math.min(closest,Math.hypot(p.x-zx,p.y-zy));}
+  assert.ok(closest<5&&p.x>zx+60,'a ticking room lets the impala run through the zebra');}
+ // a lion that ran into its prey, the impala's centre now inside its body just behind its shoulders, still catches it
+ {const{room,player}=fixture('lion');player.heading=0;const q=near(player,'impala',-5);room.players.push(q);hunt(player,room,NOW);assert.equal(player.hunts,1,'overlapping prey is in contact');}
+ // ...but prey a clear body length behind is still a miss
+ {const{room,player}=fixture('lion');player.heading=0;const q=near(player,'impala',-12);room.players.push(q);hunt(player,room,NOW);assert.equal(player.hunts,0);}
+});

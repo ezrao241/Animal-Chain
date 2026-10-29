@@ -269,8 +269,11 @@ export function contactBlocked(ps:Prop[],a:{x:number;y:number},b:{x:number;y:num
 }
 /** The way an animal's attack goes: where the player is steering, else the way it is moving or last faced. */
 export const strikeDirection=(p:Player)=>Math.hypot(p.dx,p.dy)>.1?Math.atan2(p.dy,p.dx):p.heading??0;
-/** Prey in front of the hunter: within 85° either side of the way it attacks. */
-export const inFront=(p:Player,q:{x:number;y:number})=>Math.cos(Math.atan2(q.y-p.y,q.x-p.x)-strikeDirection(p))>=Math.cos(85*Math.PI/180);
+/** Animals walk through each other (only trunks and boulders are solid), so a hunter can end up with its prey's centre
+ *  inside its own body, nose to rump. That is contact whichever way it faces. */
+export const touching=(p:Player,q:{x:number;y:number})=>dist(p,q)<BODY[p.species][1]*UNITS_PER_METRE;
+/** Prey in front of the hunter: within 85° either side of the way it attacks, or already inside its body. */
+export const inFront=(p:Player,q:{x:number;y:number})=>touching(p,q)||Math.cos(Math.atan2(q.y-p.y,q.x-p.x)-strikeDirection(p))>=Math.cos(85*Math.PI/180);
 export function sightBlocked(ps:Prop[],a:{x:number;y:number},b:{x:number;y:number}){
  const vx=b.x-a.x,vy=b.y-a.y,len=Math.hypot(vx,vy);if(len<1)return false;
  for(const t of solidNear(ps,(a.x+b.x)/2,(a.y+b.y)/2,len/2+60)){if(t.kind!=='rock')continue;const r=solidRadius(t)*.9,u=((t.x-a.x)*vx+(t.y-a.y)*vy)/(len*len);if(u<=0||u>=1)continue;if(Math.hypot(a.x+vx*u-t.x,a.y+vy*u-t.y)<r&&dist(t,a)>r+4&&dist(t,b)>r+4)return true;}
