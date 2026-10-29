@@ -75,3 +75,16 @@ Checks run: 55 Node tests (game, route, safari-updates, client-motion), tsc --no
 lobby, ELAPSED clock counting up, host ending the round with the explanation on results, a lion catch with the 5 s
 feeding HUD and pose, and a poacher guarding by its jeep, warning, firing (lion 100 -> 75), retreating, driving away and
 leaving the map. Screens are software-rendered (SwiftShader); real-GPU and phone checks have not been done.
+
+## Poachers removed (Oct 29)
+
+At Romoke's request the poacher encounter is gone: no poachers, jeeps, shots or player health. Removed `Poacher`,
+`spawnPoachers`, `engagePoacher`, `stepPoachers`, `poacherSight`, `driveEscape` and `jeepDoor` from lib/game.ts,
+components/game/poacher-models.ts, the jeep compass cue and minimap squares, the Health meter, and the poacher tests.
+One-hit catches with 1.44x reach, proportional 5/6/7 s feeding and everything else are unchanged.
+
+## Round-length choice removed (Oct 29)
+
+Also at Romoke's request, rounds are five minutes again with no host picker: `configure`/`end`, `room.duration`,
+`room.endedBy`, `DURATIONS` and `finishRound` are gone, and tick() again caps a round at 300 s. Hunts stay one-hit (1.44x
+reach) with the 5/6/7 s proportional feeding.

@@ -1,4 +1,3 @@
-import {createTerrainHeight} from './terrain-height.ts';
 // Animal Chain: African savanna rules shared by the server, the offline practice build and the 3D client.
 // 400 x 280 m playable map; 10 game units = 1 m. Animals are life-size.
 import {tree,limbPoint,type Tree} from './acacia.ts';
@@ -34,7 +33,7 @@ export type Player={id:string;token?:string;name:string;bot:boolean;species:Spec
   *  along it and which way the animal faces on it, the limb it is heading for (-1 = down), the mount progress, and
   *  vertical speed while jumping down. Optional so rooms saved before climbing existed still load. */
  /** the species still to come for a human player, so every animal comes up once in each run of six lives */
- bag?:Species[]; health?:number; hitUntil?:number; feeding?:{until:number;duration:number;last:number};
+ bag?:Species[]; feeding?:{until:number;duration:number;last:number};
  /** water, 100 = just drunk; it runs down on its own, separately from food */
  thirst?:number;
  /** a committed catch attempt: the prey it is aimed at and when the lunge lands (or a leopard's leap, on landing) */
@@ -56,11 +55,11 @@ export type Player={id:string;token?:string;name:string;bot:boolean;species:Spec
  tree?:number;climb?:Climb;ch?:number;side?:number;limb?:number;along?:number;limbDir?:number;goal?:number;mount?:number;climbHold?:number;vh?:number};
 /** one finished life: what it was, how long it lasted, what it earned and how it ended */
 export type LifeRecord={species:Species;seconds:number;points:number;food:number;hunts:number;cause:string};
-export type Room={code:string;host:string;phase:'lobby'|'playing'|'finished';started:number;ends:number;tick:number;players:Player[];foods:Food[];events:string[];seed:number;round:number;practice?:boolean;duration?:300|600|0;/** set when the host ended the round early (or ended an unlimited round) */endedBy?:'host';poachers?:Poacher[];rs?:number};
+export type Room={code:string;host:string;phase:'lobby'|'playing'|'finished';started:number;ends:number;tick:number;players:Player[];foods:Food[];events:string[];seed:number;round:number;practice?:boolean;rs?:number};
 // Computer-controlled wildlife keeps savanna proportions: plenty of grazers, a few predators.
 const WILDLIFE_MIX:Species[]=['impala','zebra','impala','warthog','zebra','impala','hyena','impala','warthog','zebra','lion','impala','warthog','zebra','leopard','lion','warthog','hyena','zebra','impala'];
 export const WILDLIFE:Species[]=Array.from({length:60},(_,i)=>WILDLIFE_MIX[i%WILDLIFE_MIX.length]);
-// the three 100 s phases repeat in rounds longer than five minutes (10 minutes, unlimited); a 5-minute round sees each once
+// the three 100 s phases of the five-minute round (they would repeat if a round ran longer)
 export function savannaEvent(room:Pick<Room,'started'>,now:number){const k=Math.floor(Math.max(0,now-room.started)/100000),next=room.started+(k+1)*100000;return [
  {name:'GOLDEN GRAZE',detail:'Food is worth +2 extra points',kind:'forage',next},
  {name:'THE HUNT',detail:'Successful hunts earn +5 extra points',kind:'hunt',next},
@@ -172,7 +171,7 @@ export function spawnPoint(species:Species,room?:Room,seed=Math.floor(Math.rando
  let q=habitat(species,r);for(let i=0;i<14&&inSight(room,species,q);i++)q=habitat(species,r);
  return q;
 }
-export function newPlayer(id:string,name:string,now:number,bot=false,species?:Species,room?:Room):Player{const kind=species||SPECIES[Math.floor(Math.random()*6)];const p={id,name,bot,species:kind,...spawnPoint(kind,room,Math.floor(Math.random()*1e9)),dx:0,dy:0,vx:0,vy:0,perched:false,perchHeight:0,actionUntil:0,lastSeen:now,inputAt:now,born:now,protectedUntil:now+4000,deadUntil:0,abilityUntil:0,abilityReady:0,interactReady:0,stunUntil:0,hunger:100,health:100,feeding:undefined,hitUntil:0,survived:0,thirst:70+idHash(id+'water')*25,strikeId:'',strikeAt:0,strikeAmbush:false,score:0,deaths:0,food:0,hunts:0,drinks:0,scavenged:0,escapes:0,hiddenSeconds:0,survivalSeconds:0,claimed:[false,false,false],sprint:false,stamina:100,threatAt:0,face:1,message:'A new place in the chain.',messageUntil:now+3000,seq:0,targetX:0,targetY:0,heading:0,mood:'wander' as Mood,alert:0,targetId:'',moodUntil:0,alarmAt:0,calledAt:0,threatX:0,threatY:0,lastThreatAt:0,homeX:0,homeY:0,herd:'',nextDrink:now+40000+idHash(id)*60000,chaseStart:0,thinkAt:0,stuckX:0,stuckY:0,stuckAt:now,unstickUntil:0};p.homeX=p.stuckX=p.x;p.homeY=p.stuckY=p.y;return p;}
+export function newPlayer(id:string,name:string,now:number,bot=false,species?:Species,room?:Room):Player{const kind=species||SPECIES[Math.floor(Math.random()*6)];const p={id,name,bot,species:kind,...spawnPoint(kind,room,Math.floor(Math.random()*1e9)),dx:0,dy:0,vx:0,vy:0,perched:false,perchHeight:0,actionUntil:0,lastSeen:now,inputAt:now,born:now,protectedUntil:now+4000,deadUntil:0,abilityUntil:0,abilityReady:0,interactReady:0,stunUntil:0,hunger:100,feeding:undefined,survived:0,thirst:70+idHash(id+'water')*25,strikeId:'',strikeAt:0,strikeAmbush:false,score:0,deaths:0,food:0,hunts:0,drinks:0,scavenged:0,escapes:0,hiddenSeconds:0,survivalSeconds:0,claimed:[false,false,false],sprint:false,stamina:100,threatAt:0,face:1,message:'A new place in the chain.',messageUntil:now+3000,seq:0,targetX:0,targetY:0,heading:0,mood:'wander' as Mood,alert:0,targetId:'',moodUntil:0,alarmAt:0,calledAt:0,threatX:0,threatY:0,lastThreatAt:0,homeX:0,homeY:0,herd:'',nextDrink:now+40000+idHash(id)*60000,chaseStart:0,thinkAt:0,stuckX:0,stuckY:0,stuckAt:now,unstickUntil:0};p.homeX=p.stuckX=p.x;p.homeY=p.stuckY=p.y;return p;}
 /** A stable 0..1 number per animal, for per-animal variety (reaction time, flee angle) that tests can reproduce. */
 export function idHash(id:string){let h=2166136261;for(let i=0;i<id.length;i++)h=Math.imul(h^id.charCodeAt(i),16777619);return((h^h>>>15)>>>0)/4294967296;}
 /** Seeded randomness kept in the room, so a round's wildlife decisions replay the same from the same state. */
@@ -186,7 +185,7 @@ export function nextSpecies(p:Pick<Player,'species'|'bag'>):Species{
  return p.bag.shift()!;
 }
 export function respawn(p:Player,now:number,room?:Room){const species=p.bot?(WILDLIFE[Number(p.id.replace('wild-',''))]||p.species):nextSpecies(p);const fresh=newPlayer(p.id,p.bot?ANIMALS[species].name:p.name,now,p.bot,species,room);const carry=p.carry;Object.assign(p,fresh,{bag:p.bag,lives:p.lives,lifeStart:p.score,carry:undefined,score:p.score,deaths:p.deaths,token:p.token,lastSeen:p.lastSeen,seq:p.seq,herd:p.herd,homeX:p.homeX,homeY:p.homeY});if(carry){p.hunger=Math.min(p.hunger,Math.max(25,carry.hunger));p.thirst=Math.min(p.thirst??100,Math.max(25,carry.thirst));}if(p.bot&&room)rejoinHerd(p,room,now);p.claimed=p.claimed.map((_,i)=>i<2&&!!p.done?.includes(p.species+':'+i));notify(p,'New life. New animal.',now);}
-export function start(room:Room,now:number){room.phase='playing';room.started=now;room.endedBy=undefined;room.ends=room.duration===0?0:now+(room.duration??300)*1000;room.tick=now;room.round++;room.foods=makeFoods(room.seed);room.players=room.players.filter(p=>!p.bot);for(const p of room.players){const token=p.token,species=nextSpecies(p),bag=p.bag;Object.assign(p,newPlayer(p.id,p.name,now,false,species,room),{token,bag,done:[],lives:[],lifeStart:0});}room.rs=room.seed*977+room.round*131;placeWildlife(room,now);room.poachers=spawnPoachers(room);room.events=['Golden graze. Find food, complete tasks, survive.'];}
+export function start(room:Room,now:number){room.phase='playing';room.started=now;room.ends=now+300000;room.tick=now;room.round++;room.foods=makeFoods(room.seed);room.players=room.players.filter(p=>!p.bot);for(const p of room.players){const token=p.token,species=nextSpecies(p),bag=p.bag;Object.assign(p,newPlayer(p.id,p.name,now,false,species,room),{token,bag,done:[],lives:[],lifeStart:0});}room.rs=room.seed*977+room.round*131;placeWildlife(room,now);room.events=['Golden graze. Find food, complete tasks, survive.'];}
 export const leaping=(p:Player,now:number)=>p.species==='impala'&&p.abilityUntil>now;
 const stalking=(p:Player,now:number)=>p.species==='leopard'&&p.abilityUntil>now&&!p.perched;
 const inThicket=(ps:Prop[],x:number,y:number)=>bushNear(ps,x,y,26);
@@ -498,7 +497,6 @@ export function interact(p:Player,room:Room,now:number){if(p.deadUntil||p.feedin
  if(p.stunUntil>now){notify(p,'Still stunned.',now);return;}
  const a=ANIMALS[p.species],ambush=p.species==='leopard'&&p.climb==='limb';
  const reach=(ambush?AMBUSH_RANGE:p.abilityUntil>now&&(p.species==='lion'||p.species==='leopard')?POUNCE_RANGE:a.catchRange)*HUNT_REACH_MULTIPLIER;
- if(engagePoacher(p,room,now,reach))return;
  const victims=room.players.filter(q=>q.id!==p.id&&!q.deadUntil&&q.protectedUntil<now&&canTake(p,q,room)&&!hidden(q,room,now)&&!leaping(q,now)&&dist(p,q)<reach);victims.sort((x,y)=>dist(p,x)-dist(p,y));
  if(p.climb&&!ambush)return;
  // A catch is a committed lunge: aimed at prey in front, with nothing solid in between, and it lands a quarter of a
@@ -531,9 +529,8 @@ export function resolveStrike(p:Player,room:Room,now:number){
  const reach=(ambush?a.catchRange*1.3:p.abilityUntil>now&&(p.species==='lion'||p.species==='leopard')?POUNCE_RANGE:a.catchRange)*1.15*HUNT_REACH_MULTIPLIER;
  const caught=!!q&&!q.deadUntil&&q.protectedUntil<now&&canTake(p,q,room)&&!hidden(q,room,now)&&!leaping(q,now)&&dist(p,q)<reach&&(ambush||lungeLine(p,q))&&!contactBlocked(ps,p,q);
  if(!q||!caught){notify(p,ambush?'Missed: the prey moved before you landed.':'Missed: it broke away.',now);if(q&&!q.deadUntil)q.threatAt=now;return;}
- if((q.hitUntil??0)>now){notify(p,'It broke free. Give chase.',now);return;}
  // A valid landed hunt is lethal; range, cover, protection and defensive abilities were checked above.
- q.health=0;q.feeding=undefined;
+ q.feeding=undefined;
  die(q,room,now,'was caught by a '+a.name.toLowerCase()+'.');dropCarcass(room,q.x,q.y,now);const duration=FEED_SECONDS[p.species]*1000;p.feeding={until:now+duration,duration,last:now};p.dx=p.dy=p.vx=p.vy=0;p.hunts++;p.food++;
  const points=(savannaEvent(room,now).kind==='hunt'?15:10)+(ambush?3:0);p.score+=points;notify(p,(ambush?'Ambush! ':'Successful hunt ')+'+'+points,now);
 }
@@ -578,12 +575,12 @@ export function tasks(p:Player,now:number):Task[]{
 }
 export function tick(room:Room,now:number){
  for(const p of room.players){p.vx??=0;p.vy??=0;p.sprint??=false;p.stamina??=100;p.perched??=false;p.perchHeight??=0;p.actionUntil??=0;p.survivalSeconds??=0;p.stunUntil??=0;p.drinks??=0;p.scavenged??=0;p.heading??=0;p.mood??='wander';p.alert??=0;p.targetId??='';p.moodUntil??=0;p.alarmAt??=0;p.calledAt??=0;p.lastThreatAt??=0;p.homeX??=p.x;p.homeY??=p.y;p.herd??='';p.nextDrink??=0;p.thinkAt??=0;p.stuckX??=p.x;p.stuckY??=p.y;p.stuckAt??=0;p.unstickUntil??=0;}
- const limit=room.duration===0?now:room.ends;
+ if(room.started&&room.ends-room.started>300000)room.ends=room.started+300000;
  if(room.phase!=='playing'){room.tick=now;return;}
  const humans=room.players.filter(p=>!p.bot&&!p.deadUntil);
- const total=Math.min(1.5,Math.max(0,(Math.min(now,limit)-room.tick)/1000)),ps=props(room.seed),steps=Math.ceil(total/.1);
+ const total=Math.min(1.5,Math.max(0,(Math.min(now,room.ends)-room.tick)/1000)),ps=props(room.seed),steps=Math.ceil(total/.1);
  for(let s=0;s<steps;s++){
- const dt=total/steps,t=Math.min(now,limit)-(steps-1-s)*dt*1000;
+ const dt=total/steps,t=Math.min(now,room.ends)-(steps-1-s)*dt*1000;
  for(const p of room.players){
  if(!p.bot&&t-p.lastSeen>8000){p.dx=0;p.dy=0;p.feeding=undefined;continue;}
  if(p.deadUntil){if(t>=p.deadUntil)respawn(p,t,room);continue;}
@@ -601,7 +598,7 @@ export function tick(room:Room,now:number){
  const threat=room.players.some(q=>!q.deadUntil&&!hidden(q,room,t)&&ANIMALS[q.species].prey.includes(p.species)&&(q.bot?q.mood==='chase'&&q.targetId===p.id:dist(p,q)<150&&((p.x-q.x)*(q.vx||0)+(p.y-q.y)*(q.vy||0))/Math.max(1,dist(p,q))>40));
  if(threat)p.threatAt=t;else if(p.threatAt&&t-p.threatAt>3000){p.escapes++;const points=savannaEvent(room,t).kind==='escape'?10:5;p.score+=points;p.threatAt=0;notify(p,'Escaped a threat +'+points,t);}
  tasks(p,t).forEach((task,i)=>{if(i===2){if(task.value>=task.target){p.survived=(p.survived??0)+1;p.score+=task.points;notify(p,'Still alive +'+task.points,t);}return;}if(!p.claimed[i]&&task.value>=task.target){p.claimed[i]=true;if(i<2&&!p.bot)(p.done??=[]).push(p.species+':'+i);p.score+=task.points;notify(p,'Task complete +'+task.points,t);}});
- }stepPoachers(room,t,dt); }room.tick=now;if(room.duration!==0&&now>=room.ends){room.phase='finished';room.players.forEach(p=>{p.dx=0;p.dy=0;p.vx=0;p.vy=0;});room.events.unshift('Round complete. Every life counted.');}}
+ }}room.tick=now;if(now>=room.ends){room.phase='finished';room.players.forEach(p=>{p.dx=0;p.dy=0;p.vx=0;p.vy=0;});room.events.unshift('Round complete. Every life counted.');}}
 // ---------------------------------------------------------------- wildlife
 // (an alias, so the linter's React-hook naming rule doesn't mistake the ability for a hook)
 const activate=useAbility;
@@ -763,57 +760,3 @@ export function stepFeeding(p:Player,now:number){const f=p.feeding;if(!f)return;
  if(p.deadUntil||p.stunUntil>now||Math.hypot(p.dx,p.dy)>.1){p.feeding=undefined;notify(p,'Feeding stopped. You can move.',now);return;}
  const elapsed=Math.max(0,Math.min(now,f.until)-f.last);p.hunger=Math.min(100,p.hunger+45*elapsed/f.duration);f.last=Math.min(now,f.until);p.vx=p.vy=0;
  if(now>=f.until){p.feeding=undefined;notify(p,'Meal finished.',now);}}
-/** Round lengths the host can pick, in seconds; 0 = no time limit (the host ends it). Rooms saved before this default to 300. */
-export const DURATIONS=[300,600,0] as const;
-export function finishRound(room:Room,now:number,_by:'host'='host'){room.phase='finished';room.ends=now;room.endedBy='host';for(const p of room.players){p.dx=p.dy=p.vx=p.vy=0;p.feeding=undefined;p.strikeId='';}room.events.unshift('The host ended the round.');}
-export type Poacher={x:number;y:number;jeepX:number;jeepY:number;exitX:number;exitY:number;state:'guarding'|'detecting'|'defending'|'retreating'|'entering'|'escaping'|'gone'|'subdued';target:string;health:number;since:number;shotAt:number;nextShot:number;heading:number;escapeHeading?:number;steerSide?:number};
-export function jeepDoor(n:Poacher){const rot=Math.PI/2-(n.escapeHeading??Math.PI);return{x:n.jeepX-16*Math.cos(rot)-3*Math.sin(rot),y:n.jeepY+16*Math.sin(rot)-3*Math.cos(rot)};}
-function spawnPoachers(room:Room):Poacher[]{const ps=props(room.seed),random=rng(room.seed+room.round*17),result:Poacher[]=[];
- // One bounded encounter per map edge, with an inspected corridor to its own exit.
- for(let side=0;side<4;side++)for(let attempt=0;attempt<160;attempt++){
-  const inset=90+random()*80,along=.3+random()*.4;
-  const x=side===0?inset:side===2?W-inset:W*along,y=side===1?inset:side===3?H-inset:H*along;
-  const exitX=side===0?-90:side===2?W+90:x,exitY=side===1?-90:side===3?H+90:y,escapeHeading=Math.atan2(exitY-y,exitX-x);
-  const n:Poacher={x:x-Math.cos(escapeHeading)*35,y:y-Math.sin(escapeHeading)*35,jeepX:x,jeepY:y,exitX,exitY,state:'guarding',target:'',health:100,since:0,shotAt:0,nextShot:0,heading:escapeHeading,escapeHeading};
-  if(room.players.some(p=>!p.bot&&dist(p,n)<300)||blocked(ps,x,y,70)||blocked(ps,n.x,n.y,15))continue;
-  const len=Math.hypot(exitX-x,exitY-y);let clear=true;
-  for(let d=0;d<len;d+=10)if(blocked(ps,x+Math.cos(escapeHeading)*d,y+Math.sin(escapeHeading)*d,40)){clear=false;break;}
-  if(!clear)continue;result.push(n);break;
- }
- return result;
-}
-function engagePoacher(p:Player,room:Room,now:number,reach:number){if(!ANIMALS[p.species].prey.length||p.bot)return false;
- const n=room.poachers?.find(n=>!['gone','escaping','subdued'].includes(n.state)&&dist(p,n)<reach&&inFront(p,n)&&!contactBlocked(props(room.seed),p,n));if(!n)return false;
- n.target=p.id;n.health=Math.max(0,n.health-({lion:46,leopard:38,hyena:32}[p.species as 'lion'|'leopard'|'hyena']??30));if(n.health===0){n.state='subdued';}else if(n.health<=15&&now-n.since>1800&&!['retreating','entering'].includes(n.state)){n.state='retreating';n.since=now;}else if(!['retreating','entering','defending'].includes(n.state)){n.state='defending';n.since=now;}p.stamina=Math.max(0,p.stamina-12);notify(p,n.health===0?'Poacher stopped. Leave the area.':'Poacher aiming! Break contact and use cover.',now);return true;}
-export function stepPoachers(room:Room,now:number,dt:number){for(const n of room.poachers??[]){if(n.state==='gone'||n.state==='subdued')continue;const ps=props(room.seed),p=room.players.find(p=>p.id===n.target);
- if(p&&['detecting','defending'].includes(n.state))n.heading=Math.atan2(p.y-n.y,p.x-n.x);
- const sees=(p:Player)=>!p.deadUntil&&p.protectedUntil<now&&ANIMALS[p.species].prey.length>0&&!hidden(p,room,now)&&dist(p,n)<180&&!contactBlocked(ps,n,p)&&poacherSight(room,n,p);
- if(n.state==='guarding'){const q=room.players.find(p=>!p.bot&&sees(p));if(q){n.target=q.id;n.state='detecting';n.since=now;notify(q,'Poacher aiming at you! Leave range or take cover now.',now);}}
- else if(n.state==='detecting'){if(!p||!sees(p)){n.state='guarding';n.target='';}else if(now-n.since>=1500){n.state='defending';n.since=now-1201;n.nextShot=now;notify(p,'Poacher opening fire! Leave range or find cover.',now);}}
- else if(n.state==='defending'){if(now-n.since>7000||!p||!sees(p)){n.state='retreating';n.since=now;}else if(now-n.since>1200&&now>=n.nextShot){n.shotAt=now;n.nextShot=now+1500;p.health=Math.max(0,(p.health??100)-25);p.feeding=undefined;notify(p,'Shot! Find cover.',now);if(p.health<=0)die(p,room,now,'was stopped by a poacher.');}}
- else if(n.state==='retreating'){const door=jeepDoor(n),d=dist(n,door);if(d<3){n.state='entering';n.since=now;}else{const k=Math.min(1,55*dt/d);n.heading=Math.atan2(door.y-n.y,door.x-n.x);n.x+=(door.x-n.x)*k;n.y+=(door.y-n.y)*k;}}
- else if(n.state==='entering'&&now-n.since>1200){n.state='escaping';n.since=now;}
- else if(n.state==='escaping'){driveEscape(n,room,dt);}
- }}
-
-let sightSeed:number|undefined,sightTerrain:ReturnType<typeof createTerrainHeight>|undefined;
-export function poacherSight(room:Room,a:{x:number;y:number},b:{x:number;y:number}){
- if(sightSeed!==room.seed||!sightTerrain){sightSeed=room.seed;sightTerrain=createTerrainHeight(props(room.seed),W,H);}
- const ground=sightTerrain.groundY,from=ground(a.x,a.y)+14,to=ground(b.x,b.y)+7,steps=Math.ceil(dist(a,b)/8);
- for(let i=1;i<steps;i++){const t=i/steps;if(ground(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t)>from+(to-from)*t)return false;}
- return true;
-}
-export function driveEscape(n:Poacher,room:Room,dt:number){
- const ps=props(room.seed),origin={x:n.jeepX,y:n.jeepY},step=Math.min(5,70*dt);
- // Probe a full vehicle length ahead; use one stable side to avoid left/right oscillation.
- const side=n.steerSide??(n.jeepY<H/2?1:-1);n.steerSide=side;const goal=Math.atan2(n.exitY-n.jeepY,n.exitX-n.jeepX);
- for(const angle of [goal,goal-side*.55,goal-side*1.1,goal-side*Math.PI/2,goal+side*.55,goal+side*1.1]){
-  const dx=Math.cos(angle),dy=Math.sin(angle);let clear=true;
-  for(let d=step;d<=step+35;d+=5){const q={x:origin.x+dx*d,y:origin.y+dy*d};
-   if(q.x< -150||q.x>W+150||q.y< -150||q.y>H+150||blocked(ps,q.x,q.y,29)||room.players.some(p=>!p.deadUntil&&dist(p,q)<38)){clear=false;break;}}
-  if(!clear)continue;
-  n.heading=angle;n.jeepX+=dx*step;n.jeepY+=dy*step;n.x=n.jeepX;n.y=n.jeepY;
-  if(Math.hypot(n.jeepX-n.exitX,n.jeepY-n.exitY)<step+5)n.state='gone';return;
- }
- // Surrounded vehicles wait safely; they never run over a player or teleport away.
-}

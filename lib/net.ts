@@ -1,7 +1,7 @@
 // Room sessions shared by the multiplayer route (app/api/game/route.ts, rooms in D1) and the offline shim (play/api-shim.ts,
 // rooms in memory): lobby membership and host succession, one-shot actions that run at most once, and what each player is
 // sent. Rules stay in lib/game.ts; this file only decides who may do what, when, and who may see what.
-import {newPlayer,start,tick,finishRound,useAbility as startAbility,perch,interact,restartLife,hidden,makeFoods,DURATIONS,type Room,type Player,type Food} from './game.ts';
+import {newPlayer,start,tick,useAbility as startAbility,perch,interact,restartLife,hidden,makeFoods,type Room,type Player,type Food} from './game.ts';
 
 export const ONLINE_MS=8000,        // a human who hasn't synced for this long is shown as away (tick() also freezes their input)
  HOST_GRACE_MS=10000,               // an away host keeps the room this long (a reload or a tunnel), then an online player takes over
@@ -63,17 +63,7 @@ export function roomRequest(room:Room,b:Record<string,unknown>,action:string,now
  if(!p)return fail(401,'Your session is no longer in this room. Please rejoin.');
  if(action==='sync'&&!settled&&quiet(p,seenBefore,room,b,now))return{status:200,body:{room:viewFor(room,p.id,room.phase==='playing'?room.tick:now)},save:false};
  tick(room,now);
- if(action==='configure'){
-  // round length is chosen in the lobby by the host and kept for play-again; everyone sees it in the room state
-  if(room.host!==p.id)return fail(403,'Only the host can change the round.');
-  if(room.phase==='playing')return fail(409,'Choose the round length before starting.');
-  if(!(DURATIONS as readonly unknown[]).includes(b.duration))return fail(400,'Choose 5 minutes, 10 minutes or unlimited.');
-  room.duration=b.duration as Room['duration'];
- }else if(action==='end'){
-  if(room.host!==p.id)return fail(403,'Only the host can end the round.');
-  if(room.phase!=='playing')return fail(409,'No round is running.');
-  finishRound(room,now,'host');
- }else if(action==='start'||action==='practice'){
+ if(action==='start'||action==='practice'){
   if(room.host!==p.id)return fail(403,'Only the host can start the round.');
   // a repeated click or a retried request finds the round already running and gets it, rather than a second round or an error
   if(room.phase==='playing')return!!room.practice===(action==='practice')?{status:200,body:{room:viewFor(room,p.id,now)},save:true}:fail(409,'The round is already running.');

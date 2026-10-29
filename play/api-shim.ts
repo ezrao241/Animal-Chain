@@ -10,7 +10,7 @@ const json = (data: unknown, status = 200) => new Response(encode(data), {status
 
 function handle(b: Record<string, unknown>): Response {
   const now = Date.now(), action = String(b.action || '');
-  if (!['create', 'join', 'sync', 'start', 'practice', 'leave', 'restart', 'configure', 'end'].includes(action)) return json({error: 'Unknown game action.'}, 400);
+  if (!['create', 'join', 'sync', 'start', 'practice', 'leave', 'restart'].includes(action)) return json({error: 'Unknown game action.'}, 400);
   if (action === 'create') {
     const name = String(b.name || '').trim().slice(0, 18); if (!name) return json({error: 'Choose a nickname first.'}, 400);
     const id = crypto.randomUUID(), token = crypto.randomUUID(); const host = newPlayer(id, name, now); host.token = token;
