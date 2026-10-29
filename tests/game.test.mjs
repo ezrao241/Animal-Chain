@@ -344,19 +344,33 @@ test('day and night: in the dark, prey notice a lion much later; a lion still se
  Object.assign(player,{vx:40,vy:0,dx:1,dy:0});
  assert.equal(sense(lion,player,night,LATE)?.how,'sight');
 });
-test('animals walk through each other: no body blocks another, trunks and boulders still do, and a catch still lands',()=>{
+test('animals are solid to each other: bodies block, slide along flanks, and catches still land at contact',()=>{
  const ps=props(417);
- // a player runs straight through a standing zebra and through another player, in the rules and on its own device (move)
- for(const s of SPECIES){const{room,player}=fixture(s);const z=near(player,'zebra',60),other=near(player,'warthog',120);other.bot=false;room.players.push(z,other);let now=NOW,closest=Infinity;
-  for(let i=0;i<60;i++){player.dx=1;player.dy=0;move(player,.05,ps,now);now+=50;closest=Math.min(closest,Math.hypot(player.x-z.x,player.y-z.y));}
-  assert.ok(closest<3,`${s} passes through a zebra (closest ${closest.toFixed(1)})`);assert.ok(player.x>other.x+20,`${s} passes through another player`);}
- // the whole room ticking: a human impala crosses a wild zebra's body
- {let now=NOW;const me=newPlayer('h1','me',now,false,'impala');const room=newRoom('WALKTH',me,now);start(room,now);const p=room.players.find(x=>x.id==='h1'),z=room.players.find(x=>x.bot&&x.species==='zebra');
+ // every species running straight at a standing zebra (and at another player) stops at its body instead of passing through
+ for(const s of SPECIES){const{room,player}=fixture(s);const z=near(player,'zebra',60);room.players.push(z);let now=NOW;
+  for(let i=0;i<60;i++){player.dx=1;player.dy=0;move(player,.05,ps,now,room.players);now+=50;}
+  const [front]=BODY[s],[,zr]=BODY.zebra;assert.ok(player.x<z.x,`${s} never gets past the zebra`);assert.ok(z.x-player.x>=(front+zr)*10*.6,`${s} stops at the zebra's body (gap ${(z.x-player.x).toFixed(1)})`);
+  assert.equal(z.x,player.x+(z.x-player.x),'the zebra is not shoved');}
+ // side by side, broadside: the bodies' widths keep them apart
+ {const{room,player}=fixture('impala');const z=near(player,'zebra',0);z.y=player.y+30;z.heading=0;player.heading=0;room.players.push(z);let now=NOW;
+  for(let i=0;i<40;i++){player.dx=0;player.dy=1;move(player,.05,ps,now,room.players);now+=50;}
+  assert.ok(z.y-player.y>=(BODY.impala[2]+BODY.zebra[2])*10-1,'flank to flank');}
+ // a glancing run slides along the flank and carries on
+ {const{room,player}=fixture('impala');const z=near(player,'zebra',60);z.y=player.y+4;z.heading=0;room.players.push(z);let now=NOW;
+  for(let i=0;i<80;i++){player.dx=1;player.dy=0;move(player,.05,ps,now,room.players);now+=50;}
+  assert.ok(player.x>z.x+30,'slid round the zebra');}
+ // what has no body on the ground doesn't block: a dead animal, a warthog down its burrow, an impala mid-leap
+ for(const set of [q=>{q.deadUntil=NOW+9e9;},q=>{q.species='warthog';q.abilityUntil=NOW+9e9;}]){const{room,player}=fixture('lion');const q=near(player,'zebra',60);set(q);room.players.push(q);let now=NOW;
+  for(let i=0;i<60;i++){player.dx=1;player.dy=0;move(player,.05,ps,now,room.players);now+=50;}assert.ok(player.x>q.x+20);}
+ // the whole room ticking: a human impala runs into a wild zebra and is held at its body
+ {let now=NOW;const me=newPlayer('h1','me',now,false,'impala');const room=newRoom('SOLIDB',me,now);start(room,now);const p=room.players.find(x=>x.id==='h1'),z=room.players.find(x=>x.bot&&x.species==='zebra');
   const zx=z.x,zy=z.y;Object.assign(p,{species:'impala',x:zx-60,y:zy,protectedUntil:now+1e6});let closest=Infinity;
-  for(let i=0;i<40;i++){p.dx=1;p.dy=0;p.inputAt=now;p.lastSeen=now;Object.assign(z,{x:zx,y:zy,vx:0,vy:0,protectedUntil:now+1e6});now+=100;tick(room,now);closest=Math.min(closest,Math.hypot(p.x-zx,p.y-zy));}
-  assert.ok(closest<5&&p.x>zx+60,'a ticking room lets the impala run through the zebra');}
- // a lion that ran into its prey, the impala's centre now inside its body just behind its shoulders, still catches it
+  for(let i=0;i<40;i++){p.dx=1;p.dy=0;p.inputAt=now;p.lastSeen=now;Object.assign(z,{vx:0,vy:0,heading:0,stunUntil:now+1e6,protectedUntil:now+1e6});now+=100;tick(room,now);closest=Math.min(closest,Math.hypot(p.x-zx,p.y-zy));}
+  assert.ok(closest>=(BODY.impala[0]+BODY.zebra[1])*10*.6,`a ticking room holds the impala at the zebra (closest ${closest.toFixed(1)})`);}
+ // a lion run up against an impala's rump is within reach and lands the catch
+ for(const s of ['lion','leopard','hyena']){const{room,player}=fixture(s);const q=near(player,'impala',60);q.heading=0;room.players.push(q);let now=NOW;
+  for(let i=0;i<60;i++){player.dx=1;player.dy=0;move(player,.05,ps,now,room.players);now+=50;}hunt(player,room,now);assert.equal(player.hunts,1,`${s} catches at contact`);}
+ // prey centre inside the hunter's body (a leopard landing on it) is contact; prey a clear body length behind is a miss
  {const{room,player}=fixture('lion');player.heading=0;const q=near(player,'impala',-5);room.players.push(q);hunt(player,room,NOW);assert.equal(player.hunts,1,'overlapping prey is in contact');}
- // ...but prey a clear body length behind is still a miss
  {const{room,player}=fixture('lion');player.heading=0;const q=near(player,'impala',-12);room.players.push(q);hunt(player,room,NOW);assert.equal(player.hunts,0);}
 });
