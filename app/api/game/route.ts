@@ -5,7 +5,7 @@ const json=(data:unknown,status=200)=>new Response(encode(data),{status,headers:
 export async function POST(req:Request){try{
  if(!env.DB)return json({error:'The savanna is temporarily unavailable. Please try again.'},503);
  const b=await req.json() as Record<string,unknown>;const now=Date.now();const action=String(b.action||'');
- if(!['create','join','sync','start','practice','leave','restart'].includes(action))return json({error:'Unknown game action.'},400);
+ if(!['create','join','sync','start','practice','leave','restart','configure','end'].includes(action))return json({error:'Unknown game action.'},400);
  if(action==='create'){
  const name=String(b.name||'').trim().slice(0,18);if(!name)return json({error:'Choose a nickname first.'},400);
  // rooms nobody has synced with for a while are swept here, so abandoned rooms don't pile up

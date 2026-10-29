@@ -83,8 +83,7 @@ At Romoke's request the poacher encounter is gone: no poachers, jeeps, shots or 
 components/game/poacher-models.ts, the jeep compass cue and minimap squares, the Health meter, and the poacher tests.
 One-hit catches with 1.44x reach, proportional 5/6/7 s feeding and everything else are unchanged.
 
-## Round-length choice removed (Oct 29)
+## Round-length choice kept (Oct 29)
 
-Also at Romoke's request, rounds are five minutes again with no host picker: `configure`/`end`, `room.duration`,
-`room.endedBy`, `DURATIONS` and `finishRound` are gone, and tick() again caps a round at 300 s. Hunts stay one-hit (1.44x
-reach) with the 5/6/7 s proportional feeding.
+Romoke confirmed the round-length picker stays: the host picks 5 minutes, 10 minutes or unlimited in the lobby and can
+end the round for everyone (configure/end in lib/net.ts, as above). Only the poachers are removed.

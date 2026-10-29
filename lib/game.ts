@@ -59,11 +59,11 @@ export type Player={id:string;token?:string;name:string;bot:boolean;species:Spec
  tree?:number;climb?:Climb;ch?:number;side?:number;limb?:number;along?:number;limbDir?:number;goal?:number;mount?:number;climbHold?:number;vh?:number};
 /** one finished life: what it was, how long it lasted, what it earned and how it ended */
 export type LifeRecord={species:Species;seconds:number;points:number;food:number;hunts:number;cause:string};
-export type Room={code:string;host:string;phase:'lobby'|'playing'|'finished';started:number;ends:number;tick:number;players:Player[];foods:Food[];events:string[];seed:number;round:number;practice?:boolean;rs?:number};
+export type Room={code:string;host:string;phase:'lobby'|'playing'|'finished';started:number;ends:number;tick:number;players:Player[];foods:Food[];events:string[];seed:number;round:number;practice?:boolean;duration?:300|600|0;/** set when the host ended the round early (or ended an unlimited round) */endedBy?:'host';rs?:number};
 // Computer-controlled wildlife keeps savanna proportions: plenty of grazers, a few predators.
 const WILDLIFE_MIX:Species[]=['impala','zebra','impala','warthog','zebra','impala','hyena','impala','warthog','zebra','lion','impala','warthog','zebra','leopard','lion','warthog','hyena','zebra','impala'];
 export const WILDLIFE:Species[]=Array.from({length:60},(_,i)=>WILDLIFE_MIX[i%WILDLIFE_MIX.length]);
-// the three 100 s phases of the five-minute round (they would repeat if a round ran longer)
+// the three 100 s phases repeat in rounds longer than five minutes (10 minutes, unlimited); a 5-minute round sees each once
 export function savannaEvent(room:Pick<Room,'started'>,now:number){const k=Math.floor(Math.max(0,now-room.started)/100000),next=room.started+(k+1)*100000;return [
  {name:'GOLDEN GRAZE',detail:'Food is worth +2 extra points',kind:'forage',next},
  {name:'THE HUNT',detail:'Successful hunts earn +5 extra points',kind:'hunt',next},
@@ -189,7 +189,7 @@ export function nextSpecies(p:Pick<Player,'species'|'bag'>):Species{
  return p.bag.shift()!;
 }
 export function respawn(p:Player,now:number,room?:Room){const species=p.bot?(WILDLIFE[Number(p.id.replace('wild-',''))]||p.species):nextSpecies(p);const fresh=newPlayer(p.id,p.bot?ANIMALS[species].name:p.name,now,p.bot,species,room);const carry=p.carry;Object.assign(p,fresh,{bag:p.bag,lives:p.lives,lifeStart:p.score,carry:undefined,score:p.score,deaths:p.deaths,token:p.token,lastSeen:p.lastSeen,seq:p.seq,herd:p.herd,homeX:p.homeX,homeY:p.homeY});if(carry){p.hunger=Math.min(p.hunger,Math.max(25,carry.hunger));p.thirst=Math.min(p.thirst??100,Math.max(25,carry.thirst));}if(p.bot&&room)rejoinHerd(p,room,now);p.claimed=p.claimed.map((_,i)=>i<2&&!!p.done?.includes(p.species+':'+i));notify(p,'New life. New animal.',now);}
-export function start(room:Room,now:number){room.phase='playing';room.started=now;room.ends=now+300000;room.tick=now;room.round++;room.foods=makeFoods(room.seed);room.players=room.players.filter(p=>!p.bot);for(const p of room.players){const token=p.token,species=nextSpecies(p),bag=p.bag;Object.assign(p,newPlayer(p.id,p.name,now,false,species,room),{token,bag,done:[],lives:[],lifeStart:0});}room.rs=room.seed*977+room.round*131;placeWildlife(room,now);room.events=['Golden graze. Find food, complete tasks, survive.'];}
+export function start(room:Room,now:number){room.phase='playing';room.started=now;room.endedBy=undefined;room.ends=room.duration===0?0:now+(room.duration??300)*1000;room.tick=now;room.round++;room.foods=makeFoods(room.seed);room.players=room.players.filter(p=>!p.bot);for(const p of room.players){const token=p.token,species=nextSpecies(p),bag=p.bag;Object.assign(p,newPlayer(p.id,p.name,now,false,species,room),{token,bag,done:[],lives:[],lifeStart:0});}room.rs=room.seed*977+room.round*131;placeWildlife(room,now);room.events=['Golden graze. Find food, complete tasks, survive.'];}
 export const leaping=(p:Player,now:number)=>p.species==='impala'&&p.abilityUntil>now;
 const stalking=(p:Player,now:number)=>p.species==='leopard'&&p.abilityUntil>now&&!p.perched;
 const inThicket=(ps:Prop[],x:number,y:number)=>bushNear(ps,x,y,26);
@@ -579,12 +579,12 @@ export function tasks(p:Player,now:number):Task[]{
 }
 export function tick(room:Room,now:number){
  for(const p of room.players){p.vx??=0;p.vy??=0;p.sprint??=false;p.stamina??=100;p.perched??=false;p.perchHeight??=0;p.actionUntil??=0;p.survivalSeconds??=0;p.stunUntil??=0;p.drinks??=0;p.scavenged??=0;p.heading??=0;p.mood??='wander';p.alert??=0;p.targetId??='';p.moodUntil??=0;p.alarmAt??=0;p.calledAt??=0;p.lastThreatAt??=0;p.homeX??=p.x;p.homeY??=p.y;p.herd??='';p.nextDrink??=0;p.thinkAt??=0;p.stuckX??=p.x;p.stuckY??=p.y;p.stuckAt??=0;p.unstickUntil??=0;}
- if(room.started&&room.ends-room.started>300000)room.ends=room.started+300000;
+ const limit=room.duration===0?now:room.ends;
  if(room.phase!=='playing'){room.tick=now;return;}
  const humans=room.players.filter(p=>!p.bot&&!p.deadUntil);
- const total=Math.min(1.5,Math.max(0,(Math.min(now,room.ends)-room.tick)/1000)),ps=props(room.seed),steps=Math.ceil(total/.1);
+ const total=Math.min(1.5,Math.max(0,(Math.min(now,limit)-room.tick)/1000)),ps=props(room.seed),steps=Math.ceil(total/.1);
  for(let s=0;s<steps;s++){
- const dt=total/steps,t=Math.min(now,room.ends)-(steps-1-s)*dt*1000;
+ const dt=total/steps,t=Math.min(now,limit)-(steps-1-s)*dt*1000;
  for(const p of room.players){
  if(!p.bot&&t-p.lastSeen>8000){p.dx=0;p.dy=0;p.feeding=undefined;continue;}
  if(p.deadUntil){if(t>=p.deadUntil)respawn(p,t,room);continue;}
@@ -602,7 +602,7 @@ export function tick(room:Room,now:number){
  const threat=room.players.some(q=>!q.deadUntil&&!hidden(q,room,t)&&ANIMALS[q.species].prey.includes(p.species)&&(q.bot?q.mood==='chase'&&q.targetId===p.id:dist(p,q)<150&&((p.x-q.x)*(q.vx||0)+(p.y-q.y)*(q.vy||0))/Math.max(1,dist(p,q))>40));
  if(threat)p.threatAt=t;else if(p.threatAt&&t-p.threatAt>3000){p.escapes++;const points=savannaEvent(room,t).kind==='escape'?10:5;p.score+=points;p.threatAt=0;notify(p,'Escaped a threat +'+points,t);}
  tasks(p,t).forEach((task,i)=>{if(i===2){if(task.value>=task.target){p.survived=(p.survived??0)+1;p.score+=task.points;notify(p,'Still alive +'+task.points,t);}return;}if(!p.claimed[i]&&task.value>=task.target){p.claimed[i]=true;if(i<2&&!p.bot)(p.done??=[]).push(p.species+':'+i);p.score+=task.points;notify(p,'Task complete +'+task.points,t);}});
- }}room.tick=now;if(now>=room.ends){room.phase='finished';room.players.forEach(p=>{p.dx=0;p.dy=0;p.vx=0;p.vy=0;});room.events.unshift('Round complete. Every life counted.');}}
+ }}room.tick=now;if(room.duration!==0&&now>=room.ends){room.phase='finished';room.players.forEach(p=>{p.dx=0;p.dy=0;p.vx=0;p.vy=0;});room.events.unshift('Round complete. Every life counted.');}}
 // ---------------------------------------------------------------- wildlife
 // (an alias, so the linter's React-hook naming rule doesn't mistake the ability for a hook)
 const activate=useAbility;
@@ -764,3 +764,6 @@ export function stepFeeding(p:Player,now:number){const f=p.feeding;if(!f)return;
  if(p.deadUntil||p.stunUntil>now||Math.hypot(p.dx,p.dy)>.1){p.feeding=undefined;notify(p,'Feeding stopped. You can move.',now);return;}
  const elapsed=Math.max(0,Math.min(now,f.until)-f.last);p.hunger=Math.min(100,p.hunger+45*elapsed/f.duration);f.last=Math.min(now,f.until);p.vx=p.vy=0;
  if(now>=f.until){p.feeding=undefined;notify(p,'Meal finished.',now);}}
+/** Round lengths the host can pick, in seconds; 0 = no time limit (the host ends it). Rooms saved before this default to 300. */
+export const DURATIONS=[300,600,0] as const;
+export function finishRound(room:Room,now:number,_by:'host'='host'){room.phase='finished';room.ends=now;room.endedBy='host';for(const p of room.players){p.dx=p.dy=p.vx=p.vy=0;p.feeding=undefined;p.strikeId='';}room.events.unshift('The host ended the round.');}
