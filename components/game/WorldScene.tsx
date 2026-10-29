@@ -60,7 +60,7 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
   const render=(ms:number)=>{
    if(preview&&ms-lastPreviewFrame<1000/30)return;
    if(preview)lastPreviewFrame=ms;
-   const dt=Math.min(.075,Math.max(0,(ms-last)/1000));last=ms;if(!width||!height)return;
+   const raw=Math.max(0,(ms-last)/1000),dt=Math.min(.075,raw);last=ms;if(!width||!height)return;
    const mode=input.current.graphics||forcedGraphics||'auto';
    const time=ms/1000,{room:r,me:m}=latest.current;
    // Other animals are carried forward along their last reported velocity until the next update, at most about one
@@ -108,9 +108,10 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
      // This device moves its own animal (the same move() the server runs) and reports where it got to (lib/net.ts claim),
      // so the server's copy, a moment old, is never pulled back toward. The server's position is only rejoined while it
      // holds the animal (in a tree, stunned) or for a moment after it refused a reported position (fix).
+     // A slow frame (a busy phone) still covers its full time in 50 ms steps, so the animal keeps its real speed.
      if(p.fix!==ownFix){ownFix=p.fix;rejoinUntil=ms+450;}
      if(p.perched||p.climb){position.x=THREE.MathUtils.damp(position.x,p.x,10,dt);position.y=THREE.MathUtils.damp(position.y,p.y,10,dt);position.vx=position.vy=0;}
-     else{move(position,dt,ps,now);if(ms<rejoinUntil||(p.stunUntil||0)>now){const k=1-Math.exp(-10*dt);position.x+=(p.x+vx*lag-position.x)*k;position.y+=(p.y+vy*lag-position.y)*k;}}vx=position.vx;vy=position.vy;
+     else{for(let left=Math.min(.25,raw);left>1e-4;left-=.05)move(position,Math.min(.05,left),ps,now);if(ms<rejoinUntil||(p.stunUntil||0)>now){const k=1-Math.exp(-10*dt);position.x+=(p.x+vx*lag-position.x)*k;position.y+=(p.y+vy*lag-position.y)*k;}}vx=position.vx;vy=position.vy;
      input.current.claim={x:position.x,y:position.y,vx:position.vx,vy:position.vy,born:p.born,at:Date.now()};
     }else{const k=1-Math.exp(-12*dt);position.x+=(p.x+vx*lag-position.x)*k;position.y+=(p.y+vy*lag-position.y)*k;}
     const speed=Math.hypot(vx,vy);
@@ -151,7 +152,7 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
    food.update(r?.foods||previewFoods,now,m||null,lightweight?240:360,groundY,kind=>!!m&&(ANIMALS[m.species].foods as string[]).includes(kind),f=>input.current.instinct!==false||(!!m&&dist(m,f)<75));
    const before=performance.now();renderer.render(scene,camera);frameCost=frameCost*.97+(performance.now()-before)*.03;
    sampleFrames++;sampleWork+=performance.now()-before;if(ms-sampleStart>=2000){const fps=sampleFrames*1000/(ms-sampleStart),renderMs=sampleWork/sampleFrames;const stats={fps:Math.round(fps),renderMs:Math.round(renderMs*10)/10,renderer:lightweight?'software':'webgl',quality:activeTier,drawCalls:renderer instanceof THREE.WebGLRenderer?renderer.info.render.calls:0};element.dataset.fps=fps.toFixed(1);element.dataset.renderMs=renderMs.toFixed(1);element.dataset.renderer=stats.renderer;element.dataset.drawCalls=String(stats.drawCalls);if(renderer instanceof THREE.WebGLRenderer)element.dataset.triangles=String(renderer.info.render.triangles);element.dataset.animalDrawCalls=String(animalBatches?.drawCalls||0);element.dataset.quality=activeTier;latest.current.onPerformance?.(stats);if(!document.hidden&&mode==='auto'&&!lightweight){slowSamples=(frameCost>25||fps<40)?slowSamples+1:0;if(slowSamples>=2)autoTier='performance';}sampleStart=ms;sampleFrames=0;sampleWork=0;}
-   if(ms-lastOverlay<100)return;lastOverlay=ms;element.dataset.camera=yaw.toFixed(3)+' '+ownHeading.toFixed(3)+' '+distance.toFixed(0);ctx.clearRect(0,0,width,height);if(preview||!m)return;
+   if(ms-lastOverlay<100)return;lastOverlay=ms;{const own=m&&positions.get(m.id);if(own)element.dataset.own=own.x.toFixed(1)+' '+own.y.toFixed(1);}element.dataset.camera=yaw.toFixed(3)+' '+ownHeading.toFixed(3)+' '+distance.toFixed(0);ctx.clearRect(0,0,width,height);if(preview||!m)return;
    const placed:[number,number][]=[];
    function label(text:string,x:number,y:number,z:number,color='#f0f3de'){view.set(x,y,z).applyMatrix4(camera.matrixWorldInverse);if(view.z>=-2)return;projected.set(x,y,z).project(camera);const sx=(projected.x*.5+.5)*width,sy=(-projected.y*.5+.5)*height;if(sx<20||sx>width-20||sy<100||sy>height-100)return;if(placed.some(([px,py])=>Math.abs(px-sx)<90&&Math.abs(py-sy)<16))return;placed.push([sx,sy]);ctx.font='600 12px Arial';ctx.textAlign='center';ctx.lineWidth=4;ctx.strokeStyle='#2a1d0ed9';ctx.strokeText(text,sx,sy);ctx.fillStyle=color;ctx.fillText(text,sx,sy);}
    // Tracking names only prey your animal can actually notice right now (the same sight / scent / sound rule the wildlife

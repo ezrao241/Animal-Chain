@@ -10,7 +10,7 @@ export const ONLINE_MS=8000,        // a human who hasn't synced for this long i
  ACTION_MAX_AGE=1500,               // a one-shot press older than this (a long outage) is dropped rather than replayed late
  COALESCE_MS=60,                    // a sync carrying nothing new within this long of the last tick is answered from the stored state
  MAX_PLAYERS=8,
- CLAIM_SLACK=60;                    // how far (game units, 6 m) a reported position may run ahead of top speed: network jitter, banked between syncs
+ CLAIM_SLACK=90;                    // how far (game units, 9 m) a reported position may run ahead of top speed: network jitter, banked between syncs
 
 export type Action={id:number;kind:'ability'|'interact'|'perch';born:number;age?:number};
 export type Outcome={status:number;body:Record<string,unknown>;save:boolean;remove?:boolean};
@@ -127,6 +127,8 @@ export function claim(p:Player,b:Record<string,unknown>,now:number){
 function quiet(p:Player,seenBefore:number,room:Room,b:Record<string,unknown>,now:number){
  if(Array.isArray(b.actions)&&b.actions.some(a=>Number(a?.id)>(p.act??0)))return false;
  if(now-seenBefore>2000)return false;
+ // a moving animal's reported position is news even when the keys held haven't changed
+ if(b.x!==undefined&&Math.hypot(Number(b.x)-p.x,Number(b.y)-p.y)>2)return false;
  if(room.phase!=='playing')return true;
  return now-room.tick<COALESCE_MS&&clamp(b.dx)===p.dx&&clamp(b.dy)===p.dy&&(b.sprint===true)===!!p.sprint;
 }

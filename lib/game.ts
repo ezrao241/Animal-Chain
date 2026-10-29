@@ -589,7 +589,8 @@ export function tick(room:Room,now:number){
  if(!p.bot&&t-p.lastSeen>8000){p.dx=0;p.dy=0;p.feeding=undefined;continue;}
  if(p.deadUntil){if(t>=p.deadUntil)respawn(p,t,room);continue;}
  if(p.bot&&!p.feeding)steer(p,room,ps,t,dt,humans);
- else if(t-p.inputAt>800){p.dx=0;p.dy=0;}
+ // a player's keys are kept through a slow request or two (a phone on mobile data); a dropped connection stops the animal
+ else if(t-p.inputAt>2000){p.dx=0;p.dy=0;}
  stepFeeding(p,t);move(p,dt,ps,t);breathe(p,dt,t);
  p.survivalSeconds+=dt;p.thirst=Math.max(0,(p.thirst??100)-dt*THIRST_RATE);
  // food runs down at its own pace; a parched animal burns through it twice as fast
