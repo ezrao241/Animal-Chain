@@ -39,6 +39,33 @@ Simplifications: the 400 × 280 m map can't hold a several-kilometre hyena chase
 which is higher than the collar maximum from Wilson et al. (the impala uses the collar figure); the collars logged everyday
 running, and the authors note animals rarely reached their limits, so the true maxima are uncertain.
 
+## Day and night
+
+| Behaviour in the game | What the references say | Source |
+| --- | --- | --- |
+| Lions, leopards and hyenas keep most of their sight after dark; the grazers lose much more of theirs | Cats (and many other night-active mammals) have a tapetum lucidum, a reflective layer behind the retina that gives light a second pass and lowers the threshold for vision in dim light, at some cost in sharpness. | [Tapetum lucidum (Wikipedia)](https://en.wikipedia.org/wiki/Tapetum_lucidum) |
+| Lions catch more on dark nights; a bright moon helps their prey | Serengeti and Ngorongoro lions eat more on moonless nights (belly-size records), and studies in South Africa and Uganda found lion hunting success is highest on dark nights. Lions are hungriest just after full moon, when bright nights have limited their hunting. | [Packer et al. 2011, PLoS ONE 6(7): e22285](https://pmc.ncbi.nlm.nih.gov/articles/PMC3140494/), [EurekAlert summary](https://www.eurekalert.org/news-releases/725525) |
+| A late-rising moon leaves the evening dark | After full moon the moon rises later each night, so the first hours after sunset are dark; that is when Packer et al. found most lion attacks. | [Packer et al. 2011](https://pmc.ncbi.nlm.nih.gov/articles/PMC3140494/) |
+| Spotted hyenas hunt mostly at night | Mostly nocturnal, with some daytime activity; activity peaks around midnight and before sunrise (Kruuk 1972). | [San Diego Zoo Wildlife Alliance: spotted hyena behaviour](https://ielc.libguides.com/sdzg/factsheets/spottedhyena/behavior-ecology) |
+| Wild lions mostly rest by day and hunt after dark, but take a good chance in daylight | Lions rest for much of the day, with activity peaking after dusk. Field guides warn that the "20 hours of rest" figure is overstated: lions are opportunists and also hunt by day. The game only raises the hunger at which a wild lion sets out in daylight. | [Londolozi: what you should know about lions](https://blog.londolozi.com/2020/02/19/what-you-should-know-about-lions/), [LionAid: when are lions most active](https://lionaid.org/faqs_lions/at-what-time-of-the-day-are-lions-most-active.htm) |
+| Leopards hunt mainly at night, dawn and dusk, but are also seen by day | Often called nocturnal; camera traps in the Sabi Sand found the big cats more crepuscular than assumed, and leopards are active by day too. | [Londolozi blog](https://blog.londolozi.com/?p=105328) |
+| Sunrise about 06:04 and sunset about 17:56, sun path through the day | Computed from the solar position formula for 2.3° S (Seronera) in late June, declination +23.4°, in local solar time. At 10:00 this gives the late-morning sun the world was lit by before (altitude 51°, azimuth 47°). Checked by a test. | `sunAt` in `lib/game.ts`, [docs/visual-reference.md](visual-reference.md) |
+
+Game rules for day and night (simplifications, not facts):
+
+- **A day in five minutes.** One savanna day passes every five real minutes, starting at 10:00, so a five-minute round
+  sees afternoon, dusk, a whole night and dawn. The three bonus phases line up with the clock: Golden graze 10:00–18:00,
+  the Hunt 18:00–02:00, Dawn run 02:00–10:00 (renamed from "Dusk run", which no longer matched the time).
+- **Night sight.** In the dark, predators keep 85 % of their daylight sight range (95 % under a full moon) and grazers
+  keep 40 % (70 % under a full moon). The real ratios are not measured this way; the numbers only keep the real
+  ordering. Scent, sound and the 4.5 m close range work the same day and night.
+- **Wild hunters by day.** In full daylight a wild lion only goes hunting when its food is 22 points lower than at
+  night, a hyena 16 lower and a leopard 10 lower. Balance runs: catches at night are about twice the daytime rate.
+- **The moon.** Each round gets its own moon phase. The moon follows the sun by its phase times a day and is drawn on
+  the sun's path (its real path tilts a few degrees differently).
+- **What you see.** Playing a lion, leopard or hyena, the night is drawn brighter than playing a grazer, to show the
+  difference in eyes; it is a picture of the rule above, not a measurement.
+
 ## Game rules (simplifications, not facts)
 
 - **Detection ranges.** Each species has a sight range in game units. Running makes an animal fully noticeable,

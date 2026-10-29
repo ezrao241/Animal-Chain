@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState} from 'react';
 import * as THREE from 'three';
 import {createRenderer,SoftwareRenderer} from './software-renderer';
-import {cameraInput,ANIMALS,SPECIES,Species,Room,Player,W,H,props,makeFoods,move,newPlayer,dist,solidNear,solidRadius,sense,wind,headDown,canClimb,sightBlocked,idHash,FOOD_RANGE} from '@/lib/game';
+import {cameraInput,ANIMALS,SPECIES,Species,Room,Player,W,H,props,makeFoods,move,newPlayer,dist,solidNear,solidRadius,sense,wind,headDown,canClimb,sightBlocked,idHash,FOOD_RANGE,lightAt,isPredator} from '@/lib/game';
 import {climberPose,climberFeet} from './climb-pose';
 import {SafariTraces} from './safari-traces';
 import {makeSafariAnimal,animateSafari,SafariRig,animalPortrait,cameraProfile} from './safari-animals';
@@ -36,8 +36,25 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
   const overlay=document.createElement('canvas');overlay.className='world-labels';element.appendChild(overlay);const ctx=overlay.getContext('2d')!;
   const scene=new THREE.Scene();scene.background=new THREE.Color(0xd2dad8);scene.fog=new THREE.Fog(0xcbd3d1,340,800);const camera=new THREE.PerspectiveCamera(61,1,1.8,1000);
   // late-morning light: a near-white sun, blue skylight filling the shade, warm bounce off the dry grass
-  scene.add(new THREE.HemisphereLight(0xb9d3ef,0x8f805c,1.2));const sun=new THREE.DirectionalLight(0xfff0d8,2.8);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);Object.assign(sun.shadow.camera,{left:-400,right:400,top:400,bottom:-400,near:10,far:1700});sun.shadow.bias=-.0003;sun.shadow.intensity=.78;sun.shadow.normalBias=1.5;sun.shadow.camera.updateProjectionMatrix();scene.add(sun,sun.target);
+  const sky=new THREE.HemisphereLight(0xb9d3ef,0x8f805c,1.2);scene.add(sky);const sun=new THREE.DirectionalLight(0xfff0d8,2.8);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);Object.assign(sun.shadow.camera,{left:-400,right:400,top:400,bottom:-400,near:10,far:1700});sun.shadow.bias=-.0003;sun.shadow.intensity=.78;sun.shadow.normalBias=1.5;sun.shadow.camera.updateProjectionMatrix();scene.add(sun,sun.target);
   const rim=new THREE.DirectionalLight(0x9fc0e6,.35);rim.position.set(400,200,500);scene.add(rim);
+  // Day and night (lib/game.ts lightAt): the key light is the sun by day and the moon (or faint starlight from overhead)
+  // at night. Exposure stands in for the eyes of the animal you play: after dark a lion, leopard or hyena sees the
+  // moonlit plain well (eyes built for low light), a grazer sees it darker.
+  const keyDir=SUN_DIRECTION.clone(),sunV=new THREE.Vector3(),moonV=new THREE.Vector3(),overhead=new THREE.Vector3(.2,.95,.25).normalize(),dayFog=new THREE.Color(0xcbd3d1),dayBg=new THREE.Color(0xd2dad8),emberFog=new THREE.Color(0xd8a47a),nightFog=new THREE.Color(0x111a2c),warm=new THREE.Color(0xffa65c),moonCol=new THREE.Color(0xa9bde6);let lastLight=-1e9;
+  const smoothK=(a:number,b:number,v:number)=>{const k=THREE.MathUtils.clamp((v-a)/(b-a),0,1);return k*k*(3-2*k);};
+  const daylight=(room:Room|null|undefined,now:number,me:Player|null|undefined)=>{
+   const l=lightAt(room||{started:0,seed:417,round:0},now),toMap=(v:{east:number;north:number;up:number},out:THREE.Vector3)=>out.set(v.east,v.up,-v.north).normalize();
+   toMap(l.sun,sunV);toMap(l.moon,moonV);const up=sunV.y,ember=smoothK(-.2,.02,up)*(1-smoothK(.05,.4,up)),night=1-l.day;
+   savanna.daylight(sunV,moonV,l.day,l.moonlight);
+   const sunUp=smoothK(-.02,.25,up);keyDir.copy(up>.0?sunV:moonV.y>.05?moonV:overhead);
+   sun.color.set(0xfff0d8).lerp(warm,ember);if(up<=0)sun.color.copy(moonCol);sun.intensity=up>0?2.8*sunUp+.2:.12+.6*l.moonlight;
+   sky.color.set(0xb9d3ef).lerp(moonCol,night*.6);sky.groundColor.set(0x8f805c).lerp(new THREE.Color(0x2a2a30),night*.8);sky.intensity=1.2*l.day+(1-l.day)*(.5+.35*l.moonlight);
+   rim.intensity=.35+.25*night;
+   const fog=dayFog.clone().lerp(nightFog,night).lerp(emberFog,ember*.7);if(scene.fog instanceof THREE.Fog)scene.fog.color.copy(fog);(scene.background as THREE.Color).copy(dayBg).lerp(nightFog,night).lerp(emberFog,ember*.7);
+   shadowMat.opacity=.22*(.3+.7*sunUp);
+   renderer.toneMappingExposure=1+night*(me&&isPredator(me.species)?.55:-.05);
+  };
   const savanna=createSavanna(scene,lightweight),ps=props(417),previewFoods=makeFoods(417),food=new FoodField(scene),traces=new SafariTraces(scene,groundY,lightweight);
   const rigs=new Map<string,SafariRig>(),positions=new Map<string,Player>(),shadows=new Map<string,THREE.Mesh>(),shadowGeo=new THREE.CircleGeometry(1,20),shadowShift={x:-SUN_DIRECTION.x/SUN_DIRECTION.y*5,z:-SUN_DIRECTION.z/SUN_DIRECTION.y*5},shadowMat=new THREE.MeshBasicMaterial({color:0x0b1913,transparent:true,opacity:.22,depthWrite:false});
   const animalBatches=lightweight?null:new AnimalBatches(scene);
@@ -150,7 +167,7 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
    shownDistance=!shownDistance||preview?actualDistance:THREE.MathUtils.damp(shownDistance,actualDistance,actualDistance<shownDistance?14:3,dt);actualDistance=shownDistance;
    const boost=m?.sprint&&!m.exhausted&&m.stamina>2&&Math.hypot(m.vx,m.vy)>ANIMALS[m.species].gait.run*10+5?1:0,nextFov=THREE.MathUtils.damp(camera.fov,61+boost*5,5,dt);if(Math.abs(nextFov-camera.fov)>.01){camera.fov=nextFov;camera.updateProjectionMatrix();}
    camera.position.set(follow.x+forwardX*Math.cos(pitch)*actualDistance,Math.max(groundY(follow.x+forwardX*actualDistance,follow.z+forwardZ*actualDistance)+(prof?prof.clearance:12),follow.y+Math.sin(pitch)*actualDistance+(prof?prof.lift:13)),follow.z+forwardZ*Math.cos(pitch)*actualDistance);
-   {const la=prof?prof.lookAhead:32;camera.lookAt(follow.x-forwardX*la,follow.y+(prof?prof.lookY:6),follow.z-forwardZ*la);}}sun.position.set(follow.x+savanna.sun.x*700,follow.y+savanna.sun.y*700,follow.z+savanna.sun.z*700);sun.target.position.set(follow.x,follow.y,follow.z);const breeze=wind(r||{seed:417,round:0});savanna.update(time,follow.x,follow.z,drawRange,camera.far,camera.position,breeze);
+   {const la=prof?prof.lookAhead:32;camera.lookAt(follow.x-forwardX*la,follow.y+(prof?prof.lookY:6),follow.z-forwardZ*la);}}if(!preview&&ms-lastLight>=200){lastLight=ms;daylight(r,now,m);}sun.position.set(follow.x+keyDir.x*700,follow.y+keyDir.y*700,follow.z+keyDir.z*700);sun.target.position.set(follow.x,follow.y,follow.z);const breeze=wind(r||{seed:417,round:0});savanna.update(time,follow.x,follow.z,drawRange,camera.far,camera.position,breeze);
    if(ms-lastTraceFrame>=100){lastTraceFrame=ms;traces.update(players.filter(p=>rigs.get(p.id)?.root.visible).map(p=>{const pos=positions.get(p.id)||p,rig=rigs.get(p.id);return{id:p.id+':'+p.born,species:p.species,x:pos.x,z:pos.y,vx:pos.vx||0,vy:pos.vy||0,heading:p.heading||0,visible:!!rig?.root.visible,moving:true,quiet:p.species==='leopard'&&p.abilityUntil>now,onGround:!p.deadUntil&&!p.perched&&!(p.species==='warthog'&&p.abilityUntil>now)};}),r?.foods||[],now,{x:follow.x,z:follow.z},breeze);}animalBatches?.update(rigs.values(),camera,!renderer.shadowMap.enabled);
    if(renderer instanceof THREE.WebGLRenderer&&renderer.shadowMap.enabled&&ms-lastShadow>100){renderer.shadowMap.needsUpdate=true;lastShadow=ms;}
    food.update(r?.foods||previewFoods,now,m||null,lightweight?240:360,groundY,kind=>!!m&&(ANIMALS[m.species].foods as string[]).includes(kind),f=>input.current.instinct!==false||(!!m&&dist(m,f)<75),m&&!m.deadUntil?{...(positions.get(m.id)||m),range:FOOD_RANGE}:undefined);

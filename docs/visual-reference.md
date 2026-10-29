@@ -7,6 +7,7 @@ The map is one place at one time, so the light, colours and vegetation stay cons
 - **Place:** central Serengeti, Tanzania, around Seronera: open grassland with scattered umbrella thorn acacias, granite kopjes and seasonal watering holes. About 2.3° S.
 - **Season:** early dry season, late June. Little rain, clear skies with a few fair-weather cumulus. The grass is drying to straw and tan but still grey-green at the base, with green flushes near water and in damp swales.
 - **Time:** about 10:00 solar time. On 25 June at 2.3° S the sun is 51° above the horizon at an azimuth of 47° (north-east), so shadows are short and fall to the south-west. On the map north is -z (up on the minimap) and east is +x.
+- **Day and night (Oct 29):** in play the clock now runs from 10:00 through a whole day every five minutes (`lightAt` in `lib/game.ts`). The sun moves on the same formula below, the sky blends from the day palette through the ember band of sunset and dawn to a moonlit navy night with stars, and the painted ground shade (laid for the 10:00 sun) fades as the sun gets low. The terrain's painted facet shading still assumes the 10:00 sun. Facts and game rules: `docs/wildlife-sources.md`, "Day and night".
 
 ## How the game shows it
 
