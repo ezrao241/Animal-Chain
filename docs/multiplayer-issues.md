@@ -61,3 +61,21 @@ The trade-off is that a modified client can still move up to top speed without s
 - Tab close is not sent as an explicit leave. A reload looks the same as a close, so closing a tab relies on the grace period.
 - A player who is away during a round keeps their animal and score. They can only rejoin a round in progress if their session is still valid.
 - There are no WebSockets and no new hosting.
+
+## 8-player party (2026-10-29)
+
+Measured with `node scripts/perf/tick-bench.mjs 3 8` and `D1_MS=<ms> node scripts/perf/party-bench.mjs 8 15` (eight players
+in real time, all moving and reporting positions, against the D1 stand-in with a round trip of D1_MS per query).
+
+- Simulation: one tick with 8 players and the 60 wildlife costs 5.1 ms on average (3.8 ms with one player). The wildlife AI
+  is not the bottleneck; animals more than 160 m from every player already re-plan only every 0.4 s.
+- Database: every moving player's sync writes the whole ~130 KB room row, and the writes race on the version check. With
+  a 20 ms round trip and the old retry-up-to-12-times loop, players got 3.6 updates a second instead of 7, waited 180 ms
+  (median) / 550 ms (95th percentile) and some syncs failed with "The savanna is busy".
+- Fix: a sync that loses the race is answered from the newer state without writing, unless its player's input hasn't
+  landed in the last 400 ms or it carries an unacknowledged press. At 20 ms: 6.5 updates a second, waits 67 / 177 ms,
+  input still lands about 3.3 times a second per player. At 40 ms and above it still degrades (4.7 updates a second,
+  waits 133 / 417 ms), because one row can only take about one write per two round trips.
+- Download is about 140 KB/s per player (about 500 MB an hour on mobile data).
+- Real fix for bigger parties or a far-away database: keep the room in memory in one place (a Cloudflare Durable Object)
+  instead of rewriting a database row on every poll.

@@ -1,8 +1,8 @@
 // A tiny D1 stand-in with the statements the game route uses. Reads and writes yield to the event loop at random,
 // so concurrent requests interleave like real network round trips and the route's version check is exercised.
-// Set db.instant=true (benchmarks) to skip the random pauses.
-const rows=new Map();const pause=()=>db.instant?Promise.resolve():new Promise(r=>setTimeout(r,Math.random()*6));
-export const db={rows,reads:0,writes:0,conflicts:0,deletes:0,instant:false};
+// Set db.instant=true (benchmarks) to skip the random pauses, or db.latency=<ms> for a round trip of about that long (0.6-1.4x).
+const rows=new Map();const pause=()=>db.instant?Promise.resolve():new Promise(r=>setTimeout(r,db.latency?db.latency*(.6+Math.random()*.8):Math.random()*6));
+export const db={rows,reads:0,writes:0,conflicts:0,deletes:0,instant:false,latency:0};
 function statement(sql,args=[]){return{
  bind:(...a)=>statement(sql,a),
  async first(){await pause();db.reads++;const row=rows.get(args[0]);return row?{...row}:null;},

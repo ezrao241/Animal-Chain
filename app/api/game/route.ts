@@ -1,6 +1,9 @@
 import { env } from 'cloudflare:workers';
 import { newPlayer,newRoom,type Room } from '@/lib/game';
 import { roomRequest,viewFor,encode,IDLE_ROOM_MS } from '@/lib/net';
+const YIELD_MS=400;
+// a sync carrying a press the server hasn't acknowledged yet always retries, so bites, kicks and climbs never wait a poll
+const pressing=(p:Room['players'][number],b:Record<string,unknown>)=>Array.isArray(b.actions)&&b.actions.some(a=>Number((a as {id?:unknown})?.id)>(p.act??0));
 const json=(data:unknown,status=200)=>new Response(encode(data),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
 export async function POST(req:Request){try{
  if(!env.DB)return json({error:'The savanna is temporarily unavailable. Please try again.'},503);
@@ -15,9 +18,14 @@ export async function POST(req:Request){try{
  }
  const code=String(b.code||'').toUpperCase();if(!/^[A-Z2-9]{6}$/.test(code))return json({error:'Enter a valid six-character room code.'},400);
  // optimistic concurrency: load, apply, write back only if nobody else wrote in between, else retry on the newer state
+ // A sync that loses the race is answered from the newer state without writing when that player's input landed in the
+ // last YIELD_MS and it carries no new press: its keys and position come again in the device's next sync 140 ms later.
+ // With 8 players polling ~56 times a second, retrying every loser piled requests up into waits of half a second and
+ // more; a player whose input hasn't landed lately keeps retrying, so nobody's animal goes stale.
  for(let attempt=0;attempt<12;attempt++){
  const row=await env.DB.prepare('SELECT state,version,updated FROM rooms WHERE code=?').bind(code).first<{state:string;version:number;updated:number}>();if(!row||now-row.updated>IDLE_ROOM_MS)return json({error:'Room not found or expired. Create a new room.'},404);
  const room=JSON.parse(row.state) as Room;
+ if(action==='sync'&&attempt>0){const p=room.players.find(q=>!q.bot&&q.id===b.id&&q.token===b.token);if(p&&now-p.inputAt<YIELD_MS&&!pressing(p,b))return json({room:viewFor(room,p.id,room.phase==='playing'?room.tick:now)});}
  const out=roomRequest(room,b,action,now,()=>crypto.randomUUID());
  if(out.remove){const result=await env.DB.prepare('DELETE FROM rooms WHERE code=? AND version=?').bind(code,row.version).run();if(result.meta.changes)return json(out.body,out.status);continue;}
  if(!out.save)return json(out.body,out.status);

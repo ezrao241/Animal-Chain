@@ -27,7 +27,7 @@ test('two players: start, simultaneous syncs, stale input, an encounter and a re
  const {host,guests:[guest],code}=await lobby(2);
  await call({action:'start',...auth(guest)},403);
  const started=await call({action:'start',...auth(host)});assert.equal(state(code).players.length,62);assert.equal(started.room.roster.length,2);assert.ok(started.room.players.every(p=>!('token' in p)));
- // 20 rounds of both players syncing at the same moment: every write lands (retries absorb version conflicts)
+ // 20 rounds of both players syncing at the same moment: writes interleave and race on the version check
  let seq=1000;for(let i=0;i<20;i++)await Promise.all([call({action:'sync',...auth(host),seq:++seq,dx:1,dy:0}),call({action:'sync',...auth(guest),seq:++seq,dx:0,dy:1})]);
  assert.ok(db.conflicts>0,'the test really interleaved writes');
  const r=state(code);assert.equal(r.players.filter(p=>!p.bot).length,2);
