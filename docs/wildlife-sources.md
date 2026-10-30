@@ -66,6 +66,40 @@ Game rules for day and night (simplifications, not facts):
 - **What you see.** Playing a lion, leopard or hyena, the night is drawn brighter than playing a grazer, to show the
   difference in eyes; it is a picture of the rule above, not a measurement.
 
+## Sounds
+
+Every sound in the game is synthesised in the browser (`lib/animal-sounds.ts`, `lib/savanna-audio.ts`); there are no
+recordings. Each one is shaped after how the real call is described, so it should be recognisable, but it is an
+imitation, not a recording.
+
+| Sound in the game | What the references say | Source |
+| --- | --- | --- |
+| A lion's call is a roaring bout: soft moans, full roars, then a run of grunts that fade | Lions roar in bouts; grunts and moans are short-range calls used within the pride. A roar can carry about 8 km in good conditions. | [Tsavo Trust: how far can a lion's roar be heard](https://tsavotrust.org/how-far-can-a-lions-roar-be-heard/) |
+| Far-off lions roar at night, most of all before dawn, rarely by day | A study in *Animal Behaviour* found roaring clustered at night with a peak just before dawn, favouring calm, cool, humid air. | [ScienceBlog summary](https://scienceblog.com/d-a-lions-roar-can-travel-eight-kilometres-across-open-savanna-but-it-is-not-only-a-war-cry-it-is-also-a-long-distance-family-signal-helping-scattered-pride-members-find-one-another-while-wa/) |
+| Hyenas whoop: a low, rising call repeated in a slow series, heard far off at night | The whoop is repeated, can be heard about 5 km away and helps recruit and coordinate clan mates; each hyena's whoop is individual. | [Wild Ambience: spotted hyena](https://wildambience.com/wildlife-sounds/spotted-hyena/), [Phys.org: hyena calls](https://phys.org/tags/spotted+hyena) |
+| A leopard's call is a rasping "sawing", strokes in and out | Leopards give a territorial sawing call that sounds like wood being sawn, distinct for each leopard. | [Wildlife SOS: how leopards communicate](https://news.wildlifesos.org/how-do-leopards-communicate/) |
+| A stalking leopard makes no call | Game rule built on stalking behaviour: the Stalk ability is silent to everyone else. | (game rule) |
+| Impala give a sharp, explosive snort when they spot a predator | An impala that spots a predator snorts and moves off. | [Mpala Live field guide: impala](https://www.mpalalive.org/field_guide/view/impala) |
+| Zebras blow hard through the nose, then bark a braying "kwa-ha" | The zebra bark is written "kwaha, kwaha, ha ha"; barks and snorts are both described as alarm signals. The sources here are weaker than the rest (no bioacoustics study found). | [Rogue Scholar record on zebra calls](https://rogue-scholar.org/records/g2csq-j9p65) |
+| Ring-necked doves call "work HAR-der" by day | Its incessant three-note "work HAR-der" song is a characteristic sound of East and southern Africa. | [eBird: ring-necked dove](https://ebird.org/species/rindov), [Wikipedia](https://en.wikipedia.org/wiki/Ring-necked_dove) |
+| The fiery-necked nightjar sings "good-lord-de-liver-us" at dusk and at night | A series of mellow notes heard as "Good Lord, deliver us", typically at twilight, in woodland savanna. | [Wikipedia: fiery-necked nightjar](https://en.wikipedia.org/wiki/Fiery-necked_nightjar) |
+
+Game rules for sound (simplifications, not facts):
+
+- **Calls are shortened.** A real lion's roaring bout can last a minute; the game's lasts about six seconds, and the
+  hyena's whoop series about four.
+- **Warthog grunts and snorts**, the ability sounds, the death cries and the eating and drinking
+  sounds are generic animal sounds, not modelled on a described call.
+- **Insects and frogs.** Cicadas swell in waves through the hot hours, crickets sing at night and frogs plink near the
+  water. These are typical of the savanna but not tied to particular species.
+- **Footsteps** are paced from each animal's speed, heavier for heavier animals; hooves click and the cats' and
+  hyenas' padded feet only thud softly. Above a set speed the beats bunch into a gallop's rhythm. The pacing is a game
+  value, not measured stride rates.
+- **Hearing range.** Calls carry up to 70 m in the game, alarms 52 m, footsteps 42 m; far-off night calls are played as
+  if from beyond the map. Real calls carry kilometres (see above), which would drown a small map.
+
+These sources were found by web search on 2026-10-30; the pages were not opened from the build environment.
+
 ## Game rules (simplifications, not facts)
 
 - **Detection ranges.** Each species has a sight range in game units. Running makes an animal fully noticeable,
