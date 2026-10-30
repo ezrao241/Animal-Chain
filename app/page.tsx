@@ -185,7 +185,7 @@ export default function Game(){
     {statsOpen&&<StatsPanel net={net}/>}
     <BadgeToast latest={latestBadge}/>
     <CoatReveal next={reveal} done={nextReveal} update={updateProgress} compact/>
-    {tutorialOpen&&me&&<Tutorial species={species} onClose={()=>setTutorialOpen(false)}/>}
+    {tutorialOpen&&me&&<Tutorial key={me.species} species={species} me={me} input={input} onClose={()=>setTutorialOpen(false)}/>}
     {coaching&&!tutorialOpen?<div className="coach-card" role="note"><Lightbulb size={15}/><span><b>{animal.name}</b> · {COACH[species]}</span></div>:null}
     {toast?<div key={me.message+me.messageUntil} className={`game-toast ${me.message.includes('+')?'reward':''}`} role="status">{me.message.includes('+')&&<Check size={17}/>}<span>{me.message}</span></div>:null}
     {me?.deadUntil?<div className="death-overlay"><span className="eyebrow">THE CHAIN CONTINUES</span><h2>A new life<br/><em>awaits.</em></h2><p>{lastLife?`${ANIMALS[lastLife.species].name} ${lastLife.cause}`:me.message}</p>{lastLife&&<div className="life-summary"><span>{clock(lastLife.seconds)}<small>ALIVE</small></span><span>{lastLife.food}<small>MEALS</small></span><span>+{lastLife.points}<small>POINTS</small></span></div>}<p className="death-lesson"><Lightbulb size={14}/>{deathLesson(lastLife?.cause||me.message,lastLife?.species||species)}</p><strong>{Math.max(1,Math.ceil((me.deadUntil-serverNow)/1000))}</strong><small>Your {me.score} points stay with you.</small></div>:null}
