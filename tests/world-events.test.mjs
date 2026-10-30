@@ -1,14 +1,19 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {newPlayer,newRoom,start,tick,interact,worldEvent,fireArrival,fireEdge,burnAt,fireEscape,sense,EVENT_AT,FIRE,FIRE_BURN,MIGRANTS,TREK_POINTS,DAY_MS,W,H,makeFoods,props,nearWater,deathLesson} from '../lib/game.ts';
+import {newPlayer,newRoom,start,tick,interact,worldEvent,fireArrival,fireEdge,burnAt,fireEscape,sense,EVENT_AT,EVENT_CHANCE,FIRE_SHARE,FIRE,FIRE_BURN,MIGRANTS,TREK_POINTS,DAY_MS,W,H,makeFoods,props,nearWater,deathLesson} from '../lib/game.ts';
 const T=1800000000000;
 // a started room with only the given players (no wildlife), and the round number that gives each event kind
-function room(kind,players=[]){for(let round=1;round<40;round++){const host=newPlayer('h','Host',T),r=newRoom('ABCDEF',host,T);r.round=round-1;start(r,T);if(worldEvent(r,T).kind===kind){r.players=players;return r;}}throw new Error('no round with '+kind);}
+function room(kind,players=[]){for(let round=1;round<400;round++){const host=newPlayer('h','Host',T),r=newRoom('ABCDEF',host,T);r.round=round-1;start(r,T);if(worldEvent(r,T)?.kind===kind){r.players=players;return r;}}throw new Error('no round with '+kind);}
 
-test('one event a day in the afternoon, the same on every device, alternating kinds in longer rounds',()=>{
+test('events come on some days only, fire the rarer, the same on every device and different from game to game',()=>{
  const r=room('fire'),a=worldEvent(r,T),b=worldEvent({...r},T+EVENT_AT+1000);
  assert.deepEqual(a,b);assert.equal(a.at,T+EVENT_AT);assert.equal(a.until,a.at+FIRE.run);
- const next=worldEvent(r,T+DAY_MS+1);assert.equal(next.kind,'migration');assert.equal(next.at,T+DAY_MS+EVENT_AT);
  assert.equal(worldEvent({started:0,seed:417,round:1},T),null);
+ // many games, each a new room's first round started at a different moment
+ const n=2000,kinds={fire:0,migration:0,none:0};for(let i=0;i<n;i++){const s=T+i*7919123;kinds[worldEvent({started:s,seed:417,round:1},s)?.kind??'none']++;}
+ assert.ok(Math.abs(kinds.none/n-(1-EVENT_CHANCE))<.05,'most games are quiet');assert.ok(kinds.fire<kinds.migration,'fire is the rarer');
+ assert.ok(Math.abs(kinds.fire/n-EVENT_CHANCE*FIRE_SHARE)<.04);
+ // later days of a long round draw again
+ const days=new Set();for(let d=0;d<12;d++)days.add(worldEvent(r,T+d*DAY_MS+1)?.kind??'none');assert.ok(days.size>1);
 });
 
 test('the fire edge grows as a downwind ellipse: head, flank and back reach at their real rates',()=>{

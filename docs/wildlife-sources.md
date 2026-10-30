@@ -68,8 +68,9 @@ Game rules for day and night (simplifications, not facts):
 
 ## World events
 
-Once each savanna day, in the hot afternoon (about 14:25 on the game clock), the plains throw up one big event: a grass
-fire or the zebra migration. In a 10-minute or unlimited round the days alternate between the two. Rules: `worldEvent`,
+On some savanna days, in the hot afternoon (about 14:25 on the game clock), the plains throw up one big event: a grass
+fire or the zebra migration. Each day draws on its own: 40 % of days have an event, and about a third of those (14 % of
+days) are fires, the rest migrations, so most games are quiet. Rules: `worldEvent`,
 `fireArrival`, `burnAt`, `fireEscape` and the migration steps in `lib/game.ts`; tests in `tests/world-events.test.mjs`.
 
 | Behaviour in the game | What the references say | Source |
@@ -83,6 +84,8 @@ fire or the zebra migration. In a 10-minute or unlimited round the days alternat
 
 Game rules for world events (simplifications, not facts):
 
+- **How often.** Events are a game rule, not a real frequency: a 40 % chance a day, fires the rarer (14 % of days)
+  because real lightning fires are uncommon (below). Real migrations pass a given spot for weeks a year, not in an afternoon.
 - **Lightning.** The game's fire is lit by a dry lightning strike because there are no people on the plains. In the
   Kruger records only about a tenth of fires were lightning fires, most of them at the start of the rains
   (October–November); a real late-June fire at Seronera would more likely be lit by people.

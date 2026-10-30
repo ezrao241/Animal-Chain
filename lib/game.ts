@@ -115,12 +115,12 @@ export function sightInLight(s:Species,l:Light){
  const night=isPredator(s)?NIGHT_SIGHT.predator+.1*l.moonlight:NIGHT_SIGHT.prey+NIGHT_SIGHT.preyMoon*l.moonlight;
  return l.day+(1-l.day)*night;
 }
-/** World events: once each savanna day, at about 14:25 (EVENT_AT into the day, the hot dry afternoon), the plains throw up one big happening: a grass
- *  fire lit by a dry-season lightning strike, or a column of migrating zebra crossing to the north. Which one, where and
- *  which way comes from the room's seed, round and day, so the server and every player's device work out the same fire
- *  edge and the same column from the clock alone and nothing extra is sent. In a 10-minute or unlimited round the days
- *  alternate between the two. Facts and game compressions: docs/wildlife-sources.md, "World events". */
-export const EVENT_AT=55000,EVENT_WARN=10000;
+/** World events: on some savanna days (EVENT_CHANCE of them), at about 14:25 (EVENT_AT into the day, the hot dry
+ *  afternoon), the plains throw up one big happening: a grass fire lit by a dry-season lightning strike (the rarer, FIRE_SHARE
+ *  of events) or a column of migrating zebra crossing to the north. Whether, which, where and which way come from the
+ *  room's seed, round, start time and day, so the server and every player's device work out the same event from the clock
+ *  alone and nothing extra is sent; most games have none. Facts and game compressions: docs/wildlife-sources.md, "World events". */
+export const EVENT_AT=55000,EVENT_WARN=10000,EVENT_CHANCE=.4,FIRE_SHARE=.35;
 /** A windy late-dry-season grass fire, in m/s: the head runs downwind, the flanks creep sideways, the back burns slowly
  *  into the wind. Flames burn out after FIRE.run (evening damp); a point's flames last FIRE.flame, and green shoots show
  *  through FIRE.flush after the front passed (real regrowth takes one to three weeks: a game compression). */
@@ -135,15 +135,18 @@ export type WorldEvent={kind:'fire'|'migration';day:number;at:number;until:numbe
  x:number;y:number;ux:number;uy:number;
  /** migration: the column's centre line, from x0 at the south edge to x1 at the north edge */
  x0:number;x1:number};
-let eventMemo:{key:string;ev:WorldEvent}|undefined;
-/** The day's event (from the start of that day, so a device can warn before it begins), or null outside a round. */
+let eventMemo:{key:string;ev:WorldEvent|null}|undefined;
+/** The day's event (from the start of that day, so a device can warn before it begins), or null on a quiet day or outside a round. */
 export function worldEvent(room:Pick<Room,'started'|'seed'|'round'>,now:number):WorldEvent|null{
  if(!room.started)return null;
  const day=Math.floor(Math.max(0,now-room.started)/DAY_MS),key=room.seed+':'+room.round+':'+room.started+':'+day;
  if(eventMemo?.key===key)return eventMemo.ev;
- const first=rng(room.seed*7+(room.round||0)*7919)()<.5?0:1,r=rng(room.seed*13+(room.round||0)*131+day*977),at=room.started+day*DAY_MS+EVENT_AT,w=wind(room),ps=props(417);
+ // the start time (shared by everyone in the room) makes each game's draw its own, even in a new room's first round
+ const r=rng(room.seed*13+(room.round||0)*131+day*977+Math.floor(room.started/1000)%1000003*7),happens=r()<EVENT_CHANCE,fire=r()<FIRE_SHARE;
+ if(!happens){eventMemo={key,ev:null};return null;}
+ const at=room.started+day*DAY_MS+EVENT_AT,w=wind(room),ps=props(417);
  let ev:WorldEvent;
- if((first+day)%2===0){
+ if(fire){
   // lightning strikes upwind of the middle of the plains, so the head sweeps across it with the breeze
   let x=W/2,y=H/2;
   for(let k=0;k<20;k++){x=Math.max(300,Math.min(W-300,W/2-w.x*1100+(-w.y)*(r()-.5)*1400));y=Math.max(300,Math.min(H-300,H/2-w.y*1100+w.x*(r()-.5)*1400));if(!nearWater(ps,x,y,60))break;}
