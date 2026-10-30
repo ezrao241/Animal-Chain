@@ -79,3 +79,40 @@ in real time, all moving and reporting positions, against the D1 stand-in with a
 - Download is about 140 KB/s per player (about 500 MB an hour on mobile data).
 - Real fix for bigger parties or a far-away database: keep the room in memory in one place (a Cloudflare Durable Object)
   instead of rewriting a database row on every poll.
+
+## Weak connections and spawn shield (2026-10-30)
+
+Problems found on the build with world events and fire damage:
+
+1. **A lost request froze the game for 7 s.** Every sync waited the full 7 s fetch timeout before the page resent it.
+2. **A slow gap between syncs snapped the animal back.** `claim` only allowed 1.5 s of running between two reported
+   positions, so a phone that went 2 s or more between syncs had its position refused and was pulled back.
+3. **Other animals froze after 0.6 s without news** and then jumped.
+4. **Every sync was about 19 KB** (8 players, 60 wildlife), about 130 KB/s at the in-round poll rate. That is too much
+   for weak Wi-Fi or mobile data.
+5. **Spawn protection** was 4 s, and a protected predator kept it while hunting.
+
+Changes:
+
+- `lib/link.ts` `LinkMonitor` (client): smoothed round trip and deviation as TCP does (RFC 6298), measured with Resource
+  Timing so a slow device's busy main thread isn't read as a weak link, plus losses in the last 10 s. The levels are
+  good / fair / poor. A link drops a level at once and climbs back only after 4 s of holding up. Poll interval: 140 /
+  180 / 260 ms. A sync is abandoned and resent after `srtt + 4·rttvar`, kept between 1.5 and 5 s. On a poor link the
+  page asks for the lite view, and the HUD shows WEAK SIGNAL with the ping. The P stats panel shows the level, the poll
+  interval and recent losses.
+- `viewFor(room, viewer, now, lite)`: for computer animals only, the lite view drops empty fields and moments more
+  than 3 s past, and sends animals beyond 65 m (`LITE_VIEW`) as track records with whole-unit positions. Players are
+  never trimmed. 8 players, one round: 16.5 KB becomes 9.8 KB per sync (`tests/weak-link.test.mjs` requires under 75 %).
+- `claim`: `CLAIM_GAP_MS` = 4 s of running at top speed between two reports. Running faster than top speed is still
+  refused.
+- `WorldScene`: other animals are carried forward for up to 1 s (`REMOTE_LEAD_MAX`).
+- Spawn shield: `SPAWN_PROTECT_MS` = 6 s for players and `WILD_PROTECT_MS` = 4 s for wildlife. A shielded animal can't
+  be kicked. `dropShield` ends the shield when its player lunges, ambushes or lands a kick. Name tags show SHIELDED.
+
+`LAG_MS=700 JITTER_MS=300 LOSS_PCT=10 node scripts/perf/lag-test.mjs` (two headless SwiftShader sessions at about 4 fps,
+so sync rates are far below a real device) gives the results below. For other players, the old build's copy of the
+running animal fell far behind it and then kept going after the stop, and one report was refused. The new build sends
+lite syncs of about 11.9 KB instead of 19.8 KB. See the PR for the exact runs.
+
+Not changed: one request is still in flight at a time, so the poll rate also falls on its own on a slow link. There is
+no delta encoding against the previous snapshot yet, which would need per-client acknowledged state on the server.

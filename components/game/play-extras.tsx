@@ -59,10 +59,11 @@ export function Tutorial({species,me,input,onClose}:{species:Species;me:Tutorial
 }
 
 export type NetSample={rttMs:number;receivedAt:number};
+type LinkInfo={quality:string;srtt:number;losses:number[];pollMs():number};
 const HISTORY=60;
 /** FPS and drawing time come from the renderer's own two-second samples (WorldScene publishes them on .world-scene);
  *  round-trip is the last game request; snapshot age is how long since the last state arrived. */
-export function StatsPanel({net}:{net:React.MutableRefObject<NetSample>}){
+export function StatsPanel({net,link}:{net:React.MutableRefObject<NetSample>;link?:React.MutableRefObject<LinkInfo>}){
  const [, setTick]=useState(0),history=useRef<number[]>([]),lastFps=useRef('');
  useEffect(()=>{const id=setInterval(()=>{const el=document.querySelector<HTMLElement>('.world-scene');const fps=el?.dataset.fps;if(fps&&fps!==lastFps.current){lastFps.current=fps;history.current.push(Number(fps));if(history.current.length>HISTORY)history.current.shift();}setTick(t=>t+1);},250);return()=>clearInterval(id);},[]);
  const el=typeof document!=='undefined'?document.querySelector<HTMLElement>('.world-scene'):null,h=history.current;
@@ -71,6 +72,7 @@ export function StatsPanel({net}:{net:React.MutableRefObject<NetSample>}){
  return <div className="stats-panel glass" role="status" aria-label="Performance"><span className="eyebrow">STATS · P</span>
   <dl><dt>FPS</dt><dd>{el?.dataset.fps??'–'}<small>{h.length?` avg ${avg.toFixed(0)} · low ${low.toFixed(0)}`:''}</small></dd>
   <dt>Round trip</dt><dd>{net.current.rttMs?`${Math.round(net.current.rttMs)} ms`:'–'}</dd>
+  {link&&<><dt>Connection</dt><dd>{link.current.quality}<small>{` · ${link.current.pollMs()} ms polls · ${link.current.losses.length} lost`}</small></dd></>}
   <dt>Drawing</dt><dd>{el?.dataset.renderMs?`${el.dataset.renderMs} ms`:'–'}</dd>
   <dt>Snapshot age</dt><dd className={stale?'stale':''}>{age?`${age} ms`:'–'}</dd></dl>
   {stale&&<p className="stats-waiting">Waiting for the server…</p>}

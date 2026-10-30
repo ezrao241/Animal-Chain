@@ -141,6 +141,11 @@ These sources were found by web search on 2026-10-30; the pages were not opened 
 
 ## Game rules (simplifications, not facts)
 
+- **Spawn shield.** A player's new animal can't be caught, kicked or hurt by fire for 6 seconds (`SPAWN_PROTECT_MS` in
+  `lib/game.ts`, meant to stay between 5 and 8 s), and computer-controlled wildlife for 4 seconds. The shield ends early
+  the moment that player lunges at prey or lands a kick. Nothing like this exists in nature; it is there so nobody is
+  caught the instant they appear in a crowded round. The HUD counts it down, and other players see SHIELDED on the
+  animal's name tag.
 - **Detection ranges.** Each species has a sight range in game units. Running makes an animal fully noticeable,
   walking about 60 %, and standing still about 35 %. A stalking leopard counts as 45 % of that, and an animal in a tree
   canopy 50 %. Within 4.5 m anything not hidden is noticed. Real detection distances are far longer and vary with light

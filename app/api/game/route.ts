@@ -25,7 +25,7 @@ export async function POST(req:Request){try{
  for(let attempt=0;attempt<12;attempt++){
  const row=await env.DB.prepare('SELECT state,version,updated FROM rooms WHERE code=?').bind(code).first<{state:string;version:number;updated:number}>();if(!row||now-row.updated>IDLE_ROOM_MS)return json({error:'Room not found or expired. Create a new room.'},404);
  const room=JSON.parse(row.state) as Room;
- if(action==='sync'&&attempt>0){const p=room.players.find(q=>!q.bot&&q.id===b.id&&q.token===b.token);if(p&&now-p.inputAt<YIELD_MS&&!pressing(p,b))return json({room:viewFor(room,p.id,room.phase==='playing'?room.tick:now)});}
+ if(action==='sync'&&attempt>0){const p=room.players.find(q=>!q.bot&&q.id===b.id&&q.token===b.token);if(p&&now-p.inputAt<YIELD_MS&&!pressing(p,b))return json({room:viewFor(room,p.id,room.phase==='playing'?room.tick:now,b.lite===true)});}
  const out=roomRequest(room,b,action,now,()=>crypto.randomUUID());
  if(out.remove){const result=await env.DB.prepare('DELETE FROM rooms WHERE code=? AND version=?').bind(code,row.version).run();if(result.meta.changes)return json(out.body,out.status);continue;}
  if(!out.save)return json(out.body,out.status);

@@ -11,7 +11,9 @@ export const ONLINE_MS=8000,        // a human who hasn't synced for this long i
  ACTION_MAX_AGE=1500,               // a one-shot press older than this (a long outage) is dropped rather than replayed late
  COALESCE_MS=60,                    // a sync carrying nothing new within this long of the last tick is answered from the stored state
  MAX_PLAYERS=8,
- CLAIM_SLACK=90;                    // how far (game units, 9 m) a reported position may run ahead of top speed: network jitter, banked between syncs
+ CLAIM_SLACK=90,                    // how far (game units, 9 m) a reported position may run ahead of top speed: network jitter, banked between syncs
+ CLAIM_GAP_MS=4000;                 // a reported position may cover up to this long at top speed since the last one, so a weak link with
+                                    // seconds between syncs isn't refused (and snapped back) for ground its animal really ran
 
 export type Action={id:number;kind:'ability'|'interact'|'perch';born:number;age?:number};
 export type Outcome={status:number;body:Record<string,unknown>;save:boolean;remove?:boolean};
@@ -58,7 +60,7 @@ export function roomRequest(room:Room,b:Record<string,unknown>,action:string,now
  const seenBefore=p?.lastSeen??0;if(p)p.lastSeen=now;
  // the coat colour chosen for each species (lib/rewards.ts coatCode): cosmetic, so the device's word is taken
  const coats=typeof b.coats==='string'&&/^[0-6]{6}$/.test(b.coats)?b.coats:undefined,recoated=!!p&&!!coats&&p.coats!==coats;if(recoated)p!.coats=coats;
- const settled=settleRoom(room,now);
+ const settled=settleRoom(room,now),lite=b.lite===true;
  if(action==='join'){
   // a player who still holds a valid session for this room gets it back instead of a second animal
   if(p)return{status:200,body:{room:viewFor(room,p.id,now),id:p.id,token:p.token},save:true};
@@ -69,7 +71,7 @@ export function roomRequest(room:Room,b:Record<string,unknown>,action:string,now
   return{status:200,body:{room:viewFor(room,p.id,now),id:p.id,token:p.token},save:true};
  }
  if(!p)return fail(401,'Your session is no longer in this room. Please rejoin.');
- if(action==='sync'&&!settled&&!recoated&&quiet(p,seenBefore,room,b,now))return{status:200,body:{room:viewFor(room,p.id,room.phase==='playing'?room.tick:now)},save:false};
+ if(action==='sync'&&!settled&&!recoated&&quiet(p,seenBefore,room,b,now))return{status:200,body:{room:viewFor(room,p.id,room.phase==='playing'?room.tick:now,lite)},save:false};
  tick(room,now);
  if(action==='configure'){
   // round length is chosen in the lobby by the host and kept for play-again; everyone sees it in the room state
@@ -100,7 +102,7 @@ export function roomRequest(room:Room,b:Record<string,unknown>,action:string,now
   if(seq>p.seq){p.seq=seq;p.dx=clamp(b.dx);p.dy=clamp(b.dy);p.sprint=b.sprint===true;p.posture=b.posture==='crouch'||b.posture==='lie'?b.posture:undefined;p.inputAt=now;stepFeeding(p,now);claim(p,b,now);}
   applyActions(p,room,b.actions,now);
  }
- return{status:200,body:{room:viewFor(room,p.id,now)},save:true};
+ return{status:200,body:{room:viewFor(room,p.id,now,lite)},save:true};
 }
 
 /** The player's own device moves its animal every frame with the same move() rules (speeds, grip, stamina, collisions)
@@ -108,17 +110,25 @@ export function roomRequest(room:Room,b:Record<string,unknown>,action:string,now
  *  player's own animal never snaps back to where the server last heard from it. Reach is checked against the species'
  *  top speed with a small banked allowance for network jitter (sustained running faster than top speed drains it). The
  *  server keeps the animal while it holds it (dead, climbing or in a tree, stunned by a kick, down a burrow); a refused
- *  position bumps fix, which tells the device to rejoin the server's animal. */
+ *  position bumps fix, which tells the device to rejoin the server's animal; a report further than top speed allows is
+ *  cut short at the reachable point. */
 export function claim(p:Player,b:Record<string,unknown>,now:number){
  const x=Number(b.x),y=Number(b.y);
  if(b.x===undefined||!Number.isFinite(x)||!Number.isFinite(y)||b.born!==p.born)return;
  const g=ANIMALS[p.species].gait,U=UNITS_PER_METRE,top=Math.max(g.sprint,LEAP_SPEED)*U*1.1;
  if(p.anchorBorn!==p.born||p.anchorAt===undefined){p.anchorX=p.x;p.anchorY=p.y;p.anchorAt=now;p.anchorBorn=p.born;p.slack=CLAIM_SLACK;}
  const held=!!p.deadUntil||p.perched||!!p.climb||(p.stunUntil??0)>now||p.species==='warthog'&&p.abilityUntil>now;
- const elapsed=Math.min(1.5,Math.max(0,(now-p.anchorAt!)/1000)),d=Math.hypot(x-p.anchorX!,y-p.anchorY!),left=Math.min(CLAIM_SLACK,(p.slack??CLAIM_SLACK)+top*elapsed-d);
- if(held||left<0){
+ const elapsed=Math.min(CLAIM_GAP_MS/1000,Math.max(0,(now-p.anchorAt!)/1000)),d=Math.hypot(x-p.anchorX!,y-p.anchorY!),left=Math.min(CLAIM_SLACK,(p.slack??CLAIM_SLACK)+top*elapsed-d);
+ if(held){
   if(Math.hypot(x-p.x,y-p.y)>15)p.fix=(p.fix??0)+1;
   p.anchorX=p.x;p.anchorY=p.y;p.anchorAt=now;p.slack=CLAIM_SLACK/2;return;
+ }
+ if(left<0){
+  // further than it could have run (a long outage, a modified client): it gets as far as top speed allows towards the
+  // report, so the device is pulled back only by the excess rather than to wherever the server last had it
+  const k=Math.max(0,d+left)/Math.max(1,d),cx=p.anchorX!+(x-p.anchorX!)*k,cy=p.anchorY!+(y-p.anchorY!)*k;
+  p.x=Math.max(25,Math.min(W-25,cx));p.y=Math.max(25,Math.min(H-25,cy));p.fix=(p.fix??0)+1;
+  p.anchorX=p.x;p.anchorY=p.y;p.anchorAt=now;p.slack=0;return;
  }
  p.x=Math.max(25,Math.min(W-25,x));p.y=Math.max(25,Math.min(H-25,y));
  const vx=Number(b.vx)||0,vy=Number(b.vy)||0,v=Math.hypot(vx,vy),k=v>top?top/v:1;p.vx=vx*k;p.vy=vy*k;
@@ -143,7 +153,13 @@ const SERVER_ONLY=['token','anchorX','anchorY','anchorAt','anchorBorn','slack','
 const OWNER_ONLY=['dx','fix','dy','targetX','targetY','targetId','threatX','threatY','lastThreatAt','threatAt','homeX','homeY','nextDrink','chaseStart','thinkAt','stuckX','stuckY','stuckAt','unstickUntil','moodUntil','alarmAt','message','messageUntil','hunger','thirst','claimed','food','hunts','drinks','scavenged','escapes','hiddenSeconds','survivalSeconds','abilityReady','interactReady','done','carry','lives','lifeStart','survived','badges','lane','scorch','smokeUntil','trekked'] as const;
 // Beyond FAR_VIEW (past the largest draw range, sound and sense ranges) an animal is never drawn or heard; it is sent with just
 // what its tracks need (components/game/safari-traces.ts), about a quarter of the size.
-export const FAR_VIEW=1150;
+export const FAR_VIEW=1150,
+// A device on a weak link asks for the lite view (lib/link.ts): computer animals leave out empty fields and moments long
+// past (their readers treat a missing field as 0 or false), and those beyond LITE_VIEW (65 m, past close hunting and
+// fleeing range) go as track records with whole-unit positions. Players are always sent as usual.
+ LITE_VIEW=650,LITE_PAST_MS=3000;
+const KEEP=new Set(['x','y','vx','vy','heading','face','stamina','born']),MOMENTS=['actionUntil','protectedUntil','deadUntil','abilityUntil','stunUntil','strikeAt','calledAt'];
+const trim=(rec:Record<string,unknown>,now:number)=>{for(const k of MOMENTS)if(typeof rec[k]==='number'&&(rec[k] as number)<now-LITE_PAST_MS)delete rec[k];for(const k in rec)if(!rec[k]&&!KEEP.has(k))delete rec[k];for(const k of ['x','y','vx','vy'])if(typeof rec[k]==='number')rec[k]=Math.round((rec[k] as number)*10)/10;return rec;};
 const FAR_FIELDS=['id','bot','species','x','y','vx','vy','heading','born','deadUntil','abilityUntil','perched','climb','online','concealed'] as const;
 export type ViewPlayer=Omit<Player,typeof SERVER_ONLY[number]>&{online:boolean;concealed:boolean};
 export type RosterEntry={id:string;name:string;species:Player['species'];score:number;deaths:number;online:boolean};
@@ -155,17 +171,19 @@ export const baseFoods=(seed:number)=>{let f=baseFoodCache.get(seed);if(!f)baseF
 /** What one player is sent. A concealed animal (in a thicket, burrowed, lying along a limb) is left out entirely for
  *  everyone but its own player, the same rule the renderer and sense() already apply; the roster still lists every human
  *  for the lobby and scores. Food is sent as changes from the seed's fixed layout. */
-export function viewFor(room:Room,viewer:string,now:number):RoomView{
+export function viewFor(room:Room,viewer:string,now:number,lite=false):RoomView{
  const players:ViewPlayer[]=[],me=room.players.find(p=>p.id===viewer);
  for(const p of room.players){
   const own=p.id===viewer,concealed=!p.deadUntil&&hidden(p,room,now)&&!p.perched;
   if(concealed&&!own)continue;
   const full:Record<string,unknown>={...p,online:online(p,now),concealed};
-  if(!own&&me&&Math.hypot(p.x-me.x,p.y-me.y)>FAR_VIEW){const far:Record<string,unknown>={};for(const k of FAR_FIELDS)if(full[k]!==undefined)far[k]=full[k];players.push(far as ViewPlayer);continue;}
+  const slim=lite&&p.bot&&!own;
+  if(!own&&me&&Math.hypot(p.x-me.x,p.y-me.y)>(slim?LITE_VIEW:FAR_VIEW)){const far:Record<string,unknown>={};for(const k of FAR_FIELDS)if(full[k]!==undefined)far[k]=full[k];if(slim){trim(far,now);far.x=Math.round(p.x);far.y=Math.round(p.y);}players.push(far as ViewPlayer);continue;}
   for(const k of SERVER_ONLY)delete full[k];
   if(!own)for(const k of OWNER_ONLY)delete full[k];
   if(p.bot){delete full.score;delete full.deaths;}
   if(own&&p.act)full.act=p.act;
+  if(slim)trim(full,now);
   players.push(full as ViewPlayer);
  }
  const base=baseFoods(room.seed);
