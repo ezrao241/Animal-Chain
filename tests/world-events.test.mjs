@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {newPlayer,newRoom,start,tick,interact,worldEvent,fireArrival,fireEdge,burnAt,fireEscape,sense,EVENT_AT,EVENT_CHANCE,FIRE_SHARE,FIRE,FIRE_BURN,MIGRANTS,TREK_POINTS,DAY_MS,W,H,makeFoods,props,nearWater,deathLesson} from '../lib/game.ts';
+import {newPlayer,newRoom,start,tick,interact,worldEvent,fireArrival,fireEdge,burnAt,fireEscape,sense,EVENT_AT,EVENT_CHANCE,FIRE_SHARE,FIRE,FIRE_BURN,FIRE_HEAT,FIRE_HEAT_RATE,FIRE_HEAL,SMOKE_MS,SMOKE_RATE,MIGRANTS,TREK_POINTS,DAY_MS,W,H,makeFoods,props,nearWater,deathLesson} from '../lib/game.ts';
 const T=1800000000000;
 // a started room with only the given players (no wildlife), and the round number that gives each event kind
 function room(kind,players=[]){for(let round=1;round<400;round++){const host=newPlayer('h','Host',T),r=newRoom('ABCDEF',host,T);r.round=round-1;start(r,T);if(worldEvent(r,T)?.kind===kind){r.players=players;return r;}}throw new Error('no round with '+kind);}
@@ -36,13 +36,17 @@ test('ground passes from flames to burnt to green flush; water never burns',()=>
  const w=props(417).find(p=>p.kind==='water');assert.equal(burnAt(r,w.x,w.y,ev.until-1),'');
 });
 
-test('an animal left standing in the flames is overcome; a quick dash through survives; a burrowed warthog is safe',()=>{
+test('burns build like storm damage: a dash through hurts, lingering kills, the heat ahead burns slowly, smoke keeps hurting, then burns ease off; a burrowed warthog is safe',()=>{
  const p=newPlayer('p','P',T,false,'impala'),r=room('fire',[p]),ev=worldEvent(r,T);let q;for(let d=300;d<900&&!q;d+=20){const x=ev.x+ev.ux*d,y=ev.y+ev.uy*d;if(!nearWater(props(417),x,y))q={x,y};}
- const t=fireArrival(ev,q.x,q.y);
- Object.assign(p,{x:q.x,y:q.y,protectedUntil:0,lastSeen:t+60000,inputAt:t+60000,hunger:100});r.tick=t;
- tick(r,t+1000);assert.equal(p.deadUntil,0,'one second in the flames is survivable');assert.ok(p.scorch>.9);
- tick(r,t+1000+FIRE_BURN*1000);assert.ok(p.deadUntil,'caught by the fire');assert.match(p.lives.at(-1).cause,/grass fire/);assert.match(deathLesson(p.lives.at(-1).cause,'impala'),/crosswind/);
- const hog=newPlayer('w','W',T,false,'warthog'),r2=room('fire',[hog]);Object.assign(hog,{x:q.x,y:q.y,protectedUntil:0,abilityUntil:t+10000,lastSeen:t+60000,inputAt:t+60000,hunger:100});r2.tick=t;tick(r2,t+4000);assert.equal(hog.deadUntil,0);
+ const t=fireArrival(ev,q.x,q.y),keep=at=>{p.lastSeen=p.inputAt=at;},run=(a,b)=>{for(let s=a+500;s<=b;s+=500)tick(r,s);};
+ Object.assign(p,{x:q.x,y:q.y,protectedUntil:0,hunger:100});keep(t+1e6);
+ // the heat just ahead of the front burns at a fraction of the flames' rate
+ r.tick=t-FIRE_HEAT+100;tick(r,t-100);assert.ok(p.scorch>0&&p.scorch<(FIRE_HEAT-200)/1000*FIRE_HEAT_RATE+.05,'heat ahead burns slowly');
+ r.tick=t;p.scorch=0;run(t,t+2000);assert.equal(p.deadUntil,0,'two seconds in the flames hurts but is survivable');assert.ok(Math.abs(p.scorch-2)<.05);
+ // stepping clear lets the burns ease off
+ const out={x:p.x,y:p.y};Object.assign(p,{x:ev.x-ev.ux*2000,y:ev.y-ev.uy*2000});if(burnAt(r,p.x,p.y,t+10000)===''){run(t+2000,t+2000+SMOKE_MS);assert.ok(Math.abs(p.scorch-(2+SMOKE_MS/1000*SMOKE_RATE))<.05,'smoke in the lungs keeps hurting after leaving');run(t+2000+SMOKE_MS,t+6000+SMOKE_MS);assert.ok(Math.abs(p.scorch-(2+SMOKE_MS/1000*(SMOKE_RATE-FIRE_HEAL)))<.05,'then burns ease off');}
+ Object.assign(p,out);p.scorch=2;p.smokeUntil=0;r.tick=t+500;run(t+500,t+3000);assert.ok(p.deadUntil,'lingering in the flames kills');assert.match(p.lives.at(-1).cause,/grass fire/);assert.match(deathLesson(p.lives.at(-1).cause,'impala'),/crosswind/);assert.equal(p.scorch,0);
+ const hog=newPlayer('w','W',T,false,'warthog'),r2=room('fire',[hog]);Object.assign(hog,{x:q.x,y:q.y,protectedUntil:0,abilityUntil:t+10000,lastSeen:t+60000,inputAt:t+60000,hunger:100});r2.tick=t;for(let s=t+500;s<=t+5000;s+=500)tick(r2,s);assert.equal(hog.deadUntil,0);assert.ok(!hog.scorch);
 });
 
 test('burnt ground: no grass to eat until the flush, which pays more; no cover to hide in',()=>{

@@ -92,7 +92,11 @@ Game rules for world events (simplifications, not facts):
 - **Fire timing.** The flames burn for 90 seconds and then die out, standing in for a fire dying down in the evening
   damp. Green shoots show 40 seconds after the front passes; real regrowth takes one to three weeks. The plains
   recover overnight between days in longer rounds.
-- **Burns.** 1.6 seconds in the flames kills an animal; a quick dash through a thin front survives. A leopard up a
+- **Burns.** Burns build up like storm damage in a battle game, shown as a Burns meter: 4 seconds in the flames kills an
+  animal, the heat just ahead of the front burns at under a third of that rate, and burns ease off at a quarter of a
+  second per second once clear. After leaving the flames, smoke in the lungs keeps hurting for 4 more seconds (at about a
+  seventh of the flames' rate) before the burns start to ease. Smoke inhalation is a real harm in fires; its timing and
+  amount here are game rules. A quick dash through a thin front hurts but survives; lingering kills. A leopard up a
   tree, a warthog in its burrow and a newly spawned animal are safe. Real large mammals are rarely killed by grass fires.
 - **Cover and food on burnt ground.** Burnt ground gives no cover (the tall grass and the grass ring round each thicket
   are gone) and no grass until the green flush. Green shoots are worth 3 extra points and fill more than old grass.

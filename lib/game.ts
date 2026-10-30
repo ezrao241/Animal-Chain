@@ -64,7 +64,7 @@ export type Player={id:string;token?:string;name:string;bot:boolean;species:Spec
  posture?:Posture;
  /** world events: a migrating zebra's lane (x at the south edge, x at the north edge); seconds spent in flames this
   *  life (a short dash through a thin front is survivable); seconds a zebra player has run with the migration */
- lane?:[number,number];scorch?:number;trekked?:number;
+ lane?:[number,number];scorch?:number;smokeUntil?:number;trekked?:number;
  tree?:number;climb?:Climb;ch?:number;side?:number;limb?:number;along?:number;limbDir?:number;goal?:number;mount?:number;climbHold?:number;vh?:number};
 /** one finished life: what it was, how long it lasted, what it earned and how it ended */
 export type LifeRecord={species:Species;seconds:number;points:number;food:number;hunts:number;cause:string};
@@ -125,8 +125,11 @@ export const EVENT_AT=55000,EVENT_WARN=10000,EVENT_CHANCE=.4,FIRE_SHARE=.35;
  *  into the wind. Flames burn out after FIRE.run (evening damp); a point's flames last FIRE.flame, and green shoots show
  *  through FIRE.flush after the front passed (real regrowth takes one to three weeks: a game compression). */
 export const FIRE={head:2,flank:.6,back:.2,run:90000,flame:8000,flush:40000};
-/** Seconds in flames before an animal is overcome: a quick dash through a thin front onto the burnt ground survives. */
-export const FIRE_BURN=1.6;
+/** Burns build up like storm damage: FIRE_BURN seconds' worth in the flames overcomes an animal, the heat just ahead of the
+ *  front (ground it reaches within FIRE_HEAT ms) burns at FIRE_HEAT_RATE of that, and burns ease off at FIRE_HEAL per second
+ *  once clear. Smoke in the lungs: for SMOKE_MS after leaving the flames, burns keep building at SMOKE_RATE before they
+ *  ease. A quick dash through a thin front hurts but survives; lingering in it kills. */
+export const FIRE_BURN=4,FIRE_HEAT=1500,FIRE_HEAT_RATE=.3,FIRE_HEAL=.25,SMOKE_MS=4000,SMOKE_RATE=.15;
 /** The migration: MIGRANTS zebra file in from the south edge TREK_GAP ms apart and walk north at TREK_PACE (about 2.2 m/s,
  *  between a walk and a trot). A zebra player who keeps within TREK_NEAR of them for TREK_SECONDS is paid TREK_POINTS. */
 export const MIGRANTS=16,TREK_GAP=1500,TREK_PACE=.32,TREK_NEAR=250,TREK_SECONDS=15,TREK_POINTS=15;
@@ -198,14 +201,18 @@ export function fireEscape(room:Room,p:Player,now:number):{x:number;y:number}|nu
  const ax=l>0?0:-1,ay=l>0?side:side*.5,n=Math.hypot(ax,ay);
  return{x:p.x+(ev.ux*ax-ev.uy*ay)/n*300,y:p.y+(ev.uy*ax+ev.ux*ay)/n*300};
 }
-/** Heat: an animal in the flames is overcome after FIRE_BURN s; up a tree, down a burrow or newly spawned it is safe. */
+/** Heat: burns build in the flames (and more slowly in the heat ahead of them) until the animal is overcome; up a tree,
+ *  down a burrow or newly spawned it is safe. */
 function stepFire(p:Player,room:Room,t:number,dt:number){
  if(p.scorch===undefined&&!worldEvent(room,t))return false;
- const safe=p.climb==='limb'||p.perched||p.species==='warthog'&&p.abilityUntil>t||p.protectedUntil>t;
- if(!safe&&burnAt(room,p.x,p.y,t)==='flames'){
-  if(!p.scorch&&!p.bot)notify(p,'Flames! Dash through onto the burnt ground, or run crosswind.',t);
-  p.scorch=(p.scorch??0)+dt;if(p.scorch>=FIRE_BURN){p.scorch=0;die(p,room,t,'was caught by the grass fire.');return true;}
- }else if(p.scorch)p.scorch=Math.max(0,p.scorch-dt*2);
+ const safe=p.climb==='limb'||p.perched||p.species==='warthog'&&p.abilityUntil>t||p.protectedUntil>t,at=burnAt(room,p.x,p.y,t);
+ const ev=!safe&&at===''?worldEvent(room,t):null,a=ev?.kind==='fire'?fireArrival(ev,p.x,p.y):Infinity;
+ const flames=!safe&&at==='flames',rate=safe?0:flames?1:a>t&&a<=t+FIRE_HEAT?FIRE_HEAT_RATE:(p.smokeUntil??0)>t?SMOKE_RATE:0;
+ if(flames)p.smokeUntil=t+SMOKE_MS;else if(safe&&p.smokeUntil)p.smokeUntil=0;
+ if(rate){
+  if(!p.scorch&&!p.bot)notify(p,rate===1?'Flames! Dash through onto the burnt ground, or run crosswind.':'The heat is burning you. Get away from the fire front.',t);
+  p.scorch=(p.scorch??0)+dt*rate;if(p.scorch>=FIRE_BURN){p.scorch=0;die(p,room,t,'was caught by the grass fire.');return true;}
+ }else if(p.scorch)p.scorch=Math.max(0,p.scorch-dt*FIRE_HEAL);
  return false;
 }
 /** The migration: send the next zebra in from the south edge as its turn comes. */
@@ -740,7 +747,7 @@ export const RESTART_CAUSE='started a new life.';
  *  better fed or watered than this one was), so throwing a life away is never a shortcut to food or a better spot. */
 export function restartLife(p:Player,room:Room,now:number){if(p.deadUntil)return;p.carry={hunger:p.hunger,thirst:p.thirst??100};die(p,room,now,RESTART_CAUSE);p.deadUntil=now+6000;}
 export function die(p:Player,room:Room,now:number,cause:string){if(cause===RESTART_CAUSE&&!p.carry){restartLife(p,room,now);return;}if(p.deadUntil)return;
- if(!p.bot)(p.lives??=[]).push({species:p.species,seconds:Math.round(p.survivalSeconds),points:p.score-(p.lifeStart??0),food:p.food,hunts:p.hunts,cause});p.feeding=undefined;p.deadUntil=now+2600;p.dx=0;p.dy=0;p.vx=0;p.vy=0;endClimb(p);p.strikeId='';p.strikeAt=0;p.strikeAmbush=false;p.deaths++;notify(p,cause,now);if(!p.bot){room.events.unshift(p.name+' '+cause);room.events=room.events.slice(0,5);}}
+ if(!p.bot)(p.lives??=[]).push({species:p.species,seconds:Math.round(p.survivalSeconds),points:p.score-(p.lifeStart??0),food:p.food,hunts:p.hunts,cause});p.feeding=undefined;if(p.scorch)p.scorch=0;if(p.smokeUntil)p.smokeUntil=0;p.deadUntil=now+2600;p.dx=0;p.dy=0;p.vx=0;p.vy=0;endClimb(p);p.strikeId='';p.strikeAt=0;p.strikeAmbush=false;p.deaths++;notify(p,cause,now);if(!p.bot){room.events.unshift(p.name+' '+cause);room.events=room.events.slice(0,5);}}
 // A kill leaves a carcass for scavengers once the hunter has eaten. Old carcasses dry out.
 function dropCarcass(room:Room,x:number,y:number,now:number){room.foods=room.foods.filter(f=>!f.until||f.until>now);if(room.foods.length>620)return;const id=Math.max(0,...room.foods.map(f=>f.id))+1;room.foods.push({id,x,y,kind:'carrion',ready:now+7500,until:now+90000});}
 export function interact(p:Player,room:Room,now:number){if(p.deadUntil||p.feeding||now<p.interactReady||p.strikeId)return;if((p.stunUntil??0)>now){notify(p,'Still reeling from the kick.',now);return;}p.interactReady=now+650;p.actionUntil=now+500;
