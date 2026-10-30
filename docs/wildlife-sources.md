@@ -66,6 +66,38 @@ Game rules for day and night (simplifications, not facts):
 - **What you see.** Playing a lion, leopard or hyena, the night is drawn brighter than playing a grazer, to show the
   difference in eyes; it is a picture of the rule above, not a measurement.
 
+## World events
+
+Once each savanna day, in the hot afternoon (about 14:25 on the game clock), the plains throw up one big event: a grass
+fire or the zebra migration. In a 10-minute or unlimited round the days alternate between the two. Rules: `worldEvent`,
+`fireArrival`, `burnAt`, `fireEscape` and the migration steps in `lib/game.ts`; tests in `tests/world-events.test.mjs`.
+
+| Behaviour in the game | What the references say | Source |
+| --- | --- | --- |
+| The fire spreads as an egg-shaped patch stretched downwind: the head runs with the wind, the flanks creep, the back burns slowly into the wind | A fire from a point in a steady wind burns out a roughly elliptical area whose length-to-breadth grows with wind speed; models such as the CSIRO grassland model set flank and back spread as fixed fractions of the head fire rate from that ellipse. | [Anderson 1983, USDA Forest Service Research Paper INT-305](https://biodiversitylibrary.org/item/137374); [CSIRO grassland models](https://research.csiro.au/spark/resources/model-library/csiro-grassland-models) |
+| Head fire 2 m/s, flanks 0.6 m/s, back 0.2 m/s | Cheney and Gould's grassland experiments measured head fire spread of over 2 m/s; savanna head fires spread much faster and burn hotter than back fires (Kruger: head fires 93 to 3644 kW/m against 20 to 160 kW/m for back fires). The game uses the fast end of a windy dry-season grass fire. | [Cheney & Gould 1995, Int. J. Wildland Fire 5(4): 237](https://www.publish.csiro.au/wf/WF9950237); [Trollope's Kruger fire work (Koedoe)](https://koedoe.co.za/index.php/koedoe/article/view/373) |
+| Large animals move away from a fire or slip through onto burnt ground; burrows are a refuge | Heat and smoke kill or injure animals that can't get away, and fire moves animals out of or into burnt areas; animals in deep burrows and holes often survive a fire passing over (e.g. no nest loss among 20 occupied holes burned over). | [Engstrom 2010, Fire Ecology 6(1): 115–130](https://doi.org/10.4996/fireecology.0601115) |
+| Grazers seek out the green flush on burnt ground, and smaller grazers more than big ones | In Laikipia (Kenya) burn preference fell with grazer body mass; small grazers favoured burns with high-quality regrowth. In the Serengeti, impala preferred burned areas for the nutrients in the regrowth. | [Sensenig, Demment & Laca 2010, Ecology 91: 2898–2907](https://zendy.io/title/10.1890/09-1673.1) |
+| Plains zebra migrate with the wildebeest; in late June the herds move north through the Serengeti | In June the herds gather in the Western Corridor and cross the Grumeti, then move north towards the Mara River through July and August. | [Safari.co.za: migration map for June](https://www.safari.co.za/Great_Migration_Maps_By_Month-travel/great-migration-map-june.html) |
+| Hyenas go after the migrating herds | Serengeti spotted hyenas commute a mean of about 40 km from their clan territory to the migratory herds and spend about half the year foraging this way; lions and other large carnivores do not regularly follow the herds. | Hofer & East 1993, Animal Behaviour 46: 547–589 ([summary, Leibniz-IZW hyena project](https://www.hyaenidae.org/about-the-group/heribert-hofer-marion-east/)) |
+
+Game rules for world events (simplifications, not facts):
+
+- **Lightning.** The game's fire is lit by a dry lightning strike because there are no people on the plains. In the
+  Kruger records only about a tenth of fires were lightning fires, most of them at the start of the rains
+  (October–November); a real late-June fire at Seronera would more likely be lit by people.
+- **Fire timing.** The flames burn for 90 seconds and then die out, standing in for a fire dying down in the evening
+  damp. Green shoots show 40 seconds after the front passes; real regrowth takes one to three weeks. The plains
+  recover overnight between days in longer rounds.
+- **Burns.** 1.6 seconds in the flames kills an animal; a quick dash through a thin front survives. A leopard up a
+  tree, a warthog in its burrow and a newly spawned animal are safe. Real large mammals are rarely killed by grass fires.
+- **Cover and food on burnt ground.** Burnt ground gives no cover (the tall grass and the grass ring round each thicket
+  are gone) and no grass until the green flush. Green shoots are worth 3 extra points and fill more than old grass.
+- **The migration.** 16 zebra walk in from the south edge 1.5 seconds apart and cross the map northwards at about
+  2.2 m/s. Real migration columns hold thousands of animals and are mostly wildebeest, which are not in the game.
+  Caught or gone, they are not replaced. A zebra player who keeps within 25 m of the column for 15 seconds earns 15
+  points (safety in numbers); a predator's catch from the column earns 5 extra.
+
 ## Sounds
 
 Every sound in the game is synthesised in the browser (`lib/animal-sounds.ts`, `lib/savanna-audio.ts`); there are no
@@ -99,38 +131,6 @@ Game rules for sound (simplifications, not facts):
   if from beyond the map. Real calls carry kilometres (see above), which would drown a small map.
 
 These sources were found by web search on 2026-10-30; the pages were not opened from the build environment.
-
-## World events
-
-Once each savanna day, in the hot afternoon (about 14:25 on the game clock), the plains throw up one big event: a grass
-fire or the zebra migration. In a 10-minute or unlimited round the days alternate between the two. Rules: `worldEvent`,
-`fireArrival`, `burnAt`, `fireEscape` and the migration steps in `lib/game.ts`; tests in `tests/world-events.test.mjs`.
-
-| Behaviour in the game | What the references say | Source |
-| --- | --- | --- |
-| The fire spreads as an egg-shaped patch stretched downwind: the head runs with the wind, the flanks creep, the back burns slowly into the wind | A fire from a point in a steady wind burns out a roughly elliptical area whose length-to-breadth grows with wind speed; models such as the CSIRO grassland model set flank and back spread as fixed fractions of the head fire rate from that ellipse. | [Anderson 1983, USDA Forest Service Research Paper INT-305](https://biodiversitylibrary.org/item/137374); [CSIRO grassland models](https://research.csiro.au/spark/resources/model-library/csiro-grassland-models) |
-| Head fire 2 m/s, flanks 0.6 m/s, back 0.2 m/s | Cheney and Gould's grassland experiments measured head fire spread of over 2 m/s; savanna head fires spread much faster and burn hotter than back fires (Kruger: head fires 93 to 3644 kW/m against 20 to 160 kW/m for back fires). The game uses the fast end of a windy dry-season grass fire. | [Cheney & Gould 1995, Int. J. Wildland Fire 5(4): 237](https://www.publish.csiro.au/wf/WF9950237); [Trollope's Kruger fire work (Koedoe)](https://koedoe.co.za/index.php/koedoe/article/view/373) |
-| Large animals move away from a fire or slip through onto burnt ground; burrows are a refuge | Heat and smoke kill or injure animals that can't get away, and fire moves animals out of or into burnt areas; animals in deep burrows and holes often survive a fire passing over (e.g. no nest loss among 20 occupied holes burned over). | [Engstrom 2010, Fire Ecology 6(1): 115–130](https://doi.org/10.4996/fireecology.0601115) |
-| Grazers seek out the green flush on burnt ground, and smaller grazers more than big ones | In Laikipia (Kenya) burn preference fell with grazer body mass; small grazers favoured burns with high-quality regrowth. In the Serengeti, impala preferred burned areas for the nutrients in the regrowth. | [Sensenig, Demment & Laca 2010, Ecology 91: 2898–2907](https://zendy.io/title/10.1890/09-1673.1) |
-| Plains zebra migrate with the wildebeest; in late June the herds move north through the Serengeti | In June the herds gather in the Western Corridor and cross the Grumeti, then move north towards the Mara River through July and August. | [Safari.co.za: migration map for June](https://www.safari.co.za/Great_Migration_Maps_By_Month-travel/great-migration-map-june.html) |
-| Hyenas go after the migrating herds | Serengeti spotted hyenas commute a mean of about 40 km from their clan territory to the migratory herds and spend about half the year foraging this way; lions and other large carnivores do not regularly follow the herds. | Hofer & East 1993, Animal Behaviour 46: 547–589 ([summary, Leibniz-IZW hyena project](https://www.hyaenidae.org/about-the-group/heribert-hofer-marion-east/)) |
-
-Game rules for world events (simplifications, not facts):
-
-- **Lightning.** The game's fire is lit by a dry lightning strike because there are no people on the plains. In the
-  Kruger records only about a tenth of fires were lightning fires, most of them at the start of the rains
-  (October–November); a real late-June fire at Seronera would more likely be lit by people.
-- **Fire timing.** The flames burn for 90 seconds and then die out, standing in for a fire dying down in the evening
-  damp. Green shoots show 40 seconds after the front passes; real regrowth takes one to three weeks. The plains
-  recover overnight between days in longer rounds.
-- **Burns.** 1.6 seconds in the flames kills an animal; a quick dash through a thin front survives. A leopard up a
-  tree, a warthog in its burrow and a newly spawned animal are safe. Real large mammals are rarely killed by grass fires.
-- **Cover and food on burnt ground.** Burnt ground gives no cover (the tall grass and the grass ring round each thicket
-  are gone) and no grass until the green flush. Green shoots are worth 3 extra points and fill more than old grass.
-- **The migration.** 16 zebra walk in from the south edge 1.5 seconds apart and cross the map northwards at about
-  2.2 m/s. Real migration columns hold thousands of animals and are mostly wildebeest, which are not in the game.
-  Caught or gone, they are not replaced. A zebra player who keeps within 25 m of the column for 15 seconds earns 15
-  points (safety in numbers); a predator's catch from the column earns 5 extra.
 
 ## Game rules (simplifications, not facts)
 
