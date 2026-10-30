@@ -165,14 +165,14 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
      follow.x=THREE.MathUtils.damp(follow.x,target.x,12,dt);follow.z=THREE.MathUtils.damp(follow.z,target.z,12,dt);follow.y=THREE.MathUtils.damp(follow.y,target.y,climb?8:5,dt);}
    }
    if(input.current.recenter){recentering=true;input.current.recenter=false;}
-   // The camera turns with the animal: a critically damped spring swings it round behind the body, gently as the animal
-   // gets going and faster at a sprint, so turns read as one continuous move rather than a lag and a catch-up. When the
-   // animal turns right round and comes toward the lens, the camera holds and shows its face (fading out between about
-   // 110 and 140 degrees, so there is no snap); it follows again as soon as the animal heads off to either side. A drag
-   // to look around pauses it for a second and a half; R swings back behind the animal.
+   // The camera turns with the animal: a critically damped spring swings it round behind the body whenever the animal
+   // turns (a full about-turn included), so the view always looks the way the animal is facing. It eases in as the
+   // animal gets going (or as soon as it is steered) and swings faster at a sprint and on a big turn, so turns read as
+   // one continuous move. A drag to look around pauses it for a second and a half; R swings straight back behind.
    if(!preview&&m&&(dragging||m.perched||ms-lastLook<1500)&&!recentering)yawVel=0;
    else if(!preview&&m){const own=positions.get(m.id),sp=own?Math.hypot(own.vx||0,own.vy||0):0,want=ownHeading-Math.PI/2,delta=Math.atan2(Math.sin(want-yaw),Math.cos(want-yaw));
-    const facing=recentering?1:1-THREE.MathUtils.smoothstep(Math.abs(delta),1.9,2.45),moving=recentering?1:THREE.MathUtils.smoothstep(sp,4,30),w=recentering?7:(m.sprint?3.4:2.4)*moving*facing;
+    const steered=Math.hypot(input.current.dx,input.current.dy)>.1,moving=recentering?1:Math.max(THREE.MathUtils.smoothstep(sp,4,30),steered?.7:0),
+     w=recentering?7:(m.sprint?3.6:2.8)*(1+.5*THREE.MathUtils.smoothstep(Math.abs(delta),1,2.6))*moving;
     yawVel+=(w*w*delta-2*Math.max(w,2.5)*yawVel)*Math.min(dt,.05);yaw+=yawVel*dt;
     if(recentering){pitch=THREE.MathUtils.damp(pitch,.24,8,dt);if(Math.abs(delta)<.01&&Math.abs(yawVel)<.05)recentering=false;}}
    if(!preview)input.current.cameraYaw=yaw;
