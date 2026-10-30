@@ -39,8 +39,113 @@ Simplifications: the 400 × 280 m map can't hold a several-kilometre hyena chase
 which is higher than the collar maximum from Wilson et al. (the impala uses the collar figure); the collars logged everyday
 running, and the authors note animals rarely reached their limits, so the true maxima are uncertain.
 
+## Day and night
+
+| Behaviour in the game | What the references say | Source |
+| --- | --- | --- |
+| Lions, leopards and hyenas keep most of their sight after dark; the grazers lose much more of theirs | Cats (and many other night-active mammals) have a tapetum lucidum, a reflective layer behind the retina that gives light a second pass and lowers the threshold for vision in dim light, at some cost in sharpness. | [Tapetum lucidum (Wikipedia)](https://en.wikipedia.org/wiki/Tapetum_lucidum) |
+| Lions catch more on dark nights; a bright moon helps their prey | Serengeti and Ngorongoro lions eat more on moonless nights (belly-size records), and studies in South Africa and Uganda found lion hunting success is highest on dark nights. Lions are hungriest just after full moon, when bright nights have limited their hunting. | [Packer et al. 2011, PLoS ONE 6(7): e22285](https://pmc.ncbi.nlm.nih.gov/articles/PMC3140494/), [EurekAlert summary](https://www.eurekalert.org/news-releases/725525) |
+| A late-rising moon leaves the evening dark | After full moon the moon rises later each night, so the first hours after sunset are dark; that is when Packer et al. found most lion attacks. | [Packer et al. 2011](https://pmc.ncbi.nlm.nih.gov/articles/PMC3140494/) |
+| Spotted hyenas hunt mostly at night | Mostly nocturnal, with some daytime activity; activity peaks around midnight and before sunrise (Kruuk 1972). | [San Diego Zoo Wildlife Alliance: spotted hyena behaviour](https://ielc.libguides.com/sdzg/factsheets/spottedhyena/behavior-ecology) |
+| Wild lions mostly rest by day and hunt after dark, but take a good chance in daylight | Lions rest for much of the day, with activity peaking after dusk. Field guides warn that the "20 hours of rest" figure is overstated: lions are opportunists and also hunt by day. The game only raises the hunger at which a wild lion sets out in daylight. | [Londolozi: what you should know about lions](https://blog.londolozi.com/2020/02/19/what-you-should-know-about-lions/), [LionAid: when are lions most active](https://lionaid.org/faqs_lions/at-what-time-of-the-day-are-lions-most-active.htm) |
+| Leopards hunt mainly at night, dawn and dusk, but are also seen by day | Often called nocturnal; camera traps in the Sabi Sand found the big cats more crepuscular than assumed, and leopards are active by day too. | [Londolozi blog](https://blog.londolozi.com/?p=105328) |
+| Sunrise about 06:04 and sunset about 17:56, sun path through the day | Computed from the solar position formula for 2.3° S (Seronera) in late June, declination +23.4°, in local solar time. At 10:00 this gives the late-morning sun the world was lit by before (altitude 51°, azimuth 47°). Checked by a test. | `sunAt` in `lib/game.ts`, [docs/visual-reference.md](visual-reference.md) |
+
+Game rules for day and night (simplifications, not facts):
+
+- **A day in five minutes.** One savanna day passes every five real minutes, starting at 10:00, so a five-minute round
+  sees afternoon, dusk, a whole night and dawn. The three bonus phases line up with the clock: Golden graze 10:00–18:00,
+  the Hunt 18:00–02:00, Dawn run 02:00–10:00 (renamed from "Dusk run", which no longer matched the time).
+- **Night sight.** In the dark, predators keep 85 % of their daylight sight range (95 % under a full moon) and grazers
+  keep 40 % (70 % under a full moon). The real ratios are not measured this way; the numbers only keep the real
+  ordering. Scent, sound and the 4.5 m close range work the same day and night.
+- **Wild hunters by day.** In full daylight a wild lion only goes hunting when its food is 22 points lower than at
+  night, a hyena 16 lower and a leopard 10 lower. Balance runs: catches at night are about twice the daytime rate.
+- **The moon.** Each round gets its own moon phase. The moon follows the sun by its phase times a day and is drawn on
+  the sun's path (its real path tilts a few degrees differently).
+- **What you see.** Playing a lion, leopard or hyena, the night is drawn brighter than playing a grazer, to show the
+  difference in eyes; it is a picture of the rule above, not a measurement.
+
+## World events
+
+On some savanna days, in the hot afternoon (about 14:25 on the game clock), the plains throw up one big event: a grass
+fire or the zebra migration. Each day draws on its own: 40 % of days have an event, and about a third of those (14 % of
+days) are fires, the rest migrations, so most games are quiet. Rules: `worldEvent`,
+`fireArrival`, `burnAt`, `fireEscape` and the migration steps in `lib/game.ts`; tests in `tests/world-events.test.mjs`.
+
+| Behaviour in the game | What the references say | Source |
+| --- | --- | --- |
+| The fire spreads as an egg-shaped patch stretched downwind: the head runs with the wind, the flanks creep, the back burns slowly into the wind | A fire from a point in a steady wind burns out a roughly elliptical area whose length-to-breadth grows with wind speed; models such as the CSIRO grassland model set flank and back spread as fixed fractions of the head fire rate from that ellipse. | [Anderson 1983, USDA Forest Service Research Paper INT-305](https://biodiversitylibrary.org/item/137374); [CSIRO grassland models](https://research.csiro.au/spark/resources/model-library/csiro-grassland-models) |
+| Head fire 2 m/s, flanks 0.6 m/s, back 0.2 m/s | Cheney and Gould's grassland experiments measured head fire spread of over 2 m/s; savanna head fires spread much faster and burn hotter than back fires (Kruger: head fires 93 to 3644 kW/m against 20 to 160 kW/m for back fires). The game uses the fast end of a windy dry-season grass fire. | [Cheney & Gould 1995, Int. J. Wildland Fire 5(4): 237](https://www.publish.csiro.au/wf/WF9950237); [Trollope's Kruger fire work (Koedoe)](https://koedoe.co.za/index.php/koedoe/article/view/373) |
+| Large animals move away from a fire or slip through onto burnt ground; burrows are a refuge | Heat and smoke kill or injure animals that can't get away, and fire moves animals out of or into burnt areas; animals in deep burrows and holes often survive a fire passing over (e.g. no nest loss among 20 occupied holes burned over). | [Engstrom 2010, Fire Ecology 6(1): 115–130](https://doi.org/10.4996/fireecology.0601115) |
+| Grazers seek out the green flush on burnt ground, and smaller grazers more than big ones | In Laikipia (Kenya) burn preference fell with grazer body mass; small grazers favoured burns with high-quality regrowth. In the Serengeti, impala preferred burned areas for the nutrients in the regrowth. | [Sensenig, Demment & Laca 2010, Ecology 91: 2898–2907](https://zendy.io/title/10.1890/09-1673.1) |
+| Plains zebra migrate with the wildebeest; in late June the herds move north through the Serengeti | In June the herds gather in the Western Corridor and cross the Grumeti, then move north towards the Mara River through July and August. | [Safari.co.za: migration map for June](https://www.safari.co.za/Great_Migration_Maps_By_Month-travel/great-migration-map-june.html) |
+| Hyenas go after the migrating herds | Serengeti spotted hyenas commute a mean of about 40 km from their clan territory to the migratory herds and spend about half the year foraging this way; lions and other large carnivores do not regularly follow the herds. | Hofer & East 1993, Animal Behaviour 46: 547–589 ([summary, Leibniz-IZW hyena project](https://www.hyaenidae.org/about-the-group/heribert-hofer-marion-east/)) |
+
+Game rules for world events (simplifications, not facts):
+
+- **How often.** Events are a game rule, not a real frequency: a 40 % chance a day, fires the rarer (14 % of days)
+  because real lightning fires are uncommon (below). Real migrations pass a given spot for weeks a year, not in an afternoon.
+- **Lightning.** The game's fire is lit by a dry lightning strike because there are no people on the plains. In the
+  Kruger records only about a tenth of fires were lightning fires, most of them at the start of the rains
+  (October–November); a real late-June fire at Seronera would more likely be lit by people.
+- **Fire timing.** The flames burn for 90 seconds and then die out, standing in for a fire dying down in the evening
+  damp. Green shoots show 40 seconds after the front passes; real regrowth takes one to three weeks. The plains
+  recover overnight between days in longer rounds.
+- **Burns.** Burns build up like storm damage in a battle game, shown as a Burns meter: 4 seconds in the flames kills an
+  animal, the heat just ahead of the front burns at under a third of that rate, and burns ease off at a quarter of a
+  second per second once clear. After leaving the flames, smoke in the lungs keeps hurting for 4 more seconds (at about a
+  seventh of the flames' rate) before the burns start to ease. Smoke inhalation is a real harm in fires; its timing and
+  amount here are game rules. A quick dash through a thin front hurts but survives; lingering kills. A leopard up a
+  tree, a warthog in its burrow and a newly spawned animal are safe. Real large mammals are rarely killed by grass fires.
+- **Cover and food on burnt ground.** Burnt ground gives no cover (the tall grass and the grass ring round each thicket
+  are gone) and no grass until the green flush. Green shoots are worth 3 extra points and fill more than old grass.
+- **The migration.** 16 zebra walk in from the south edge 1.5 seconds apart and cross the map northwards at about
+  2.2 m/s. Real migration columns hold thousands of animals and are mostly wildebeest, which are not in the game.
+  Caught or gone, they are not replaced. A zebra player who keeps within 25 m of the column for 15 seconds earns 15
+  points (safety in numbers); a predator's catch from the column earns 5 extra.
+
+## Sounds
+
+Every sound in the game is synthesised in the browser (`lib/animal-sounds.ts`, `lib/savanna-audio.ts`); there are no
+recordings. Each one is shaped after how the real call is described, so it should be recognisable, but it is an
+imitation, not a recording.
+
+| Sound in the game | What the references say | Source |
+| --- | --- | --- |
+| A lion's call is a roaring bout: soft moans, full roars, then a run of grunts that fade | Lions roar in bouts; grunts and moans are short-range calls used within the pride. A roar can carry about 8 km in good conditions. | [Tsavo Trust: how far can a lion's roar be heard](https://tsavotrust.org/how-far-can-a-lions-roar-be-heard/) |
+| Far-off lions roar at night, most of all before dawn, rarely by day | A study in *Animal Behaviour* found roaring clustered at night with a peak just before dawn, favouring calm, cool, humid air. | [ScienceBlog summary](https://scienceblog.com/d-a-lions-roar-can-travel-eight-kilometres-across-open-savanna-but-it-is-not-only-a-war-cry-it-is-also-a-long-distance-family-signal-helping-scattered-pride-members-find-one-another-while-wa/) |
+| Hyenas whoop: a low, rising call repeated in a slow series, heard far off at night | The whoop is repeated, can be heard about 5 km away and helps recruit and coordinate clan mates; each hyena's whoop is individual. | [Wild Ambience: spotted hyena](https://wildambience.com/wildlife-sounds/spotted-hyena/), [Phys.org: hyena calls](https://phys.org/tags/spotted+hyena) |
+| A leopard's call is a rasping "sawing", strokes in and out | Leopards give a territorial sawing call that sounds like wood being sawn, distinct for each leopard. | [Wildlife SOS: how leopards communicate](https://news.wildlifesos.org/how-do-leopards-communicate/) |
+| A stalking leopard makes no call | Game rule built on stalking behaviour: the Stalk ability is silent to everyone else. | (game rule) |
+| Impala give a sharp, explosive snort when they spot a predator | An impala that spots a predator snorts and moves off. | [Mpala Live field guide: impala](https://www.mpalalive.org/field_guide/view/impala) |
+| Zebras blow hard through the nose, then bark a braying "kwa-ha" | The zebra bark is written "kwaha, kwaha, ha ha"; barks and snorts are both described as alarm signals. The sources here are weaker than the rest (no bioacoustics study found). | [Rogue Scholar record on zebra calls](https://rogue-scholar.org/records/g2csq-j9p65) |
+| Ring-necked doves call "work HAR-der" by day | Its incessant three-note "work HAR-der" song is a characteristic sound of East and southern Africa. | [eBird: ring-necked dove](https://ebird.org/species/rindov), [Wikipedia](https://en.wikipedia.org/wiki/Ring-necked_dove) |
+| The fiery-necked nightjar sings "good-lord-de-liver-us" at dusk and at night | A series of mellow notes heard as "Good Lord, deliver us", typically at twilight, in woodland savanna. | [Wikipedia: fiery-necked nightjar](https://en.wikipedia.org/wiki/Fiery-necked_nightjar) |
+
+Game rules for sound (simplifications, not facts):
+
+- **Calls are shortened.** A real lion's roaring bout can last a minute; the game's lasts about six seconds, and the
+  hyena's whoop series about four.
+- **Warthog grunts and snorts**, the ability sounds, the death cries and the eating and drinking
+  sounds are generic animal sounds, not modelled on a described call.
+- **Insects and frogs.** Cicadas swell in waves through the hot hours, crickets sing at night and frogs plink near the
+  water. These are typical of the savanna but not tied to particular species.
+- **Footsteps** are paced from each animal's speed, heavier for heavier animals; hooves click and the cats' and
+  hyenas' padded feet only thud softly. Above a set speed the beats bunch into a gallop's rhythm. The pacing is a game
+  value, not measured stride rates.
+- **Hearing range.** Calls carry up to 70 m in the game, alarms 52 m, footsteps 42 m; far-off night calls are played as
+  if from beyond the map. Real calls carry kilometres (see above), which would drown a small map.
+
+These sources were found by web search on 2026-10-30; the pages were not opened from the build environment.
+
 ## Game rules (simplifications, not facts)
 
+- **Spawn shield.** A player's new animal can't be caught, kicked or hurt by fire for 6 seconds (`SPAWN_PROTECT_MS` in
+  `lib/game.ts`, meant to stay between 5 and 8 s), and computer-controlled wildlife for 4 seconds. The shield ends early
+  the moment that player lunges at prey or lands a kick. Nothing like this exists in nature; it is there so nobody is
+  caught the instant they appear in a crowded round. The HUD counts it down, and other players see SHIELDED on the
+  animal's name tag.
 - **Detection ranges.** Each species has a sight range in game units. Running makes an animal fully noticeable,
   walking about 60 %, and standing still about 35 %. A stalking leopard counts as 45 % of that, and an animal in a tree
   canopy 50 %. Within 4.5 m anything not hidden is noticed. Real detection distances are far longer and vary with light
@@ -88,6 +193,35 @@ running, and the authors note animals rarely reached their limits, so the true m
 - **Mud.** Wading through a watering hole or its mud ring slows every animal to 80 %.
 - **Tracks.** Footprints are drawn about four times life size so they read from the follow camera. They fade within 55 s, or
   110 s in mud.
+- **October 27 playtest tuning (game rules that depart from the facts above).** The impala's in-game sprint is
+  16.2 m/s and its run 7.8 m/s, below the measured 17.7 m/s in the speed table, so predators can close on it on this small
+  map. While Stalk is active (4 s) a leopard moves at 4.5 m/s and is hidden from every animal sense; the 45 % figure above
+  applies outside Stalk. Neither is a claim about real leopards or impala.
+- **Hunting and feeding.** A catch needs prey in front (within 85° of the lunge) and within 1.70 × the species
+  catch range (the October 27 1.44 × setting, then 18 % more on October 29: `HUNT_REACH_MULTIPLIER`), with nothing solid between. One landed catch is enough (the October 27 playtest setting). A predator that
+  has caught prey stays at the kill for 5 s (lion), 6 s (hyena) or 7 s (leopard) and regains up to 45 food in proportion
+  to the time actually spent, and moving, an ability, a climb, a stun or death ends the meal early with only the part
+  eaten. These timings and numbers are game abstractions, not
+  measured feeding times or injuries.
+- **Creeping up from behind.** A computer-controlled prey animal notices a quiet player predator only inside a 220° forward
+  sector for its close-range and scent checks; a predator that isn't sprinting and is behind it (the rear 140°) is not
+  noticed by those two. Sight, sprint noise and herd alarms still work as before. Prey eyes on the sides of the head do
+  give a wide field of view, but the 220° figure and the all-or-nothing cut-off are a game rule, not a measurement.
+- **Crouching and lying down (player posture).** Wild hunters crouch to stalk and animals lie up to rest, and the
+  computer animals already show both. A player can do the same: C crouches (no faster than the species' walk, about 40 %
+  harder to pick out), X lies down (still, half as easy to see, stamina back 50 % faster). The numbers are game rules.
+- **Coat perks (game rules, not biology).** Four coats carry a small edge, applied by the server: the Black Panther
+  (melanistic leopard) is 30 % harder to see at night; the Black Mane lion's lunge reaches 10 % further (a nod to dark
+  manes marking males in good condition, West & Packer 2002, but the reach is invented); the Emberhide skin makes any
+  animal 5 % faster at a run and sprint; the Sun-Gilded skin makes a sprint last 20 % longer. No claim is made that coat
+  colour changes these things in real animals.
+- **Field Guide Quiz.** Ten multiple-choice questions (lib/quiz.ts), each answered by one of the field-guide facts and
+  shown with that fact's source after answering. All ten right in one attempt unlocks the Aurora skin, a cosmetic fantasy
+  finish (not a real animal colour) that nothing else unlocks.
+- **Field-guide facts.** The "The real animals" section of the field guide and the animal note in the room menu
+  (lib/species-facts.ts) use only sources already listed above, plus the African Wildlife Foundation species pages for
+  the leopard lines and the "more" links. The AWF pages could not be opened from the build environment, so those links
+  are unchecked.
 
 ## Climbing and solid objects
 
@@ -109,3 +243,43 @@ Game numbers (in `CLIMB` and `BODY`, lib/game.ts):
   out of trunks and boulders, not just its centre point.
 - Each acacia's trunk and limbs come from one shared description (lib/acacia.ts), so the bark the paws land on is the
   bark that is drawn.
+
+## Badges and coat colours
+
+Badges (lib/rewards.ts `BADGES`, awarded in lib/game.ts by `award`) are for behaviour the real animals show; each
+quotes the field-guide fact it rests on. The thresholds are game rules:
+- **Unseen at 10 m**: a player's predator moving towards prey it could take (at 0.3 m/s or more, after spawn
+  protection), within 10 m, while that prey does not sense it, by the same `sense()` rule the wildlife uses. Lions really do stalk to about 30 m before charging (LionAlert); 10 m is a
+  game threshold.
+- **Out of the canopy** (leopard drops from a bough and lands the catch), **Clan hunt** (hyena takes a zebra with two
+  more hyenas close), **Hind-leg kick** (zebra kick lands), **Ten-metre bound** (impala in the air from Leap when a
+  lunge lands), **Tusks first** (warthog backs into a burrow within 3 s of being hunted), **Followed the vultures**
+  (a predator eats from a fresh kill's carcass, which circling vultures mark). The leopard drop is the game's ambush
+  rule: leopards do rest in and cache kills in trees, but most of their hunts are stalks on the ground.
+
+Coat colours (lib/rewards.ts `COATS`, drawn by `PAINT` in components/game/safari-animals.ts) are real variants of the
+wild species. In the game anyone can earn them; in the wild several are very rare. The Rare / Epic tiers and showcase
+titles ("Timbavati Ghost", "Black Panther") are game labels; each card also gives the variant's plain name.
+
+**Legendary skins are not real.** Sun-Gilded, Emberhide and Starlight (`SKINS`, drawn by `SKIN_PAINT`) are fantasy
+finishes for the hardest goals (every badge once, 25 badges, 3 badges in one round). The coat book labels them
+"Cosmetic skin: not a real animal colour" and they cite no source. They change nothing in the rules: senses and
+detection ignore coats.
+
+| Coat | What the references say | Source |
+| --- | --- | --- |
+| Lion: dark-maned | Mane colour ranges from blond to near black; darker manes are commoner where it is cooler and signal condition. | [West & Packer 2002, Science](https://doi.org/10.1126/science.1073257) |
+| Lion: white | Cream coat from a recessive TYR variant (leucism, not albinism), Timbavati area. | [OMIA 000202-9689, citing Cho et al. 2013](https://omia.org/4133) |
+| Leopard: strawberry | Erythristic leopards, black pigment replaced by red-brown; 2 of 28 leopards at Thaba Tholo, Mpumalanga. | [Pirie, Thomas & Fellowes 2016, Bothalia](https://library.aosis.co.za/index.php/record/view/33448) |
+| Leopard: black | Melanistic leopards confirmed by camera traps in Laikipia, Kenya, in 2019; rosettes visible under infrared. | [Pilfold et al. 2019, via National Geographic](https://www.nationalgeographic.com/animals/article/rare-black-panther-spotted-in-africa-century) |
+| Spotted hyena: elder | Each hyena's spot pattern is fixed, but in very old animals short hair makes the spots fade (and brown). | [Hyena Project methods](https://hyena-project.com/methods), [hyaenidae.org](https://www.hyaenidae.org/the-hyaenidae/spotted-hyena-crocuta-crocuta/crocuta-physical-description/) |
+| Spotted hyena: pale | Background coat from cream to light brown. | [hyaenidae.org](https://www.hyaenidae.org/the-hyaenidae/spotted-hyena-crocuta-crocuta/crocuta-physical-description/) |
+| Plains zebra: southern stripes | Striping varies regionally, from heavy black-and-white to thinner, lighter stripes with less coverage. | [Larison et al. 2015, R. Soc. Open Sci.](https://doi.org/10.1098/rsos.140452) |
+| Plains zebra: polka-dot | Pseudomelanism: melanin forms dots instead of stripes; a foal photographed in the Masai Mara in 2019. | [National Geographic 2019](https://www.nationalgeographic.com/animals/article/zebra-pseudo-melanism-kenya-masai) |
+| Impala: black-faced | Aepyceros melampus petersi of north-west Namibia and south-west Angola, with a dark facial blaze. | [Mammal Diversity Database](https://www.mammaldiversity.org/taxon/1006130) |
+| Warthog: red earth, pale clay | Warthogs have little hair and wallow; their skin takes on the colour of the local soil (yellowish or reddish). | [Maryland Zoo](https://www.marylandzoo.org/animal/common-warthog) |
+
+These were checked through search results on 2026-10-29; the pages themselves could not be opened from the build
+environment (blocked hosts), like the AWF links above. The painted colours are approximations of the photographs, on
+the game's faceted models (the white lion keeps its usual eye colour; the polka-dot zebra is an adult here, though the
+documented animals were foals).

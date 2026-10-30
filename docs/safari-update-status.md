@@ -58,3 +58,51 @@ Restored the complete move() implementation verbatim from Claude c78d214, includ
 Verification: movement function compared byte-for-byte against c78d214. TypeScript noEmit passed. Tests and build results are reported separately after execution. No new visual playtest or hardware smoothness claim in this restoration.
 
 Restoration final checks: 46/46 tests pass; TypeScript noEmit passes; Sites production build passes.
+
+## Integration with the lighting and multiplayer branches (Oct 29)
+
+This branch is codex/safari-finish (a449234) merged with the sunny savanna lighting branch (claude/project-thread-size0c, c1bdbf3)
+and the multiplayer session branch (claude/project-thread-0jajev, bb1ea7c). The terrain height module from this branch is
+kept; the lighting branch's colours and sun are kept. Round length (`configure`) and the host's `end` now go through
+`roomRequest` in lib/net.ts, so the hosted route and the offline shim share one implementation: host only, lobby only for
+`configure`, accepted values 300, 600 and 0 (unlimited), 5 minutes when a room has no value. `room.endedBy` records a host
+ending; the results screen reads it. The three 100 s phases now repeat in rounds longer than five minutes instead of staying
+on Dusk Run. A fresh kill is drawn while the hunter feeds (it opens to scavengers after 7.5 s as before). The poacher raises
+the rifle while aiming and its muzzle flash lasts about a quarter of a second, so a 140 ms poll still shows it.
+
+Checks run: 55 Node tests (game, route, safari-updates, client-motion), tsc --noEmit, the play build, scripts/mp-playtest.mjs
+(7/7, two browsers through the real route), and a headless browser pass over the play build: unlimited chosen in the
+lobby, ELAPSED clock counting up, host ending the round with the explanation on results, a lion catch with the 5 s
+feeding HUD and pose, and a poacher guarding by its jeep, warning, firing (lion 100 -> 75), retreating, driving away and
+leaving the map. Screens are software-rendered (SwiftShader); real-GPU and phone checks have not been done.
+
+## Poachers removed (Oct 29)
+
+At Romoke's request the poacher encounter is gone: no poachers, jeeps, shots or player health. Removed `Poacher`,
+`spawnPoachers`, `engagePoacher`, `stepPoachers`, `poacherSight`, `driveEscape` and `jeepDoor` from lib/game.ts,
+components/game/poacher-models.ts, the jeep compass cue and minimap squares, the Health meter, and the poacher tests.
+One-hit catches with 1.44x reach, proportional 5/6/7 s feeding and everything else are unchanged.
+
+## Round-length choice kept (Oct 29)
+
+Romoke confirmed the round-length picker stays: the host picks 5 minutes, 10 minutes or unlimited in the lobby and can
+end the round for everyone (configure/end in lib/net.ts, as above). Only the poachers are removed.
+
+## Changelog pass (Oct 29)
+
+- Bite reach 1.44x -> 1.70x of each species' catch range (+18 %).
+- The ring under the nearest food the animal can eat brightens and pulses once it is within eating range
+  (components/game/safari-food.ts); a fresh kill shows no ring until it is ready.
+- Creeping behind computer prey: `creptBehind` in lib/game.ts (220° forward sector, quiet human predator, valid matchup).
+- Rounds: 5 min default, 10 min (server deadline), unlimited (elapsed clock, host End round). The host picks in the
+  lobby; everyone sees the choice; replay keeps it.
+- Disconnects: a player who stops syncing is removed after 15 s in the lobby or mid-round (host passes to an active
+  player); finished results are left untouched. Wildlife stays at 60.
+- 3-step tutorial (once per browser, reopen from the room menu), Stats panel (button or P: FPS, round trip, drawing
+  time, snapshot age, "Waiting for the server…" past 1.5 s, 60-sample history), clearer round-length control.
+- Acacias: drawn bark stems join each canopy pad to its branch tip and the central crown to the fork. The climbing and
+  collision data in lib/acacia.ts is unchanged.
+- Climbing: walking round to the trunk after Q is drawn as walking on the ground (it used the perched pose and slid);
+  the HUD only says "Up in the acacia" once the animal is on the tree.
+- Not checked: real phones and GPUs (browser checks ran on a software renderer), and the AWF links (blocked here).
+

@@ -1,5 +1,7 @@
 import {createTerrainHeight} from '../../lib/terrain-height';
-// The Golden Plains: a faceted African savanna built in code from the shared prop table (lib/game.ts), so the
+// The Golden Plains: a faceted African savanna modelled on the central Serengeti (Seronera) in the early dry season
+// (late June, about 10:00 in the morning: clear sky, a few fair-weather cumulus, straw-tan grass still green at the
+// base, green flushes by water, granite kopjes). See docs/visual-reference.md. It is built in code from the shared prop table (lib/game.ts), so the
 // colliders the server uses and the acacias, kopjes, thickets, burrows and watering holes the player sees always agree.
 // Terrain is a faceted height grid; groundY() interpolates the same triangles, so animals stand exactly on the facets.
 import * as THREE from 'three';
@@ -12,20 +14,21 @@ const PROPS=props(417),WATERS=PROPS.filter(p=>p.kind==='water'),KOPJES=PROPS.fil
 const smooth=(a:number,b:number,x:number)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t);};
 const {groundY,grid,waterLevel}=createTerrainHeight(PROPS,W,H);
 export {groundY,waterLevel};
-const GRASS=[0xd9b660,0xcfa853,0xe2c374,0xc79d4b,0xdbb965,0xcbab58],DRY=0xc9a15a,OLIVE=0xa7a250,EARTH=0xb27b4b,GREEN=0x98a252,MUD=0x6d583b,ROCKY=0xab9f88;
+// early dry season: straw and tan with grey-green underneath, not one uniform gold
+const GRASS=[0xb09662,0xa58c56,0xb59c69,0x9c844d,0xab925e,0xa28b55],DRY=0xbca97a,OLIVE=0x84864d,EARTH=0x9a6b44,GREEN=0x6c8742,MUD=0x5e5039,ROCKY=0x958e81;
 function groundColour(x:number,z:number,r:number){
  const c=hex(GRASS[Math.floor(r*GRASS.length)]);
- // broad sweeps of sun-bleached straw, olive swales where the soil holds water, and bare red earth between the tussocks
+ // broad sweeps of sun-bleached straw, olive swales where the soil holds water, and bare red-brown earth between the tussocks
  const n=Math.sin(x*.0031+Math.sin(z*.0023)*2)*Math.cos(z*.0027);c.lerp(hex(DRY),Math.max(0,n)*.5);
- const swale=Math.sin(x*.0017+1)*Math.sin(z*.0021+Math.sin(x*.0011)*1.5);if(swale>.35)c.lerp(hex(OLIVE),smooth(.35,.85,swale)*.55);
- const bare=Math.sin(x*.0061+z*.0013)*Math.sin(z*.0057-x*.0021+2);if(bare>.72)c.lerp(hex(EARTH),smooth(.72,.95,bare)*.5);
+ const swale=Math.sin(x*.0017+1)*Math.sin(z*.0021+Math.sin(x*.0011)*1.5);if(swale>.3)c.lerp(hex(OLIVE),smooth(.3,.85,swale)*.6);
+ const bare=Math.sin(x*.0061+z*.0013)*Math.sin(z*.0057-x*.0021+2);if(bare>.66)c.lerp(hex(EARTH),smooth(.66,.95,bare)*.55);
  for(const w of WATERS){const d=Math.hypot(x-w.x,z-w.y);if(d<w.size*2.6)c.lerp(hex(GREEN),(1-smooth(w.size*1.1,w.size*2.6,d))*.65);if(d<w.size*1.25)c.lerp(hex(MUD),1-smooth(w.size*.9,w.size*1.25,d));}
  for(const k of KOPJES){const d=Math.hypot(x-k.x,z-k.y);if(d<170)c.lerp(hex(ROCKY),(1-smooth(60,170,d))*.6);}
  for(const b of BURROWS)if(Math.hypot(x-b.x,z-b.y)<40)c.lerp(hex(0x9a6e45),.5);
  // tall-grass swales read a little greener-gold from above; game trails are worn pale and dusty
- for(const g of PATCHES)if(Math.hypot(x-g.x,z-g.y)<g.size*GRASS_PATCH)c.lerp(hex(0xb8a04a),.35);
- if(x>0&&z>0&&x<W&&z<H&&trailDistance(x,z)<24)c.lerp(hex(0xddc391),.55);
- if(x<0||z<0||x>W||z>H)c.lerp(hex(0xbfa066),.25);
+ for(const g of PATCHES)if(Math.hypot(x-g.x,z-g.y)<g.size*GRASS_PATCH)c.lerp(hex(0x958a4e),.35);
+ if(x>0&&z>0&&x<W&&z<H&&trailDistance(x,z)<24)c.lerp(hex(0xbba47c),.6);
+ if(x<0||z<0||x>W||z>H)c.lerp(hex(0xb7a476),.25);
  return c;
 }
 /** Ground tiles are TILE x TILE grid cells, so the renderer frustum-culls the land behind and beyond the camera. */
@@ -53,12 +56,17 @@ function acacia(seed:number,lod=0){
  const m=new Model(seed,lod),shape=acaciaShape(seed);
  m.loft('t#bark',shape.trunk.map(t=>({c:t.c,rz:t.r,ry:t.r})),{n:6,jitter:.04,start:'flat',end:'point'});
  shape.limbs.forEach(l=>m.spike('t#bark',l.path,l.radii,{n:5,jitter:.03}));
+ // bark stems carrying each canopy pad: from its limb's tip (pad i sits over limb i) or, for the central crown, from
+ // the fork, up into the pad's underside so no pad floats. Drawn only: the climbing rules keep the limbs above.
+ shape.canopy.forEach((c,i)=>{const l=shape.limbs[i],from=l?l.path.at(-1)!:[.15,shape.fork,0] as const,
+  to=[c.c[0],c.c[1]-c.r[1]*.4,c.c[2]] as const,mid=[(from[0]+to[0])/2,from[1]+(to[1]-from[1])*.55,(from[2]+to[2])/2] as const;
+  if(to[1]-from[1]>.05)m.spike('t#bark',[[...from],[...mid],[...to]],l?[l.radii.at(-1)!*1.1,l.radii.at(-1)!*.8,.018]:[.12,.075,.03],{n:5,jitter:.03});});
  // flat-topped umbrella canopy: overlapping faceted pads at the branch tips, a small one over the resting bough
  shape.canopy.forEach((c,i)=>m.blob('t#leaf',c.c,c.r,{detail:1,jitter:i===shape.canopy.length-1?.16:.18,rot:[0,c.rot,0]}));
  // warm bark that catches the sun on top; canopies lit gold-green above, cool olive in their own shade (never black)
- return m.build((p,n,part)=>part.includes('#bark')?(n.y>.4?hex(0xa88b68):hex(0x7a624b).lerp(hex(0x8e7457),hash(p.x*13,p.z*13,4))).multiplyScalar(.9+hash(p.x*40,p.y*40,p.z*40)*.2):n.y>.55?hex([0xa4b553,0x93a849,0xb3bd5e,0x8b9f43][Math.floor(hash(p.x*9,p.z*9,1)*4)]):n.y<-.3?hex(0x6b8848):hex(0x7d9a44),{t:[0,0,0]},.1).get('t')!;
+ return m.build((p,n,part)=>part.includes('#bark')?(n.y>.4?hex(0xa88b68):hex(0x7a624b).lerp(hex(0x8e7457),hash(p.x*13,p.z*13,4))).multiplyScalar(.9+hash(p.x*40,p.y*40,p.z*40)*.2):n.y>.55?hex([0x95a752,0x879c4a,0xa0ad5c,0x7f9444][Math.floor(hash(p.x*9,p.z*9,1)*4)]):n.y<-.3?hex(0x5d7546):hex(0x6e8a45),{t:[0,0,0]},.1).get('t')!;
 }
-function boulder(seed:number,lod=0){const m=new Model(seed,lod);m.blob('b',[0,.15,0],[1,.72,1],{detail:1,jitter:.22});return m.build((p,n)=>{const c=hex([0xa49a88,0x9b8a72,0xb0a28a,0x8f8676][Math.floor(hash(p.x*20,p.y*20,p.z*20)*4)]);if(n.y>.6)c.lerp(hex(0xcab894),.35);if(hash(p.x*31,p.y*31,p.z*31)>.86)c.lerp(hex(0xc2a65c),.6);return c;},{b:[0,0,0]},.06).get('b')!;}
+function boulder(seed:number,lod=0){const m=new Model(seed,lod);m.blob('b',[0,.15,0],[1,.72,1],{detail:1,jitter:.22});return m.build((p,n)=>{const c=hex([0xa59e94,0x9d9184,0xb2a99c,0x8f8a82][Math.floor(hash(p.x*20,p.y*20,p.z*20)*4)]);if(n.y>.6)c.lerp(hex(0xcdc3b2),.35);if(hash(p.x*31,p.y*31,p.z*31)>.86)c.lerp(hex(0xc9a54e),.55);return c;},{b:[0,0,0]},.06).get('b')!;}
 /** Scrub bushes: a rounded green thicket bush and a sparser grey-olive thorn scrub. */
 function shrub(seed:number,dry=false){const m=new Model(seed),top=dry?0x8c8f52:0x7f943d,side=dry?0x6d7244:0x617531,under=dry?0x4c5236:0x3f4d25;
  m.blob('s',[0,.55,0],[1.1,.75,1.1],{detail:1,jitter:.24});m.blob('s',[.6,.4,.3],[.7,.5,.7],{detail:0,jitter:.2});m.blob('s',[-.55,.45,-.35],[.65,.55,.6],{detail:0,jitter:.22});if(dry)m.blob('s',[.1,.95,-.2],[.5,.45,.5],{detail:0,jitter:.3});
@@ -78,13 +86,31 @@ function tuft(seed:number,tall:boolean){
  const pos:number[]=[],col:number[]=[],blades=tall?9:6;
  for(let b=0;b<blades;b++){const a=b/blades*Math.PI*2+hash(seed,b,1)*1.2,lean=.18+hash(seed,b,2)*.35,h=(tall?1.15:.42)*(.65+hash(seed,b,3)*.6),w=.035+hash(seed,b,4)*.03,r=.12+hash(seed,b,5)*.14;
   const bx=Math.cos(a)*r,bz=Math.sin(a)*r,tx=bx+Math.cos(a)*lean*h,tz=bz+Math.sin(a)*lean*h,px=-Math.sin(a)*w,pz=Math.cos(a)*w;
-  pos.push(bx-px,0,bz-pz,bx+px,0,bz+pz,tx,h,tz);const base=hex(0xb39352).lerp(hex(0xc9a75c),hash(seed,b,7)),tip=hex(hash(seed,b,6)>.3?0xf3e0a0:0xe6c676);col.push(base.r,base.g,base.b,base.r,base.g,base.b,tip.r,tip.g,tip.b);}
+  pos.push(bx-px,0,bz-pz,bx+px,0,bz+pz,tx,h,tz);const base=hex(0x8f8c56).lerp(hex(0xb09a62),hash(seed,b,7)),tip=hex(hash(seed,b,6)>.3?0xeadcb0:0xd9c389);col.push(base.r,base.g,base.b,base.r,base.g,base.b,tip.r,tip.g,tip.b);}
  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(pos.map((_,i)=>i%3===1?1:0),3));g.scale(10,10,10);return g;
 }
 /** Grass bends in one shared breeze: every tuft leans downwind, and gusts roll across the plain in the wind's direction
  *  (the bend is turned into each instance's own frame, so rotated tufts still lean the same way). */
+/** The day's grass fire (lib/game.ts fireArrival, worked out again per tuft on the GPU): ignition and head direction,
+ *  then seconds since the strike, the fire's run, a point's flaming time and the wait for green shoots, and the
+ *  ellipse's growth rates (semi-major, centre drift, semi-minor in units a second). uFireOn is 0 on days without one. */
+const fireUniforms={uFire:{value:new THREE.Vector4()},uFireT:{value:new THREE.Vector4()},uFireK:{value:new THREE.Vector3(1,0,1)},uFireOn:{value:0}};
+const FIRE_GLSL=`
+  vGlow=0.;
+  if(uFireOn>.5){
+   vec2 fd=iPos.xz-uFire.xy;float fl=dot(fd,uFire.zw),fs=-fd.x*uFire.w+fd.y*uFire.z,A2=uFireK.x*uFireK.x,al=1.-uFireK.y*uFireK.y/A2,be=2.*fl*uFireK.y/A2,ga=fl*fl/A2+fs*fs/(uFireK.z*uFireK.z);
+   float arr=(-be+sqrt(be*be+4.*al*ga))/(2.*al),age=uFireT.x-arr;
+   if(arr<=uFireT.y&&age>=0.){
+    // in the flames the tuft glows and shrivels; then black stubble; then fresh green shoots coming through
+    if(age<uFireT.z&&uFireT.x<uFireT.y){float k=age/uFireT.z;transformed*=1.-k*.85;vColor.rgb=mix(vec3(1.,.62,.2),vec3(.12,.07,.05),k);vGlow=1.-k;}
+    else if(age<uFireT.w){transformed*=.1;vColor.rgb=vec3(.1,.09,.08);}
+    else{float g=min(1.,(age-uFireT.w)/30.);transformed*=.1+.32*g;vColor.rgb=mix(vec3(.1,.09,.08),vec3(.4,.6,.24),g);}
+   }
+  }`;
 function windy(material:THREE.MeshStandardMaterial,time:{value:number},wind:{value:THREE.Vector2},cam:{value:THREE.Vector3}){
- material.onBeforeCompile=shader=>{shader.uniforms.uTime=time;shader.uniforms.uWind=wind;shader.uniforms.uCam=cam;shader.vertexShader='uniform float uTime;\nuniform vec2 uWind;\nuniform vec3 uCam;\n'+shader.vertexShader.replace('#include <begin_vertex>',`#include <begin_vertex>
+ material.onBeforeCompile=shader=>{shader.uniforms.uTime=time;shader.uniforms.uWind=wind;shader.uniforms.uCam=cam;Object.assign(shader.uniforms,fireUniforms);
+  shader.fragmentShader='varying float vGlow;\n'+shader.fragmentShader.replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\n totalEmissiveRadiance+=vGlow*vec3(1.,.42,.1);');
+  shader.vertexShader='uniform float uTime;\nuniform vec2 uWind;\nuniform vec3 uCam;\nuniform vec4 uFire;\nuniform vec4 uFireT;\nuniform vec3 uFireK;\nuniform float uFireOn;\nvarying float vGlow;\n'+shader.vertexShader.replace('#include <begin_vertex>',`#include <begin_vertex>
   #ifdef USE_INSTANCING
   vec3 iPos=instanceMatrix[3].xyz;vec3 lw=normalize((vec4(uWind.x,0.,uWind.y,0.)*instanceMatrix).xyz+vec3(1e-5));
   #else
@@ -94,7 +120,7 @@ function windy(material:THREE.MeshStandardMaterial,time:{value:number},wind:{val
   float gust=.55+.45*sin(along*.011-uTime*1.6)+.15*sin(along*.037-uTime*2.7+iPos.x*.002);
   transformed.xz+=lw.xz*gust*transformed.y*.17;
   // tufts right in front of the lens sink into the ground so they never wall off the view
-  transformed*=smoothstep(35.,95.,distance(iPos.xz,uCam.xz));`);};
+  transformed*=smoothstep(35.,95.,distance(iPos.xz,uCam.xz));`+FIRE_GLSL);};
  return material;
 }
 
@@ -104,22 +130,27 @@ function instanced(geometry:THREE.BufferGeometry,material:THREE.Material,items:P
  items.forEach((it,i)=>{q.setFromEuler(e.set(0,it.rot,0));m.compose(new THREE.Vector3(it.x,it.y,it.z),q,new THREE.Vector3(it.scale,it.scale*(it.sy??1),it.scale));mesh.setMatrixAt(i,m);if(tinted)mesh.setColorAt(i,it.tint??white);});
  mesh.count=items.length;mesh.castShadow=shadow;mesh.receiveShadow=true;mesh.computeBoundingSphere();return mesh;
 }
-const SUN=new THREE.Vector3(-.5,.55,-.62).normalize();
-/** Where a shadow falls on the ground for something whose shade is cast from `height` units up (afternoon sun). */
+// Sun at 2.3° S on 25 June at 10:00 solar time: altitude 51°, azimuth 47° east of north (north is -z, east is +x on
+// the map), so shadows are short and fall to the south-west. One vector drives the light, the sun disc, the sky glow
+// and every painted shade.
+const SUN=new THREE.Vector3(.46,.78,-.43).normalize();
+/** Where a shadow falls on the ground for something whose shade is cast from `height` units up. */
 const shadowOffset=(height:number)=>({x:-SUN.x/SUN.y*height,z:-SUN.z/SUN.y*height});
 // grass colour per tuft: mostly gold, some pale straw, rusty red oat grass, olive in the damp swales, green by water
-const STRAW=new THREE.Color(1.07,1.03,.9),GOLD=new THREE.Color(1,1,1),RUST=new THREE.Color(1.02,.8,.62),SAGE=new THREE.Color(.86,.95,.7),LUSH=new THREE.Color(.62,.92,.5);
+const STRAW=new THREE.Color(1.08,1.05,.96),GOLD=new THREE.Color(1,1,1),RUST=new THREE.Color(1.03,.84,.7),SAGE=new THREE.Color(.84,.94,.74),LUSH=new THREE.Color(.62,.9,.52);
 function grassTint(x:number,z:number,lush:boolean){
  if(lush)return hash(x,z,21)<.75?LUSH:SAGE;
  const swale=Math.sin(x*.0017+1)*Math.sin(z*.0021+Math.sin(x*.0011)*1.5),r=hash(x,z,22),rusty=Math.sin(x*.0043-z*.0029)>.55;
  return swale>.4&&r<.55?SAGE:rusty&&r<.6?RUST:r<.3?STRAW:GOLD;
 }
-const FLOWERS=[new THREE.Color(1,1,1),new THREE.Color(1,.86,.3),new THREE.Color(.78,.58,.98),new THREE.Color(1,.66,.72)];
+// early dry season: the rains' flowering is over, so only a few white and yellow late bloomers survive where the soil stays damp
+const FLOWERS=[new THREE.Color(1,1,1),new THREE.Color(1,.86,.3)];
+const damp=(x:number,z:number)=>Math.sin(x*.0017+1)*Math.sin(z*.0021+Math.sin(x*.0011)*1.5)>.3||WATERS.some(w=>Math.hypot(x-w.x,z-w.y)<w.size*2.6);
 
 /** A ring of faceted hills at the horizon, drawn far to near: blue-lavender ranges, sage ridges, then low golden rises
  *  with acacia silhouettes. Faces turned to the sun are warm, faces in their own shade cool, and every foot fades into haze. */
 function horizon(lightweight:boolean){
- const pos:number[]=[],col:number[]=[],haze=hex(0xead8b2),n=new THREE.Vector3(),ab=new THREE.Vector3(),ac=new THREE.Vector3();
+ const pos:number[]=[],col:number[]=[],haze=hex(0xd2dad8),n=new THREE.Vector3(),ab=new THREE.Vector3(),ac=new THREE.Vector3();
  const face=(pts:number[][],lit:THREE.Color,shade:THREE.Color,fade:number)=>{
   const [a,b,c]=pts.map(p=>new THREE.Vector3(...p));n.copy(ab.subVectors(b,a)).cross(ac.subVectors(c,a)).normalize();if(n.dot(a)>0)n.negate();
   const base=shade.clone().lerp(lit,smooth(-.25,.55,n.dot(SUN)));for(const p of pts){pos.push(...p);const v=base.clone().lerp(haze,(1-smooth(-.02,.05,p[1]))*fade);col.push(v.r,v.g,v.b);}
@@ -132,8 +163,8 @@ function horizon(lightweight:boolean){
  };
  const bump=(a:number,at:number,w:number,hgt:number)=>{const d=Math.atan2(Math.sin(a-at),Math.cos(a-at));return Math.abs(d)<w?hgt*(1-Math.abs(d)/w)**1.4:0;};
  layer(lightweight?60:96,1,.025,.04,1,0xcfc9cc,0x9aa6c0,.55,a=>bump(a,2.3,.32,.07)+bump(a,4.9,.22,.045)+bump(a,.6,.15,.03));
- layer(lightweight?54:84,.97,.012,.026,7,0xc2b48a,0x8e9c95,.45,a=>bump(a,3.6,.25,.02)+bump(a,5.8,.3,.018));
- layer(lightweight?48:72,.94,.004,.012,13,0xbba66a,0x8f8d63,.25,()=>0);
+ layer(lightweight?54:84,.97,.012,.026,7,0xb3ae8c,0x8a9a98,.45,a=>bump(a,3.6,.25,.02)+bump(a,5.8,.3,.018));
+ layer(lightweight?48:72,.94,.004,.012,13,0xb2a274,0x8b8c68,.25,()=>0);
  // flat-topped acacias on the nearest rise
  const tree=hex(0x7f8150),treeShade=hex(0x6c7352);
  for(let k=0;k<(lightweight?18:42);k++){const a=hash(k,3,9)*Math.PI*2,base=.006+.006*hash(k,4,9),w=.008+hash(k,5,9)*.01,t=.016+hash(k,6,9)*.012,d=.935,c=hash(k,7,9)>.5?tree:treeShade;
@@ -159,7 +190,10 @@ function pool(size:number,seed:number){
  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));g.computeVertexNormals();return g;
 }
 
-export type Savanna={update(time:number,x:number,z:number,range:number,cameraFar:number,camera:THREE.Vector3,wind?:{x:number;y:number}):void;realShadows(on:boolean):void;dusk():void;dispose():void};
+export type Savanna={/** direction to the sun now (late morning in play, low in the west on the home screen) */sun:THREE.Vector3;update(time:number,x:number,z:number,range:number,cameraFar:number,camera:THREE.Vector3,wind?:{x:number;y:number}):void;realShadows(on:boolean):void;dusk():void;/** time of day in play: sun and moon directions (x east, y up, z south), how light it is (0 night, 1 day) and the moonlight */daylight(sun:THREE.Vector3,moon:THREE.Vector3,day:number,moonlight:number):void;/** the day's grass fire for the grass shader (null on a day without one) */fire(state:GrassFire|null):void;dispose():void};
+export type GrassFire={x:number;y:number;ux:number;uy:number;seconds:number;run:number;flame:number;flush:number;a:number;c:number;f:number};
+/** the terrain grid (cell size and origin), so overlays can follow the same ground triangles */
+export const TERRAIN_GRID={S,X0,Z0,NX,NZ};
 export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
  const disposables:{dispose():void}[]=[],add=<T extends THREE.Object3D>(o:T)=>{scene.add(o);return o;};
  const facet=facetMaterial();disposables.push(facet);
@@ -193,7 +227,7 @@ export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
  for(const t of trees){const o=shadowOffset(26*t.size);drape(t.x+o.x,t.y+o.z,32*t.size,1.2);drape(t.x+o.x*.15,t.y+o.z*.15,7*t.size,1);}
  for(const b of shrubs){const o=shadowOffset(6*b.size);drape(b.x+o.x,b.y+o.z,11*b.size,1.2);}
  for(const k of rocks){const o=shadowOffset(10*k.size);drape(k.x+o.x,k.y+o.z,34*k.size,1.15);}
- const shadeMat=new THREE.MeshBasicMaterial({color:0x3b3049,transparent:true,opacity:.17,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});disposables.push(shadeMat);
+ const shadeMat=new THREE.MeshBasicMaterial({color:0x2f3a52,transparent:true,opacity:.2,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});disposables.push(shadeMat);
  const shade=add(new THREE.Group());
  for(const shadePos of shadeTiles.values()){const shadeGeo=new THREE.BufferGeometry();shadeGeo.setAttribute('position',new THREE.Float32BufferAttribute(shadePos,3));shadeGeo.computeBoundingSphere();const mesh=new THREE.Mesh(shadeGeo,shadeMat);mesh.renderOrder=1;shade.add(mesh);disposables.push(shadeGeo);}
  // burrows: a dark hole ringed by a lip of dug earth
@@ -219,8 +253,8 @@ export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
   // reeds and green sedge standing in the shallows of each watering hole
   for(const w of WATERS)if(Math.floor(w.x/CH)===cx&&Math.floor(w.y/CH)===cz)for(let k=0;k<w.size*(lightweight?.25:.6);k++){const a=hash(w.x,k,31)*6.283,d=w.size*(.8+hash(w.y,k,32)*.22),x=w.x+Math.cos(a)*d,z=w.y+Math.sin(a)*d;per[3].push({x,y:Math.max(groundY(x,z),waterLevel(w)-3)-1,z,rot:a,scale:.7+hash(k,w.x,33)*.5,tint:hash(k,w.y,34)<.7?LUSH:SAGE});}
   if(!lightweight){
-   // wildflowers grow in loose drifts; stones lie scattered on the plain and pile up around the kopjes
-   for(let d=0;d<3;d++){const fx=cx*CH+hash(cx,cz,d*7+100)*CH,fz=cz*CH+hash(cx,cz,d*7+101)*CH,tint=FLOWERS[Math.floor(hash(cx,cz,d*7+102)*FLOWERS.length)];for(let k=0;k<14;k++){const x=fx+(hash(fx,k,1)-.5)*70,z=fz+(hash(fz,k,2)-.5)*70;if(!blocked(x,z))per[4].push({x,y:groundY(x,z)-.3,z,rot:hash(x,z,4)*6.28,scale:.8+hash(x,z,5)*.6,tint});}}
+   // a few wildflower drifts in damp ground; stones lie scattered on the plain and pile up around the kopjes
+   for(let d=0;d<3;d++){const fx=cx*CH+hash(cx,cz,d*7+100)*CH,fz=cz*CH+hash(cx,cz,d*7+101)*CH;if(!damp(fx,fz))continue;const tint=FLOWERS[Math.floor(hash(cx,cz,d*7+102)*FLOWERS.length)];for(let k=0;k<14;k++){const x=fx+(hash(fx,k,1)-.5)*70,z=fz+(hash(fz,k,2)-.5)*70;if(!blocked(x,z))per[4].push({x,y:groundY(x,z)-.3,z,rot:hash(x,z,4)*6.28,scale:.8+hash(x,z,5)*.6,tint});}}
    for(let k=0;k<26;k++){const x=cx*CH+hash(cx,cz,k*5+300)*CH,z=cz*CH+hash(cx,cz,k*5+301)*CH;if(!WATERS.some(w=>Math.hypot(x-w.x,z-w.y)<w.size*1.1))per[5].push({x,y:groundY(x,z)-.4,z,rot:hash(x,z,8)*6.28,scale:1.2+hash(x,z,9)*2.3,sy:.6+hash(x,z,10)*.6});}
    for(const t of rocks)if(Math.floor(t.x/CH)===cx&&Math.floor(t.y/CH)===cz)for(let k=0;k<6;k++){const a=hash(t.x,k,41)*6.283,d=t.size*(32+hash(t.y,k,42)*40),x=t.x+Math.cos(a)*d,z=t.y+Math.sin(a)*d;per[5].push({x,y:groundY(x,z)-.6,z,rot:a,scale:2.5+hash(k,t.x,43)*2.5,sy:.7+hash(k,t.y,44)*.5});}
   }
@@ -229,22 +263,31 @@ export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
  // watering holes: faceted water that shimmers, deep in the middle and pale green in the shallows
  const waterMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.1,metalness:.18,flatShading:true,transparent:true,opacity:.92});disposables.push(waterMat);
  const waters=WATERS.map((w,i)=>{const geo=pool(w.size,i+1);const mesh=add(new THREE.Mesh(geo,waterMat));mesh.position.set(w.x,waterLevel(w),w.y);mesh.receiveShadow=true;disposables.push(geo);return{mesh,base:Float32Array.from(geo.getAttribute('position').array as Float32Array)};});
- // sky dome: warm haze at the horizon, a clean blue overhead, and a soft glow around the sun
+ // sky dome: pale dusty haze at the horizon, a clean blue overhead, and a soft glow around the sun
  const skyGeo=new THREE.SphereGeometry(1,40,20),skyCol:number[]=[],sp=skyGeo.getAttribute('position'),sv=new THREE.Vector3();
- for(let i=0;i<sp.count;i++){sv.fromBufferAttribute(sp,i);const y=sv.y,c=hex(0xead8b2).lerp(hex(0xc6dbe6),smooth(.0,.16,y)).lerp(hex(0x8bb9df),smooth(.12,.5,y)).lerp(hex(0x5a8bc8),smooth(.5,1,y));c.lerp(hex(0xfff1d0),smooth(.8,1,sv.normalize().dot(SUN))*.7);skyCol.push(c.r,c.g,c.b);}
+ const daySky=(y:number,toSun:number)=>hex(0xe3e6df).lerp(hex(0xbfd6e8),smooth(.0,.12,y)).lerp(hex(0x7fb0de),smooth(.1,.45,y)).lerp(hex(0x4f86c9),smooth(.45,1,y)).lerp(hex(0xfdf8ea),smooth(.82,1,toSun)*.6);
+ for(let i=0;i<sp.count;i++){sv.fromBufferAttribute(sp,i);const c=daySky(sv.y,sv.normalize().dot(SUN));skyCol.push(c.r,c.g,c.b);}
  skyGeo.setAttribute('color',new THREE.Float32BufferAttribute(skyCol,3));const skyMat=new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.BackSide,fog:false,depthWrite:false});
  const sky=add(new THREE.Mesh(skyGeo,skyMat));sky.renderOrder=-3;disposables.push(skyGeo,skyMat);
  const cloudGeo=clouds(lightweight),cloudMat=new THREE.MeshBasicMaterial({vertexColors:true,fog:false,depthWrite:false});const cloudMesh=add(new THREE.Mesh(cloudGeo,cloudMat));cloudMesh.renderOrder=-2;disposables.push(cloudGeo,cloudMat);
- const sunDir=SUN,sunMat=new THREE.MeshBasicMaterial({color:0xfff6dc,fog:false,depthWrite:false}),sunGeo=new THREE.CircleGeometry(.04,16),haloMat=new THREE.MeshBasicMaterial({color:0xfff0c8,fog:false,depthWrite:false,transparent:true,opacity:.28}),haloGeo=new THREE.CircleGeometry(.075,16);
+ const sunDir=SUN.clone(),sunMat=new THREE.MeshBasicMaterial({color:0xfff6dc,fog:false,depthWrite:false}),sunGeo=new THREE.CircleGeometry(.04,16),haloMat=new THREE.MeshBasicMaterial({color:0xfff0c8,fog:false,depthWrite:false,transparent:true,opacity:.28}),haloGeo=new THREE.CircleGeometry(.075,16);
  const sunDisc=add(new THREE.Mesh(sunGeo,sunMat)),sunHalo=add(new THREE.Mesh(haloGeo,haloMat));sunDisc.renderOrder=-2;sunHalo.renderOrder=-2;disposables.push(sunMat,sunGeo,haloMat,haloGeo);
+ // the moon (its own disc, cool white) and a field of stars fixed to the sky dome, both only seen after dark
+ const moonDir=new THREE.Vector3(0,-1,0),moonMat=new THREE.MeshBasicMaterial({color:0xeef1f8,fog:false,depthWrite:false,transparent:true,opacity:0}),moonGeo=new THREE.CircleGeometry(.03,20),moonDisc=add(new THREE.Mesh(moonGeo,moonMat));moonDisc.renderOrder=-2;moonDisc.visible=false;disposables.push(moonMat,moonGeo);
+ const starPos:number[]=[];for(let i=0;i<(lightweight?350:900);i++){const u=hash(i,1,71),a=hash(i,2,72)*Math.PI*2,y=.04+u*.96,r=Math.sqrt(1-y*y);starPos.push(Math.cos(a)*r,y,Math.sin(a)*r);}
+ const starGeo=new THREE.BufferGeometry();starGeo.setAttribute('position',new THREE.Float32BufferAttribute(starPos,3));const starMat=new THREE.PointsMaterial({color:0xdfe6ff,size:1.6,sizeAttenuation:false,fog:false,depthWrite:false,transparent:true,opacity:0});
+ const stars=add(new THREE.Points(starGeo,starMat));stars.renderOrder=-2;stars.visible=false;disposables.push(starGeo,starMat);
  const hillGeo=horizon(lightweight),hillMat=new THREE.MeshBasicMaterial({vertexColors:true,fog:false,side:THREE.DoubleSide,depthWrite:false});const hills=add(new THREE.Mesh(hillGeo,hillMat));hills.renderOrder=-1;disposables.push(hillGeo,hillMat);
  let lastWater=0;
  return{
+  sun:sunDir,
   update(t,x,z,range,far,cam,wind){
    time.value=t;lens.value.copy(cam);if(wind)breeze.value.set(wind.x,wind.y);
    const radius=far*.92;sky.position.copy(cam);sky.scale.setScalar(radius);hills.position.set(cam.x,cam.y-radius*.04,cam.z);hills.scale.set(radius*.97,radius,radius*.97);
    cloudMesh.position.copy(cam);cloudMesh.scale.setScalar(radius);cloudMesh.rotation.y=t*.0015;
    for(const [disc,d] of [[sunDisc,.95],[sunHalo,.96]] as const){disc.position.copy(cam).addScaledVector(sunDir,radius*d);disc.scale.setScalar(radius);disc.lookAt(cam);}
+   if(moonDisc.visible){moonDisc.position.copy(cam).addScaledVector(moonDir,radius*.95);moonDisc.scale.setScalar(radius);moonDisc.lookAt(cam);}
+   if(stars.visible){stars.position.copy(cam);stars.scale.setScalar(radius*.97);}
    // grass thins out with distance (instances are in random order, so drawing fewer keeps an even spread)
    for(const c of chunks){const d=Math.hypot(c.cx-x,c.cz-z),reach=range*(lightweight?.6:.85)+CH*.7;c.mesh.visible=d<reach;c.mesh.count=Math.ceil(c.full*(d<CH*1.1?1:d<reach*.6?.45:.2));}
    if(Math.hypot(x-lodAt.x,z-lodAt.z)>40||far!==lodAt.far){lodAt.x=x;lodAt.z=z;lodAt.far=far;relevel(x,z,far);}
@@ -253,11 +296,31 @@ export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
   realShadows(on){shade.visible=!on;},
   // the home screen's late golden hour: an ember horizon under a deepening violet sky, rose-lit clouds, dusky hills
   dusk(){
+   sunDir.copy(DUSK_SUN);
    const col=skyGeo.getAttribute('color') as THREE.BufferAttribute;
-   for(let i=0;i<sp.count;i++){sv.fromBufferAttribute(sp,i);const y=sv.y,c=hex(0xffb36a).lerp(hex(0xf08a5c),smooth(.0,.1,y)).lerp(hex(0xa8607a),smooth(.08,.32,y)).lerp(hex(0x4a3f78),smooth(.3,.7,y)).lerp(hex(0x1f2450),smooth(.7,1,y));c.lerp(hex(0xffe0a8),smooth(.75,1,sv.normalize().dot(SUN))*.75);col.setXYZ(i,c.r,c.g,c.b);}
+   for(let i=0;i<sp.count;i++){sv.fromBufferAttribute(sp,i);const y=sv.y,c=hex(0xffb36a).lerp(hex(0xf08a5c),smooth(.0,.1,y)).lerp(hex(0xa8607a),smooth(.08,.32,y)).lerp(hex(0x4a3f78),smooth(.3,.7,y)).lerp(hex(0x1f2450),smooth(.7,1,y));c.lerp(hex(0xffe0a8),smooth(.75,1,sv.normalize().dot(DUSK_SUN))*.75);col.setXYZ(i,c.r,c.g,c.b);}
    col.needsUpdate=true;cloudMat.color.set(0xffb9a0);hillMat.color.set(0x8a6f86);sunMat.color.set(0xffe2a6);haloMat.color.set(0xffb070);haloMat.opacity=.45;
   },
+  // the clock in play: the sky dome is repainted from three palettes (day, the ember band of sunset and dawn on the sun's
+  // side, a moonlit navy night), the sun and moon discs ride their real paths, stars come out, and the painted ground
+  // shade fades as the sun gets low (it was laid for the late-morning sun; at night there is only moonlight)
+  daylight(sunNow,moon,day,moonlight){
+   const up=sunNow.y,ember=smooth(-.2,.02,up)*(1-smooth(.05,.4,up)),col=skyGeo.getAttribute('color') as THREE.BufferAttribute,hs=Math.hypot(sunNow.x,sunNow.z)||1;
+   for(let i=0;i<sp.count;i++){sv.fromBufferAttribute(sp,i);const y=sv.y,v=sv.normalize(),toSun=v.dot(sunNow),side=.5+.5*(v.x*sunNow.x+v.z*sunNow.z)/(Math.hypot(v.x,v.z)*hs||1);
+    const night=hex(0x1a2744).lerp(hex(0x0d1630),smooth(.0,.35,y)).lerp(hex(0x060b1c),smooth(.35,1,y)).lerp(hex(0x2c3a5c),smooth(.9,1,v.dot(moon))*moonlight*.8),
+     glow=hex(0xffb36a).lerp(hex(0xf08a5c),smooth(.0,.1,y)).lerp(hex(0xa8607a),smooth(.08,.32,y)).lerp(hex(0x4a3f78),smooth(.3,.7,y)).lerp(hex(0x1f2450),smooth(.7,1,y)).lerp(hex(0xffe0a8),smooth(.75,1,toSun)*.75);
+    const c=night.lerp(daySky(y,toSun),day).lerp(glow,ember*(.25+.75*side*side)*(1-smooth(.2,.8,y)*.5));col.setXYZ(i,c.r,c.g,c.b);}
+   col.needsUpdate=true;
+   const tint=hex(0x27304a).lerp(hex(0xffffff),day).lerp(hex(0xffb9a0),ember*.8);cloudMat.color.copy(tint);hillMat.color.copy(hex(0x2a3248).lerp(hex(0xffffff),day).lerp(hex(0x8a6f86),ember*.7));
+   sunDir.copy(sunNow);sunMat.color.set(0xfff6dc).lerp(hex(0xffb070),ember);haloMat.color.set(0xfff0c8).lerp(hex(0xff9a50),ember);haloMat.opacity=.28+ember*.25;sunDisc.visible=sunHalo.visible=up>-.06;
+   moonDir.copy(moon);moonDisc.visible=moon.y>-.03&&moonlight>.02;moonMat.opacity=Math.min(1,.25+moonlight*.9)*(1-day*.7);
+   starMat.opacity=(1-smooth(-.25,.05,up))*(1-moonlight*.45);stars.visible=starMat.opacity>.01;
+   shadeMat.opacity=.2*smooth(.15,.6,up);
+  },
+  fire(f){fireUniforms.uFireOn.value=f?1:0;if(!f)return;fireUniforms.uFire.value.set(f.x,f.y,f.ux,f.uy);fireUniforms.uFireT.value.set(f.seconds,f.run,f.flame,f.flush);fireUniforms.uFireK.value.set(f.a,f.c,f.f);},
   dispose(){disposables.forEach(d=>d.dispose());},
  };
 }
 export const SUN_DIRECTION=SUN.clone();
+/** the home screen's golden-hour sun: about 22° up, west-north-west (late-June sunset at 2° S is about 23° north of west) */
+const DUSK_SUN=new THREE.Vector3(-.85,.38,-.36).normalize();

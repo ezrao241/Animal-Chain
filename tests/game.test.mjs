@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {move,UNITS_PER_METRE,spawnPoint,W,H,ANIMALS,SPECIES,WILDLIFE,newPlayer,newRoom,start,respawn,die,tick,props,interact,savannaEvent,useAbility,perch,hidden,publicRoom,makeFoods,solid,solidRadius,KICK_RANGE,TREE_REACH,climbPose,canClimb,BODY,resolveStrike,STRIKE_WINDUP} from '../lib/game.ts';
+import {HUNT_REACH_MULTIPLIER,move,UNITS_PER_METRE,spawnPoint,W,H,ANIMALS,SPECIES,WILDLIFE,newPlayer,newRoom,start,respawn,die,tick,props,interact,savannaEvent,useAbility,perch,hidden,publicRoom,makeFoods,solid,solidRadius,KICK_RANGE,TREE_REACH,climbPose,canClimb,BODY,resolveStrike,STRIKE_WINDUP,lightAt as lightAtSync} from '../lib/game.ts';
 /** press E and let the lunge land */
 const hunt=(p,room,t)=>{interact(p,room,t);if(p.strikeId&&p.strikeAt)resolveStrike(p,room,t+STRIKE_WINDUP);};
 import {tree as acaciaTree,limbPoint} from '../lib/acacia.ts';
@@ -52,7 +52,8 @@ test('a kill leaves a carcass that scavengers can eat',()=>{
 test('phase bonuses are real scoring',()=>{
  for(const [elapsed,points]of [[0,5],[100000,3],[200000,3]]){const{room,player}=fixture('zebra');player.hunger=50;room.foods=[{id:1,x:player.x,y:player.y,kind:'grass',ready:0}];interact(player,room,NOW+elapsed);assert.equal(player.score,points);}
  for(const [elapsed,points]of [[0,10],[100000,15],[200000,10]]){const{room,player}=fixture('lion');const victim=near(player,'impala');room.players.push(victim);hunt(player,room,NOW+elapsed);assert.equal(player.score,points);}
- assert.deepEqual([0,100000,200000,300000].map(t=>savannaEvent({started:NOW},NOW+t).kind),['forage','hunt','escape','escape']);
+ // a 5-minute round sees each phase once; 10-minute and unlimited rounds keep cycling them
+ assert.deepEqual([0,100000,200000,300000,400000,599000].map(t=>savannaEvent({started:NOW},NOW+t).kind),['forage','hunt','escape','forage','hunt','escape']);
 });
 // ---- the outside review's exploits, reproduced and kept fixed
 test('water: drinking at full thirst scores nothing, never stands in for food, and thirst runs down on its own',()=>{
@@ -228,7 +229,7 @@ test('every predator/prey matchup: only listed prey, in reach, unprotected and n
   if(hunter==='hyena'&&prey==='zebra')continue;
   if(!ANIMALS[hunter].prey.includes(prey))continue;
   const{room:r2,player:h2}=fixture(hunter);const shielded=near(h2,prey,15);shielded.protectedUntil=NOW+4000;r2.players.push(shielded);hunt(h2,r2,NOW);assert.equal(shielded.deadUntil,0,'spawn protection '+hunter+' vs '+prey);
-  const{room:r3,player:h3}=fixture(hunter);const away=near(h3,prey,ANIMALS[hunter].catchRange*1.44+5);r3.players.push(away);hunt(h3,r3,NOW);assert.equal(away.deadUntil,0,'out of reach '+hunter+' vs '+prey);
+  const{room:r3,player:h3}=fixture(hunter);const away=near(h3,prey,ANIMALS[hunter].catchRange*HUNT_REACH_MULTIPLIER+5);r3.players.push(away);hunt(h3,r3,NOW);assert.equal(away.deadUntil,0,'out of reach '+hunter+' vs '+prey);
  }
 });
 // a room with only wildlife: a lion placed by an impala herd that is grazing, everyone else far away
@@ -316,4 +317,60 @@ test('species are dealt fairly: every animal once in each run of six lives, neve
  for(let i=1;i<seen.length;i++)assert.notEqual(seen[i],seen[i-1]);
  for(const s of SPECIES){const n=seen.filter(x=>x===s).length;assert.ok(n>=9&&n<=11,s+' came up '+n+' times in 60 lives');}
  assert.equal(publicRoom(room,NOW).players.some(p=>'bag' in p),false,'upcoming animals stay secret');
+});
+// ---- day and night
+test('day and night: a round opens at 10:00, a day passes every 5 minutes, and the sun takes its real path at 2.3° S',async()=>{
+ const {clockHour,sunAt,lightAt,DAY_MS}=await import('../lib/game.ts');
+ assert.equal(DAY_MS,300000);
+ assert.deepEqual([0,100000,200000,300000].map(t=>Math.round(clockHour({started:NOW},NOW+t)*100)/100),[10,18,2,10],'the bonus phases fall at 10:00, 18:00 and 02:00');
+ // 10:00 is the late-morning sun the world was lit by before: altitude 51°, azimuth 47° east of north
+ const s=sunAt(10);assert.ok(Math.abs(Math.asin(s.up)*180/Math.PI-51)<1);assert.ok(Math.abs(Math.atan2(s.east,s.north)*180/Math.PI-47)<1.5);
+ // near the equator the sun rises close to 06:00 and sets close to 18:00 (about 06:04 and 17:56 in late June)
+ const rise=[...Array(2400).keys()].map(i=>i/100).find(h=>h>3&&sunAt(h).up>0),set=[...Array(2400).keys()].map(i=>i/100).find(h=>h>12&&sunAt(h).up<0);
+ assert.ok(Math.abs(rise-6.07)<.05&&Math.abs(set-17.93)<.05,`sunrise ${rise}, sunset ${set}`);
+ const room={started:NOW,seed:417,round:1};
+ assert.equal(lightAt(room,NOW).day,1);assert.equal(lightAt(room,NOW+150000).day,0,"22:00 is dark");
+});
+test('day and night: in the dark, prey notice a lion much later; a lion still sees prey nearly as far as by day',()=>{
+ const{room,player}=fixture('impala');room.round=1;
+ const lion=newPlayer('wild-lion','Lion',NOW,true,'lion');Object.assign(lion,{x:player.x+110,y:player.y,vx:50,vy:0,dx:1,dy:0,protectedUntil:0});room.players.push(lion);
+ const LATE=NOW+150000; // 22:00
+ // a walking lion 11 m off in the open: seen by day, missed on a dark night
+ assert.equal(sense(player,lion,room,NOW)?.how,'sight');
+ const night=[...Array(40).keys()].map(r=>({...room,round:r})).find(r=>{const{moonlight}=lightAtSync(r,LATE);return moonlight<.1;});
+ assert.ok(night,'some round has a dark midnight');
+ assert.notEqual(sense(player,lion,night,LATE)?.how,'sight');
+ // the lion keeps most of its sight: it still sees the impala walking at the same distance
+ Object.assign(player,{vx:40,vy:0,dx:1,dy:0});
+ assert.equal(sense(lion,player,night,LATE)?.how,'sight');
+});
+test('animals are solid to each other: bodies block, slide along flanks, and catches still land at contact',()=>{
+ const ps=props(417);
+ // every species running straight at a standing zebra (and at another player) stops at its body instead of passing through
+ for(const s of SPECIES){const{room,player}=fixture(s);const z=near(player,'zebra',60);room.players.push(z);let now=NOW;
+  for(let i=0;i<60;i++){player.dx=1;player.dy=0;move(player,.05,ps,now,room.players);now+=50;}
+  const [front]=BODY[s],[,zr]=BODY.zebra;assert.ok(player.x<z.x,`${s} never gets past the zebra`);assert.ok(z.x-player.x>=(front+zr)*10*.6,`${s} stops at the zebra's body (gap ${(z.x-player.x).toFixed(1)})`);
+  assert.equal(z.x,player.x+(z.x-player.x),'the zebra is not shoved');}
+ // side by side, broadside: the bodies' widths keep them apart
+ {const{room,player}=fixture('impala');const z=near(player,'zebra',0);z.y=player.y+30;z.heading=0;player.heading=0;room.players.push(z);let now=NOW;
+  for(let i=0;i<40;i++){player.dx=0;player.dy=1;move(player,.05,ps,now,room.players);now+=50;}
+  assert.ok(z.y-player.y>=(BODY.impala[2]+BODY.zebra[2])*10-1,'flank to flank');}
+ // a glancing run slides along the flank and carries on
+ {const{room,player}=fixture('impala');const z=near(player,'zebra',60);z.y=player.y+4;z.heading=0;room.players.push(z);let now=NOW;
+  for(let i=0;i<80;i++){player.dx=1;player.dy=0;move(player,.05,ps,now,room.players);now+=50;}
+  assert.ok(player.x>z.x+30,'slid round the zebra');}
+ // what has no body on the ground doesn't block: a dead animal, a warthog down its burrow, an impala mid-leap
+ for(const set of [q=>{q.deadUntil=NOW+9e9;},q=>{q.species='warthog';q.abilityUntil=NOW+9e9;}]){const{room,player}=fixture('lion');const q=near(player,'zebra',60);set(q);room.players.push(q);let now=NOW;
+  for(let i=0;i<60;i++){player.dx=1;player.dy=0;move(player,.05,ps,now,room.players);now+=50;}assert.ok(player.x>q.x+20);}
+ // the whole room ticking: a human impala runs into a wild zebra and is held at its body
+ {let now=NOW;const me=newPlayer('h1','me',now,false,'impala');const room=newRoom('SOLIDB',me,now);start(room,now);const p=room.players.find(x=>x.id==='h1'),z=room.players.find(x=>x.bot&&x.species==='zebra');
+  const zx=z.x,zy=z.y;Object.assign(p,{species:'impala',x:zx-60,y:zy,protectedUntil:now+1e6});let closest=Infinity;
+  for(let i=0;i<40;i++){p.dx=1;p.dy=0;p.inputAt=now;p.lastSeen=now;Object.assign(z,{vx:0,vy:0,heading:0,stunUntil:now+1e6,protectedUntil:now+1e6});now+=100;tick(room,now);closest=Math.min(closest,Math.hypot(p.x-zx,p.y-zy));}
+  assert.ok(closest>=(BODY.impala[0]+BODY.zebra[1])*10*.6,`a ticking room holds the impala at the zebra (closest ${closest.toFixed(1)})`);}
+ // a lion run up against an impala's rump is within reach and lands the catch
+ for(const s of ['lion','leopard','hyena']){const{room,player}=fixture(s);const q=near(player,'impala',60);q.heading=0;room.players.push(q);let now=NOW;
+  for(let i=0;i<60;i++){player.dx=1;player.dy=0;move(player,.05,ps,now,room.players);now+=50;}hunt(player,room,now);assert.equal(player.hunts,1,`${s} catches at contact`);}
+ // prey centre inside the hunter's body (a leopard landing on it) is contact; prey a clear body length behind is a miss
+ {const{room,player}=fixture('lion');player.heading=0;const q=near(player,'impala',-5);room.players.push(q);hunt(player,room,NOW);assert.equal(player.hunts,1,'overlapping prey is in contact');}
+ {const{room,player}=fixture('lion');player.heading=0;const q=near(player,'impala',-12);room.players.push(q);hunt(player,room,NOW);assert.equal(player.hunts,0);}
 });

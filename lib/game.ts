@@ -1,7 +1,7 @@
-import {createTerrainHeight} from './terrain-height.ts';
 // Animal Chain: African savanna rules shared by the server, the offline practice build and the 3D client.
 // 400 x 280 m playable map; 10 game units = 1 m. Animals are life-size.
 import {tree,limbPoint,type Tree} from './acacia.ts';
+import type {BadgeId} from './rewards.ts';
 export const W=4000,H=2800;
 export const SPECIES=['lion','leopard','hyena','zebra','impala','warthog'] as const;
 export type Species=typeof SPECIES[number];
@@ -34,7 +34,11 @@ export type Player={id:string;token?:string;name:string;bot:boolean;species:Spec
   *  along it and which way the animal faces on it, the limb it is heading for (-1 = down), the mount progress, and
   *  vertical speed while jumping down. Optional so rooms saved before climbing existed still load. */
  /** the species still to come for a human player, so every animal comes up once in each run of six lives */
- bag?:Species[]; health?:number; hitUntil?:number; feeding?:{until:number;duration:number;last:number};
+ bag?:Species[];
+ /** client-reported movement (lib/net.ts claim): the last accepted position, when and in which life, the banked jitter
+  *  allowance, and how many reported positions the server has refused (the device then rejoins the server's animal) */
+ anchorX?:number; anchorY?:number; anchorAt?:number; anchorBorn?:number; slack?:number; fix?:number;
+ feeding?:{until:number;duration:number;last:number};
  /** water, 100 = just drunk; it runs down on its own, separately from food */
  thirst?:number;
  /** a committed catch attempt: the prey it is aimed at and when the lunge lands (or a leopard's leap, on landing) */
@@ -51,18 +55,184 @@ export type Player={id:string;token?:string;name:string;bot:boolean;species:Spec
  carry?:{hunger:number;thirst:number};
  /** whole minutes this life has been paid for staying alive */
  survived?:number;
+ /** the last one-shot action id processed for this player (lib/net.ts applyActions), so retries never run twice */
+ act?:number;
+ /** badges earned this round (lib/rewards.ts), for the player's own progress; the chosen coat colour per species (one
+  *  digit each in SPECIES order, lib/rewards.ts coatCode), which everyone sees */
+ badges?:string[];coats?:string;
+ /** a player's chosen posture: crouched (creeping, low and harder to spot) or lying down (still, resting) */
+ posture?:Posture;
+ /** world events: a migrating zebra's lane (x at the south edge, x at the north edge); seconds spent in flames this
+  *  life (a short dash through a thin front is survivable); seconds a zebra player has run with the migration */
+ lane?:[number,number];scorch?:number;smokeUntil?:number;trekked?:number;
  tree?:number;climb?:Climb;ch?:number;side?:number;limb?:number;along?:number;limbDir?:number;goal?:number;mount?:number;climbHold?:number;vh?:number};
 /** one finished life: what it was, how long it lasted, what it earned and how it ended */
 export type LifeRecord={species:Species;seconds:number;points:number;food:number;hunts:number;cause:string};
-export type Room={code:string;host:string;phase:'lobby'|'playing'|'finished';started:number;ends:number;tick:number;players:Player[];foods:Food[];events:string[];seed:number;round:number;practice?:boolean;duration?:300|600|0;poachers?:Poacher[];rs?:number};
+export type Room={code:string;host:string;phase:'lobby'|'playing'|'finished';started:number;ends:number;tick:number;players:Player[];foods:Food[];events:string[];seed:number;round:number;practice?:boolean;duration?:300|600|0;/** set when the host ended the round early (or ended an unlimited round) */endedBy?:'host';rs?:number;/** migrating zebra already sent onto the plains for the day's migration */trek?:{day:number;n:number}};
 // Computer-controlled wildlife keeps savanna proportions: plenty of grazers, a few predators.
 const WILDLIFE_MIX:Species[]=['impala','zebra','impala','warthog','zebra','impala','hyena','impala','warthog','zebra','lion','impala','warthog','zebra','leopard','lion','warthog','hyena','zebra','impala'];
 export const WILDLIFE:Species[]=Array.from({length:60},(_,i)=>WILDLIFE_MIX[i%WILDLIFE_MIX.length]);
-export function savannaEvent(room:Pick<Room,'started'>,now:number){const stage=Math.min(2,Math.floor(Math.max(0,now-room.started)/100000));return [
- {name:'GOLDEN GRAZE',detail:'Food is worth +2 extra points',kind:'forage',next:room.started+100000},
- {name:'THE HUNT',detail:'Successful hunts earn +5 extra points',kind:'hunt',next:room.started+200000},
- {name:'DUSK RUN',detail:'Escape a predator for double points',kind:'escape',next:room.started+300000}
- ][stage];}
+// the three 100 s phases repeat in rounds longer than five minutes (10 minutes, unlimited); a 5-minute round sees each once
+export function savannaEvent(room:Pick<Room,'started'>,now:number){const k=Math.floor(Math.max(0,now-room.started)/100000),next=room.started+(k+1)*100000;return [
+ {name:'GOLDEN GRAZE',detail:'Food is worth +2 extra points',kind:'forage',next},
+ {name:'THE HUNT',detail:'Successful hunts earn +5 extra points',kind:'hunt',next},
+ {name:'DAWN RUN',detail:'Escape a predator for double points',kind:'escape',next}
+ ][k%3];}
+/** Day and night. Every round opens at 10:00 and a whole savanna day passes in DAY_MS (5 real minutes: a game
+ *  compression), so the bonus phases fall at their natural times: Golden graze 10:00–18:00, the Hunt 18:00–02:00 in the
+ *  dark, Dawn run 02:00–10:00. The sun takes its real path for 2.3° S in late June (computed below: it rises about 06:04
+ *  and sets about 17:56 local solar time); docs/wildlife-sources.md has what is fact and what is game rule. */
+export const DAY_MS=300000,DAY_START=10,LATITUDE=-2.3,DECLINATION=23.4;
+/** Hour of the day, 0..24, in local solar time. A lobby (not started) shows the opening hour. */
+export function clockHour(room:Pick<Room,'started'>,now:number){return(DAY_START+(room.started?Math.max(0,now-room.started):0)/DAY_MS*24)%24;}
+/** Unit direction to the sun at a solar hour: east, north and up components (the map has east +x, north -y). */
+export function sunAt(hour:number){
+ const r=Math.PI/180,h=(hour-12)*15*r,lat=LATITUDE*r,dec=DECLINATION*r;
+ return{east:-Math.cos(dec)*Math.sin(h),north:Math.cos(lat)*Math.sin(dec)-Math.sin(lat)*Math.cos(dec)*Math.cos(h),up:Math.sin(lat)*Math.sin(dec)+Math.cos(lat)*Math.cos(dec)*Math.cos(h)};
+}
+const smoothstep=(a:number,b:number,v:number)=>{const k=Math.max(0,Math.min(1,(v-a)/(b-a)));return k*k*(3-2*k);};
+/** The round's moon, 0 = new, .5 = full: fixed for a round, new each round. The moon trails the sun by its phase
+ *  times a day (a full moon rises at sunset; a few nights later it rises late, so the evening is dark). */
+export function moonPhase(room:Pick<Room,'seed'|'round'>){return rng(room.seed*53+(room.round||0)*4513)();}
+export type Light={hour:number;sun:ReturnType<typeof sunAt>;moon:ReturnType<typeof sunAt>;phase:number;
+ /** 0 at night .. 1 in daylight: civil twilight (sun 6° below to 6° above the horizon) is the change-over */
+ day:number;
+ /** moonlight on the ground, 0..1: how full the moon is and whether it is up */
+ moonlight:number};
+let memoAt=NaN,memoStarted=NaN,memoSeed=NaN,memoRound=NaN,lightMemo:Light|undefined;
+export function lightAt(room:Pick<Room,'started'|'seed'|'round'>,now:number):Light{
+ if(lightMemo&&now===memoAt&&room.started===memoStarted&&room.seed===memoSeed&&room.round===memoRound)return lightMemo;
+ const hour=clockHour(room,now),sun=sunAt(hour),phase=moonPhase(room),moon=sunAt((hour-phase*24+24)%24);
+ const full=(1-Math.cos(phase*Math.PI*2))/2;
+ memoAt=now;memoStarted=room.started;memoSeed=room.seed;memoRound=room.round;return lightMemo={hour,sun,moon,phase,day:smoothstep(-.105,.105,sun.up),moonlight:full*smoothstep(-.02,.2,moon.up)};
+}
+export const isPredator=(s:Species)=>ANIMALS[s].prey.length>0;
+/** How much of its daylight sight range an animal keeps in the dark (game values, real ordering): lions, leopards and
+ *  hyenas have eyes built for low light and do most of their hunting at night; the grazers see far less on a dark
+ *  night and a little more under a bright moon (lions catch more on dark, moonless nights). */
+export const NIGHT_SIGHT={predator:.85,prey:.4,preyMoon:.3};
+export function sightInLight(s:Species,l:Light){
+ const night=isPredator(s)?NIGHT_SIGHT.predator+.1*l.moonlight:NIGHT_SIGHT.prey+NIGHT_SIGHT.preyMoon*l.moonlight;
+ return l.day+(1-l.day)*night;
+}
+/** World events: on some savanna days (EVENT_CHANCE of them), at about 14:25 (EVENT_AT into the day, the hot dry
+ *  afternoon), the plains throw up one big happening: a grass fire lit by a dry-season lightning strike (the rarer, FIRE_SHARE
+ *  of events) or a column of migrating zebra crossing to the north. Whether, which, where and which way come from the
+ *  room's seed, round, start time and day, so the server and every player's device work out the same event from the clock
+ *  alone and nothing extra is sent; most games have none. Facts and game compressions: docs/wildlife-sources.md, "World events". */
+export const EVENT_AT=55000,EVENT_WARN=10000,EVENT_CHANCE=.4,FIRE_SHARE=.35;
+/** A windy late-dry-season grass fire, in m/s: the head runs downwind, the flanks creep sideways, the back burns slowly
+ *  into the wind. Flames burn out after FIRE.run (evening damp); a point's flames last FIRE.flame, and green shoots show
+ *  through FIRE.flush after the front passed (real regrowth takes one to three weeks: a game compression). */
+export const FIRE={head:2,flank:.6,back:.2,run:90000,flame:8000,flush:40000};
+/** Burns build up like storm damage: FIRE_BURN seconds' worth in the flames overcomes an animal, the heat just ahead of the
+ *  front (ground it reaches within FIRE_HEAT ms) burns at FIRE_HEAT_RATE of that, and burns ease off at FIRE_HEAL per second
+ *  once clear. Smoke in the lungs: for SMOKE_MS after leaving the flames, burns keep building at SMOKE_RATE before they
+ *  ease. A quick dash through a thin front hurts but survives; lingering in it kills. */
+export const FIRE_BURN=4,FIRE_HEAT=1500,FIRE_HEAT_RATE=.3,FIRE_HEAL=.25,SMOKE_MS=4000,SMOKE_RATE=.15;
+/** The migration: MIGRANTS zebra file in from the south edge TREK_GAP ms apart and walk north at TREK_PACE (about 2.2 m/s,
+ *  between a walk and a trot). A zebra player who keeps within TREK_NEAR of them for TREK_SECONDS is paid TREK_POINTS. */
+export const MIGRANTS=16,TREK_GAP=1500,TREK_PACE=.32,TREK_NEAR=250,TREK_SECONDS=15,TREK_POINTS=15;
+export type WorldEvent={kind:'fire'|'migration';day:number;at:number;until:number;
+ /** fire: where lightning struck and the way the head runs (the round's breeze); migration: unused */
+ x:number;y:number;ux:number;uy:number;
+ /** migration: the column's centre line, from x0 at the south edge to x1 at the north edge */
+ x0:number;x1:number};
+let eventMemo:{key:string;ev:WorldEvent|null}|undefined;
+/** The day's event (from the start of that day, so a device can warn before it begins), or null on a quiet day or outside a round. */
+export function worldEvent(room:Pick<Room,'started'|'seed'|'round'>,now:number):WorldEvent|null{
+ if(!room.started)return null;
+ const day=Math.floor(Math.max(0,now-room.started)/DAY_MS),key=room.seed+':'+room.round+':'+room.started+':'+day;
+ if(eventMemo?.key===key)return eventMemo.ev;
+ // the start time (shared by everyone in the room) makes each game's draw its own, even in a new room's first round
+ const r=rng(room.seed*13+(room.round||0)*131+day*977+Math.floor(room.started/1000)%1000003*7),happens=r()<EVENT_CHANCE,fire=r()<FIRE_SHARE;
+ if(!happens){eventMemo={key,ev:null};return null;}
+ const at=room.started+day*DAY_MS+EVENT_AT,w=wind(room),ps=props(417);
+ let ev:WorldEvent;
+ if(fire){
+  // lightning strikes upwind of the middle of the plains, so the head sweeps across it with the breeze
+  let x=W/2,y=H/2;
+  for(let k=0;k<20;k++){x=Math.max(300,Math.min(W-300,W/2-w.x*1100+(-w.y)*(r()-.5)*1400));y=Math.max(300,Math.min(H-300,H/2-w.y*1100+w.x*(r()-.5)*1400));if(!nearWater(ps,x,y,60))break;}
+  ev={kind:'fire',day,at,until:at+FIRE.run,x,y,ux:w.x,uy:w.y,x0:0,x1:0};
+ }else{
+  // the herds of late June move north through the central Serengeti: a column from the south edge to the north edge
+  // the column takes a line clear of the kopjes (it would jam against the boulders), trying a few before settling
+  let x0=W/2,x1=W/2;const rocks=ofKind(ps,'rock');
+  for(let k=0;k<40;k++){x0=900+r()*(W-1800);x1=Math.max(700,Math.min(W-700,x0+(r()-.5)*1400));const a=x0,b=x1;if(rocks.every(t=>{const f=1-t.y/H;return Math.abs(t.x-(a+(b-a)*f))>solidRadius(t)+170;}))break;}
+  ev={kind:'migration',day,at,until:at+(MIGRANTS-1)*TREK_GAP+Math.round(H/(TREK_PACE*ANIMALS.zebra.gait.run*UNITS_PER_METRE)*1000),x:0,y:0,ux:0,uy:-1,x0,x1};
+ }
+ eventMemo={key,ev};return ev;
+}
+const FIRE_A=(FIRE.head+FIRE.back)/2*10,FIRE_C=(FIRE.head-FIRE.back)/2*10,FIRE_F=FIRE.flank*10;
+/** the edge's growth in units a second: semi-major axis, downwind drift of its centre, semi-minor axis */
+export const FIRE_SHAPE={a:FIRE_A,c:FIRE_C,f:FIRE_F};
+/** The fire's edge s seconds after the strike: the burnt patch of a wind-driven grass fire from a point is close to an
+ *  ellipse stretched downwind that grows steadily (Anderson 1983), centre FIRE_C*s downwind, semi-axes FIRE_A*s and FIRE_F*s. */
+export function fireEdge(ev:WorldEvent,s:number){return{cx:ev.x+ev.ux*FIRE_C*s,cy:ev.y+ev.uy*FIRE_C*s,a:FIRE_A*s,b:FIRE_F*s};}
+/** When the front reaches a point (ms), or Infinity if the fire is out first: the smallest s with the point inside the
+ *  edge, from ((along - C s)/A)^2 + (side/F)^2 = s^2. Water never burns. */
+export function fireArrival(ev:WorldEvent,x:number,y:number){
+ const dx=x-ev.x,dy=y-ev.y,l=dx*ev.ux+dy*ev.uy,sd=-dx*ev.uy+dy*ev.ux,A2=FIRE_A*FIRE_A,al=1-FIRE_C*FIRE_C/A2,be=2*l*FIRE_C/A2,ga=l*l/A2+sd*sd/(FIRE_F*FIRE_F);
+ const t=ev.at+(-be+Math.sqrt(be*be+4*al*ga))/(2*al)*1000;
+ return t>ev.until||nearWater(props(417),x,y)?Infinity:t;
+}
+export type Burn=''|'flames'|'burnt'|'flush';
+/** The ground at a point today: unburnt (''), in the flames, burnt black, or showing the green flush after the fire. */
+export function burnAt(room:Pick<Room,'started'|'seed'|'round'>,x:number,y:number,now:number):Burn{
+ const ev=worldEvent(room,now);if(!ev||ev.kind!=='fire'||now<ev.at)return'';
+ const t=fireArrival(ev,x,y);if(t>now)return'';
+ return now<t+FIRE.flame&&now<ev.until?'flames':now>=t+FIRE.flush?'flush':'burnt';
+}
+/** Burnt ground has no grass: no cover in the tall grass or round a thicket, and no grass to graze until the flush. */
+export const bare=(room:Pick<Room,'started'|'seed'|'round'>,x:number,y:number,now:number)=>burnAt(room,x,y,now)!=='';
+export const grassGone=(room:Pick<Room,'started'|'seed'|'round'>,f:Pick<Food,'kind'|'x'|'y'>,now:number)=>{if(f.kind!=='grass')return false;const b=burnAt(room,f.x,f.y,now);return b==='flames'||b==='burnt';};
+/** The front will be on this spot within `ahead` ms (or is on it now): spawning and settling avoid it. */
+export function fireNear(room:Pick<Room,'started'|'seed'|'round'>,q:{x:number;y:number},now:number,ahead=15000){
+ const ev=worldEvent(room,now);if(!ev||ev.kind!=='fire'||now>=ev.until||now<ev.at-EVENT_WARN)return false;
+ const t=fireArrival(ev,q.x,q.y);return t<now+ahead&&t>now-FIRE.flame;
+}
+/** Where a wild animal runs from a fire coming at it: crosswind out of the head's path (the flanks only creep), upwind
+ *  from the slow back, onto the burnt ground if it is already in the flames; nothing once it stands on the black. */
+export function fireEscape(room:Room,p:Player,now:number):{x:number;y:number}|null{
+ const ev=worldEvent(room,now);if(!ev||ev.kind!=='fire'||now<ev.at||now>=ev.until)return null;
+ const t=fireArrival(ev,p.x,p.y);if(t<now-FIRE.flame||t>now+10000)return null;
+ const e=fireEdge(ev,(now-ev.at)/1000),dx=p.x-e.cx,dy=p.y-e.cy,l=dx*ev.ux+dy*ev.uy,sd=-dx*ev.uy+dy*ev.ux,side=Math.abs(sd)>20?Math.sign(sd):idHash(p.id)>.5?1:-1;
+ if(t<=now)return{x:e.cx,y:e.cy};
+ const ax=l>0?0:-1,ay=l>0?side:side*.5,n=Math.hypot(ax,ay);
+ return{x:p.x+(ev.ux*ax-ev.uy*ay)/n*300,y:p.y+(ev.uy*ax+ev.ux*ay)/n*300};
+}
+/** Heat: burns build in the flames (and more slowly in the heat ahead of them) until the animal is overcome; up a tree,
+ *  down a burrow or newly spawned it is safe. */
+function stepFire(p:Player,room:Room,t:number,dt:number){
+ if(p.scorch===undefined&&!worldEvent(room,t))return false;
+ const safe=p.climb==='limb'||p.perched||p.species==='warthog'&&p.abilityUntil>t||p.protectedUntil>t,at=burnAt(room,p.x,p.y,t);
+ const ev=!safe&&at===''?worldEvent(room,t):null,a=ev?.kind==='fire'?fireArrival(ev,p.x,p.y):Infinity;
+ const flames=!safe&&at==='flames',rate=safe?0:flames?1:a>t&&a<=t+FIRE_HEAT?FIRE_HEAT_RATE:(p.smokeUntil??0)>t?SMOKE_RATE:0;
+ if(flames)p.smokeUntil=t+SMOKE_MS;else if(safe&&p.smokeUntil)p.smokeUntil=0;
+ if(rate){
+  if(!p.scorch&&!p.bot)notify(p,rate===1?'Flames! Dash through onto the burnt ground, or run crosswind.':'The heat is burning you. Get away from the fire front.',t);
+  p.scorch=(p.scorch??0)+dt*rate;if(p.scorch>=FIRE_BURN){p.scorch=0;die(p,room,t,'was caught by the grass fire.');return true;}
+ }else if(p.scorch)p.scorch=Math.max(0,p.scorch-dt*FIRE_HEAL);
+ return false;
+}
+/** The migration: send the next zebra in from the south edge as its turn comes. */
+function stepMigration(room:Room,t:number){
+ const ev=worldEvent(room,t);if(!ev||ev.kind!=='migration'||t<ev.at)return;
+ const due=Math.min(MIGRANTS,Math.floor((t-ev.at)/TREK_GAP)+1);if(room.trek?.day!==ev.day)room.trek={day:ev.day,n:0};
+ if(t>ev.until)return;
+ while(room.trek.n<due){
+  const i=room.trek.n++,id='trek-'+room.round+'-'+ev.day+'-'+i,off=(idHash(id)-.5)*260,p=newPlayer(id,ANIMALS.zebra.name,t,true,'zebra');
+  Object.assign(p,{x:Math.max(40,Math.min(W-40,ev.x0+off)),y:H-40,lane:[ev.x0+off,ev.x1+off] as [number,number],herd:'trek-'+ev.day,heading:-Math.PI/2,mood:'wander' as Mood,protectedUntil:t+2000,nextDrink:t+1e9});
+  p.homeX=p.stuckX=p.x;p.homeY=p.stuckY=p.y;room.players.push(p);
+ }
+}
+/** A zebra player keeping close to the migrating column: safety in numbers, paid once per migration. */
+function stepTrek(p:Player,room:Room,t:number,dt:number){
+ if(p.bot||p.species!=='zebra'||!room.trek)return;const ev=worldEvent(room,t);if(!ev||ev.kind!=='migration'||t<ev.at)return;
+ const key='trek:'+ev.day;if(p.done?.includes(key))return;
+ if(!room.players.some(q=>q.lane&&!q.deadUntil&&dist(p,q)<TREK_NEAR))return;
+ p.trekked=(p.trekked??0)+dt;if(p.trekked>=TREK_SECONDS){(p.done??=[]).push(key);p.trekked=0;p.score+=TREK_POINTS;notify(p,'Ran with the migration +'+TREK_POINTS,t);}
+}
 export function cameraInput(dx:number,dy:number,yaw=0){return{dx:dx*Math.cos(yaw)+dy*Math.sin(yaw),dy:-dx*Math.sin(yaw)+dy*Math.cos(yaw)};}
 export const dist=(a:{x:number;y:number},b:{x:number;y:number})=>{const dx=a.x-b.x,dy=a.y-b.y;return Math.sqrt(dx*dx+dy*dy);};
 export function rng(seed:number){let a=seed;return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
@@ -166,16 +336,24 @@ export function spawnPoint(species:Species,room?:Room,seed=Math.floor(Math.rando
   const mates=room.players.filter(o=>o.species===species&&!o.deadUntil&&room.players.filter(m=>m.species===species&&!m.deadUntil&&dist(m,o)<150).length<cap);
   for(let i=0;i<8&&mates.length;i++){const m=mates[Math.floor(r()*mates.length)],a=r()*Math.PI*2,d=22+r()*55,q={x:m.x+Math.cos(a)*d,y:m.y+Math.sin(a)*d};if(q.x>60&&q.y>60&&q.x<W-60&&q.y<H-60&&!blocked(ps,q.x,q.y,25)&&!inSight(room,species,q))return q;}
  }
- let q=habitat(species,r);for(let i=0;i<14&&inSight(room,species,q);i++)q=habitat(species,r);
+ let q=habitat(species,r);for(let i=0;i<14&&(inSight(room,species,q)||!!room&&fireNear(room,q,room.tick,20000));i++)q=habitat(species,r);
  return q;
 }
-export function newPlayer(id:string,name:string,now:number,bot=false,species?:Species,room?:Room):Player{const kind=species||SPECIES[Math.floor(Math.random()*6)];const p={id,name,bot,species:kind,...spawnPoint(kind,room,Math.floor(Math.random()*1e9)),dx:0,dy:0,vx:0,vy:0,perched:false,perchHeight:0,actionUntil:0,lastSeen:now,inputAt:now,born:now,protectedUntil:now+4000,deadUntil:0,abilityUntil:0,abilityReady:0,interactReady:0,stunUntil:0,hunger:100,health:100,feeding:undefined,hitUntil:0,survived:0,thirst:70+idHash(id+'water')*25,strikeId:'',strikeAt:0,strikeAmbush:false,score:0,deaths:0,food:0,hunts:0,drinks:0,scavenged:0,escapes:0,hiddenSeconds:0,survivalSeconds:0,claimed:[false,false,false],sprint:false,stamina:100,threatAt:0,face:1,message:'A new place in the chain.',messageUntil:now+3000,seq:0,targetX:0,targetY:0,heading:0,mood:'wander' as Mood,alert:0,targetId:'',moodUntil:0,alarmAt:0,calledAt:0,threatX:0,threatY:0,lastThreatAt:0,homeX:0,homeY:0,herd:'',nextDrink:now+40000+idHash(id)*60000,chaseStart:0,thinkAt:0,stuckX:0,stuckY:0,stuckAt:now,unstickUntil:0};p.homeX=p.stuckX=p.x;p.homeY=p.stuckY=p.y;return p;}
+/** Spawn protection (a game rule, not a wildlife fact): a player's new animal can't be caught, kicked or burnt for this long,
+ *  so nobody is taken the instant they appear. Set anywhere from 5 to 8 s. It ends early the moment the protected player
+ *  lunges or kicks (dropShield). Computer-controlled wildlife keeps the shorter WILD_PROTECT_MS. */
+export const SPAWN_PROTECT_MS=6000,WILD_PROTECT_MS=4000;
+/** The protected player attacked: its own protection ends now. */
+export function dropShield(p:Player,now:number){if(p.protectedUntil>now)p.protectedUntil=now-1;}
+export function newPlayer(id:string,name:string,now:number,bot=false,species?:Species,room?:Room):Player{const kind=species||SPECIES[Math.floor(Math.random()*6)];const p={id,name,bot,species:kind,...spawnPoint(kind,room,Math.floor(Math.random()*1e9)),dx:0,dy:0,vx:0,vy:0,perched:false,perchHeight:0,actionUntil:0,lastSeen:now,inputAt:now,born:now,protectedUntil:now+(bot?WILD_PROTECT_MS:SPAWN_PROTECT_MS),deadUntil:0,abilityUntil:0,abilityReady:0,interactReady:0,stunUntil:0,hunger:100,feeding:undefined,survived:0,thirst:70+idHash(id+'water')*25,strikeId:'',strikeAt:0,strikeAmbush:false,score:0,deaths:0,food:0,hunts:0,drinks:0,scavenged:0,escapes:0,hiddenSeconds:0,survivalSeconds:0,claimed:[false,false,false],sprint:false,stamina:100,threatAt:0,face:1,message:'A new place in the chain.',messageUntil:now+3000,seq:0,targetX:0,targetY:0,heading:0,mood:'wander' as Mood,alert:0,targetId:'',moodUntil:0,alarmAt:0,calledAt:0,threatX:0,threatY:0,lastThreatAt:0,homeX:0,homeY:0,herd:'',nextDrink:now+40000+idHash(id)*60000,chaseStart:0,thinkAt:0,stuckX:0,stuckY:0,stuckAt:now,unstickUntil:0};p.homeX=p.stuckX=p.x;p.homeY=p.stuckY=p.y;return p;}
 /** A stable 0..1 number per animal, for per-animal variety (reaction time, flee angle) that tests can reproduce. */
 export function idHash(id:string){let h=2166136261;for(let i=0;i<id.length;i++)h=Math.imul(h^id.charCodeAt(i),16777619);return((h^h>>>15)>>>0)/4294967296;}
 /** Seeded randomness kept in the room, so a round's wildlife decisions replay the same from the same state. */
 export function roll(room:Room){const r=rng(room.rs??=room.seed*977+room.round*131)();room.rs=(room.rs+0x9E3779B9)|0;return r;}
 export function newRoom(code:string,host:Player,now:number):Room{return{code,host:host.id,phase:'lobby',started:0,ends:0,tick:now,players:[host],foods:makeFoods(417),events:['Welcome to the Golden Plains.'],seed:417,round:0};}
 export function notify(p:Player,message:string,now:number){p.message=message;p.messageUntil=now+2500;}
+/** A badge for a real behaviour (lib/rewards.ts), once a round; the player's device keeps the tally. */
+export function award(p:Player,id:BadgeId){if(p.bot)return;const b=p.badges??=[];if(!b.includes(id))b.push(id);}
 /** A human's next animal, dealt from a shuffled bag of all six: each species comes up once every six lives (a fresh bag
  *  never starts with the animal just played), instead of independent draws that can leave one out for a long time. */
 export function nextSpecies(p:Pick<Player,'species'|'bag'>):Species{
@@ -183,14 +361,14 @@ export function nextSpecies(p:Pick<Player,'species'|'bag'>):Species{
  return p.bag.shift()!;
 }
 export function respawn(p:Player,now:number,room?:Room){const species=p.bot?(WILDLIFE[Number(p.id.replace('wild-',''))]||p.species):nextSpecies(p);const fresh=newPlayer(p.id,p.bot?ANIMALS[species].name:p.name,now,p.bot,species,room);const carry=p.carry;Object.assign(p,fresh,{bag:p.bag,lives:p.lives,lifeStart:p.score,carry:undefined,score:p.score,deaths:p.deaths,token:p.token,lastSeen:p.lastSeen,seq:p.seq,herd:p.herd,homeX:p.homeX,homeY:p.homeY});if(carry){p.hunger=Math.min(p.hunger,Math.max(25,carry.hunger));p.thirst=Math.min(p.thirst??100,Math.max(25,carry.thirst));}if(p.bot&&room)rejoinHerd(p,room,now);p.claimed=p.claimed.map((_,i)=>i<2&&!!p.done?.includes(p.species+':'+i));notify(p,'New life. New animal.',now);}
-export function start(room:Room,now:number){room.phase='playing';room.started=now;room.ends=room.duration===0?0:now+(room.duration??300)*1000;room.tick=now;room.round++;room.foods=makeFoods(room.seed);room.players=room.players.filter(p=>!p.bot);for(const p of room.players){const token=p.token,species=nextSpecies(p),bag=p.bag;Object.assign(p,newPlayer(p.id,p.name,now,false,species,room),{token,bag,done:[],lives:[],lifeStart:0});}room.rs=room.seed*977+room.round*131;placeWildlife(room,now);room.poachers=spawnPoachers(room);room.events=['Golden graze. Find food, complete tasks, survive.'];}
+export function start(room:Room,now:number){room.phase='playing';room.started=now;room.endedBy=undefined;room.ends=room.duration===0?0:now+(room.duration??300)*1000;room.tick=now;room.round++;room.foods=makeFoods(room.seed);room.players=room.players.filter(p=>!p.bot);for(const p of room.players){const token=p.token,species=nextSpecies(p),bag=p.bag;Object.assign(p,newPlayer(p.id,p.name,now,false,species,room),{token,bag,done:[],lives:[],lifeStart:0,badges:[]});}room.rs=room.seed*977+room.round*131;placeWildlife(room,now);room.events=['Golden graze. Find food, complete tasks, survive.'];}
 export const leaping=(p:Player,now:number)=>p.species==='impala'&&p.abilityUntil>now;
 const stalking=(p:Player,now:number)=>p.species==='leopard'&&p.abilityUntil>now&&!p.perched;
 const inThicket=(ps:Prop[],x:number,y:number)=>bushNear(ps,x,y,26);
 // Hidden (cannot be caught or seen): a leopard up an acacia, a warthog in its burrow, or anyone but a zebra standing still
 // inside a thicket. The thicket reach matches the ring of tall grass drawn around each bush, so a hidden animal is always
 // Stalk is a game ability: full concealment from animal senses for its active duration.
-export function hidden(p:Player,room:Room,now:number){return stalking(p,now)||p.species==='leopard'&&p.climb==='limb'||p.species==='warthog'&&p.abilityUntil>now||p.species!=='zebra'&&Math.hypot(p.dx,p.dy)<.1&&Math.hypot(p.vx||0,p.vy||0)<8&&inThicket(props(room.seed),p.x,p.y);}
+export function hidden(p:Player,room:Room,now:number){return stalking(p,now)||p.species==='leopard'&&p.climb==='limb'||p.species==='warthog'&&p.abilityUntil>now||p.species!=='zebra'&&Math.hypot(p.dx,p.dy)<.1&&Math.hypot(p.vx||0,p.vy||0)<8&&inThicket(props(room.seed),p.x,p.y)&&!bare(room,p.x,p.y,now);}
 /** The round's breeze: the direction it blows towards (scent drifts downwind). Fixed for a round, new each round. */
 export function wind(room:Pick<Room,'seed'|'round'>){const a=rng(room.seed*31+(room.round||0)*7919)()*Math.PI*2;return{x:Math.cos(a),y:Math.sin(a),angle:a};}
 export const speedOf=(p:{vx?:number;vy?:number})=>Math.hypot(p.vx||0,p.vy||0);
@@ -200,13 +378,16 @@ export const walkPace=(s:Species)=>ANIMALS[s].gait.run*UNITS_PER_METRE;
 export const headDown=(p:Pick<Player,'mood'|'id'>,now:number)=>p.mood==='graze'&&Math.sin(now/1000*.9+idHash(p.id)*6.283)>-.35;
 /** How noticeable an animal is, 0..1: running is obvious, walking less so, standing still least. Cover only counts when
  *  it is really covering the animal: tall grass hides animals under a metre at the shoulder (a lion or zebra sticks out). */
-export function conspicuity(t:Player,ps:Prop[],now:number){
+export function conspicuity(t:Player,ps:Prop[],now:number,room?:Pick<Room,'started'|'seed'|'round'>){
  const v=speedOf(t),pace=walkPace(t.species);
  let c=v<8?.35:v<pace*.65?.6:v<pace*1.05?.8:1;
  // a zebra is big and boldly striped in open grass: even standing still it is easy to pick out
  if(t.species==='zebra')c=Math.max(c,.65);
  if(stalking(t,now))c*=.45;
+ {const pose=postureOf(t);if(pose)c*=POSTURE_SIGHT[pose];}
  if(t.perched)c*=.5;
+ // the grass round a thicket and the tall-grass swales burn: on the black there is nowhere to hide
+ else if(room&&bare(room,t.x,t.y,now))return c;
  else if(t.species!=='zebra'&&inThicket(ps,t.x,t.y))c*=.45;
  else if(ANIMALS[t.species].size<1&&inTallGrass(ps,t.x,t.y))c*=v>pace*1.05?.8:.5;
  return c;
@@ -220,8 +401,11 @@ export function contactBlocked(ps:Prop[],a:{x:number;y:number},b:{x:number;y:num
 }
 /** The way an animal's attack goes: where the player is steering, else the way it is moving or last faced. */
 export const strikeDirection=(p:Player)=>Math.hypot(p.dx,p.dy)>.1?Math.atan2(p.dy,p.dx):p.heading??0;
-/** Prey in front of the hunter: within 85° either side of the way it attacks. */
-export const inFront=(p:Player,q:{x:number;y:number})=>Math.cos(Math.atan2(q.y-p.y,q.x-p.x)-strikeDirection(p))>=Math.cos(85*Math.PI/180);
+/** A hunter can still end up with its prey's centre inside its own body (a leopard dropping onto it, a kick or a spawn
+ *  on top of it): that is contact whichever way it faces. */
+export const touching=(p:Player,q:{x:number;y:number})=>dist(p,q)<BODY[p.species][1]*UNITS_PER_METRE;
+/** Prey in front of the hunter: within 85° either side of the way it attacks, or already inside its body. */
+export const inFront=(p:Player,q:{x:number;y:number})=>touching(p,q)||Math.cos(Math.atan2(q.y-p.y,q.x-p.x)-strikeDirection(p))>=Math.cos(85*Math.PI/180);
 export function sightBlocked(ps:Prop[],a:{x:number;y:number},b:{x:number;y:number}){
  const vx=b.x-a.x,vy=b.y-a.y,len=Math.hypot(vx,vy);if(len<1)return false;
  for(const t of solidNear(ps,(a.x+b.x)/2,(a.y+b.y)/2,len/2+60)){if(t.kind!=='rock')continue;const r=solidRadius(t)*.9,u=((t.x-a.x)*vx+(t.y-a.y)*vy)/(len*len);if(u<=0||u>=1)continue;if(Math.hypot(a.x+vx*u-t.x,a.y+vy*u-t.y)<r&&dist(t,a)>r+4&&dist(t,b)>r+4)return true;}
@@ -234,13 +418,21 @@ export const CLOSE_RANGE=45,SCENT_RANGE=170,SOUND_RANGE=190;
  *  - sight: within the observer's sight range scaled by how conspicuous t is, unless a boulder blocks the line;
  *  - scent: within 17 m when the breeze blows from t towards o (game rule: approach from downwind);
  *  - sound: within 19 m when t is sprinting (no exact position, just a direction). */
+/** Sneaking up from behind (a game rule): a player's predator that is not sprinting, outside the 220° arc a
+ *  computer-controlled prey animal faces, can't set off its close-range or scent alert. Sight, the sound of a sprint and
+ *  herd alarm calls still work as usual. Only for a hunter that could actually take this prey. */
+export const FORWARD_ARC=220;
+export function creptBehind(o:Player,t:Player,room:Room,now:number){
+ if(!o.bot||t.bot||!canTake(t,o,room)||sprinting(t,now))return false;
+ return Math.cos(Math.atan2(t.y-o.y,t.x-o.x)-(o.heading??0))<Math.cos(FORWARD_ARC/2*Math.PI/180);
+}
 export function sense(o:Player,t:Player,room:Room,now:number,ps=props(room.seed)):Cue|null{
  if(t.deadUntil||hidden(t,room,now))return null;
- const d=dist(o,t);if(d<CLOSE_RANGE)return{how:'close',range:d};
+ const d=dist(o,t),unnoticed=creptBehind(o,t,room,now);if(d<CLOSE_RANGE&&!unnoticed)return{how:'close',range:d};
  if(d>400)return null;
- const sight=ANIMALS[o.species].sight*(headDown(o,now)?.7:1)*conspicuity(t,ps,now);
+ const light=lightAt(room,now),sight=ANIMALS[o.species].sight*(headDown(o,now)?.7:1)*conspicuity(t,ps,now,room)*sightInLight(o.species,light)*(perkOf(t)==='night'?1-PERK_SIZE.night*(1-light.day):1);
  if(d<sight&&!sightBlocked(ps,o,t))return{how:'sight',range:d};
- const w=wind(room);if(d<SCENT_RANGE&&((o.x-t.x)*w.x+(o.y-t.y)*w.y)/d>.64)return{how:'scent',range:d};
+ const w=wind(room);if(d<SCENT_RANGE&&!unnoticed&&((o.x-t.x)*w.x+(o.y-t.y)*w.y)/d>.64)return{how:'scent',range:d};
  if(d<SOUND_RANGE&&speedOf(t)>walkPace(t.species)*1.05)return{how:'sound',range:d};
  return null;
 }
@@ -262,7 +454,22 @@ export function canTake(p:Player,q:{species:Species},room:Room,range=CLAN_RANGE)
  *  a chase once the hunter is properly hungry. */
 const PREFERENCE:Partial<Record<Species,Partial<Record<Species,number>>>>={lion:{zebra:3,impala:1,warthog:.35},hyena:{zebra:2.2,impala:1,warthog:.6}};
 export const HUNGER_RATE:Record<Species,number>={lion:.35,leopard:.4,hyena:.45,zebra:.6,impala:.6,warthog:.6};
-export const HUNT_REACH_MULTIPLIER=1.44;
+/** catch reach over each species' catchRange: 1.2 and then 1.44 in the Oct 27 playtests, then 18% more (Oct 29) */
+export const HUNT_REACH_MULTIPLIER=1.44*1.18;
+/** Coat perks: a few coats and skins (lib/rewards.ts) carry a small advantage, read by the server from the player's
+ *  coat code, so multiplayer stays fair. Game rules, kept modest:
+ *  - night: a melanistic (black) leopard is 30 % harder to see in the dark, fading in as the light goes;
+ *  - bite: a dark-maned lion reaches 10 % further with a lunge (a nod to dark manes marking males in good condition,
+ *    West & Packer 2002; the reach itself is invented);
+ *  - speed: Emberhide, on any animal, adds 5 % to its own run and sprint speeds;
+ *  - stamina: Sun-Gilded, on any animal, makes its sprint last 20 % longer. */
+export type Perk='night'|'bite'|'speed'|'stamina';
+export const PERK_SIZE={night:.3,bite:.1,speed:.05,stamina:.2} as const;
+/** which coat (code digit) carries which perk; legendary skins (3+) are the same for every species */
+export const COAT_PERKS:{species?:Species;coat:number;perk:Perk}[]=[{species:'leopard',coat:2,perk:'night'},{species:'lion',coat:1,perk:'bite'},{coat:4,perk:'speed'},{coat:3,perk:'stamina'}];
+export const coatPerk=(species:Species,coat:number)=>COAT_PERKS.find(k=>k.coat===coat&&(!k.species||k.species===species))?.perk;
+/** the perk of the coat this player wears in this room (bots wear the usual coat) */
+export const perkOf=(p:Pick<Player,'species'|'coats'|'bot'>)=>p.bot||!p.coats?undefined:coatPerk(p.species,Number(p.coats[SPECIES.indexOf(p.species)]??0));
 export const UNITS_PER_METRE=10,TRUNK_RADIUS=7,POUNCE_RANGE=42,AMBUSH_RANGE=60,KICK_RANGE=40,FOOD_RANGE=18,BURROW_REACH=45,TREE_REACH=40,WATER_REACH=30,THREAT_RANGE=300,LEAP_SPEED=11,STALK_SPEED=4.5;
 const wrap=(a:number)=>Math.atan2(Math.sin(a),Math.cos(a)),clamp=(v:number,a:number,b:number)=>Math.max(a,Math.min(b,v));
 /** True while the animal is running flat out on its stamina (Charge and Tireless sprint for free). */
@@ -271,7 +478,14 @@ export const sprinting=(p:Player,now:number)=>{const g=ANIMALS[p.species].gait,f
 // is limited by accel (speeding up) or brake (slowing down), the sideways part by grip. A reversal therefore plants
 // and pushes off the other way instead of looping round, and a sideways input bends the path within a few metres.
 // Facing is separate (the renderer turns the body at the species' turnRate), so movement never waits on rotation.
-export function move(p:Player,dt:number,ps:Prop[],now:number){
+/** `others`: animals near enough to touch (see bodyGrid); their bodies are solid to this one. */
+/** Posture a player can choose, as the wildlife does (a stalking hunter crouches, an animal lies up to rest). Game rules:
+ *  crouched, it moves no faster than its walk and is about 40 % harder to pick out; lying down, it doesn't move, is
+ *  half as easy to see and gets its breath back 50 % faster. Sprinting or (when lying) moving stands it up. */
+export type Posture='crouch'|'lie';
+export const POSTURE_SIGHT={crouch:.6,lie:.5} as const,LIE_RECOVERY=1.5;
+export const postureOf=(p:Pick<Player,'posture'|'perched'|'climb'|'deadUntil'>)=>p.perched||p.climb||p.deadUntil?undefined:p.posture;
+export function move(p:Player,dt:number,ps:Prop[],now:number,others:readonly Player[]=[]){
  p.vx??=0;p.vy??=0;p.stamina??=100;
  if(p.climb){climbStep(p,dt,ps,now);return;}
  if(p.perched||p.species==='warthog'&&p.abilityUntil>now||(p.stunUntil??0)>now){p.vx=0;p.vy=0;return;}
@@ -280,6 +494,8 @@ export function move(p:Player,dt:number,ps:Prop[],now:number){
  let vx=p.vx/U,vy=p.vy/U,speed=Math.hypot(vx,vy);
  // a partly pushed stick (or a grazing herd's slow drift) moves between a walk and the normal run
  let target=!input&&!charge?0:stalk?STALK_SPEED:(p.sprint||charge)&&(free||!p.exhausted&&p.stamina>0)?g.sprint:Math.max(g.walk,g.run*Math.min(1,Math.hypot(p.dx,p.dy)));
+ if(perkOf(p)==='speed'&&target>g.walk)target*=1+PERK_SIZE.speed;
+ {const pose=postureOf(p);if(pose==='lie')target=0;else if(pose==='crouch'&&!charge)target=Math.min(target,g.walk);}
  // game rule: wading through a watering hole or its mud ring slows every animal a little
  if(ofKind(ps,'water').some(t=>Math.hypot(p.x-t.x,p.y-t.y)<t.size*1.25))target*=.8;
  const dir=input?Math.atan2(p.dy,p.dx):Math.atan2(vy,vx),wx=Math.cos(dir)*target,wy=Math.sin(dir)*target;
@@ -293,13 +509,14 @@ export function move(p:Player,dt:number,ps:Prop[],now:number){
  if(Math.hypot(vx,vy)<.02){vx=0;vy=0;}
  p.vx=vx*U;p.vy=vy*U;
  let x=Math.max(25,Math.min(W-25,p.x+p.vx*dt)),y=Math.max(25,Math.min(H-25,p.y+p.vy*dt));
+ if(others.length&&solidBody(p,now))({x,y}=shoulder(p,x,y,others,now));
  ({x,y}=collide(p,x,y,ps));
  p.x=x;p.y=y;if(Math.abs(p.vx)>1)p.face=p.vx>0?1:-1;if(Math.hypot(p.vx,p.vy)>5)p.heading=Math.atan2(p.vy,p.vx);
 }
 /** Stamina: a flat-out sprint empties it in the species' sprint time; resting refills it over its recovery time. */
-function breathe(p:Player,dt:number,now:number){
+export function breathe(p:Player,dt:number,now:number){
  const g=ANIMALS[p.species].gait,speed=Math.hypot(p.vx,p.vy)/UNITS_PER_METRE;
- if(sprinting(p,now))p.stamina-=100/g.sprintTime*dt;else p.stamina+=100/g.recover*dt*(speed>g.run*.8?.4:1);
+ if(sprinting(p,now))p.stamina-=100/(g.sprintTime*(perkOf(p)==='stamina'?1+PERK_SIZE.stamina:1))*dt;else p.stamina+=100/g.recover*dt*(speed>g.run*.8?.4:1)*(postureOf(p)==='lie'?LIE_RECOVERY:1);
  p.stamina=clamp(p.stamina,0,100);if(p.stamina<=.5)p.exhausted=true;else if(p.stamina>=30)p.exhausted=false;
 }
 // ---------------------------------------------------------------- bodies, trunks and climbing
@@ -316,6 +533,54 @@ function collide(p:Player,x:number,y:number,ps:Prop[]){
   const inward=p.vx*nx+p.vy*ny;if(inward<0){p.vx-=inward*nx;p.vy-=inward*ny;}
  }
  return{x:Math.max(25,Math.min(W-25,x)),y:Math.max(25,Math.min(H-25,y))};
+}
+/** Does this animal have a body others bump into? Not while dead, up a tree, down a burrow or in the air mid-leap (an
+ *  impala clears other animals in its bound). */
+export const solidBody=(p:Player,now:number)=>!p.deadUntil&&(!p.climb||p.climb==='approach')&&!p.perched&&!(p.species==='warthog'&&p.abilityUntil>now)&&!leaping(p,now);
+const bodyHeading=(p:Player)=>Math.hypot(p.vx||0,p.vy||0)>5?Math.atan2(p.vy,p.vx):p.heading??0;
+/** Closest points of two segments a+u·s (s in a0..a1) and b+v·t (t in b0..b1), u and v unit vectors: the gap from b's to a's. */
+function segmentGap(ax:number,ay:number,ux:number,uy:number,a0:number,a1:number,bx:number,by:number,vx:number,vy:number,b0:number,b1:number){
+ const rx=ax-bx,ry=ay-by,b=ux*vx+uy*vy,c=ux*rx+uy*ry,f=vx*rx+vy*ry,den=1-b*b;
+ // parallel: B's extent seen along A; take the middle of where they overlap (or A's end nearest to B)
+ const lo=Math.min(b*b0,b*b1)-c,hi=Math.max(b*b0,b*b1)-c;
+ let sa=den>1e-6?clamp((b*f-c)/den,a0,a1):clamp((Math.max(lo,a0)+Math.min(hi,a1))/2,a0,a1);const tb=clamp(b*sa+f,b0,b1);sa=clamp(b*tb-c,a0,a1);
+ return{dx:ax+ux*sa-bx-vx*tb,dy:ay+uy*sa-by-vy*tb};
+}
+/** Animals are solid to each other: push a body (its rump-to-nose capsule) out of every other animal's it overlaps and
+ *  drop the part of its velocity that drives into them, so it slides along a flank instead of passing through. Each
+ *  animal only moves itself, so a lion can't shove a standing zebra aside; it has to go round. */
+function shoulder(p:Player,x:number,y:number,others:readonly Player[],now:number){
+ const U=UNITS_PER_METRE,[front,rear,half]=BODY[p.species],h=bodyHeading(p),hx=Math.cos(h),hy=Math.sin(h);
+ for(const q of others){
+  if(q===p||Math.abs(q.x-x)>40||Math.abs(q.y-y)>40||!solidBody(q,now))continue;
+  const [qf,qr,qh]=BODY[q.species],g=bodyHeading(q),r=(half+qh)*U;
+  const {dx,dy}=segmentGap(x,y,hx,hy,-rear*U,front*U,q.x,q.y,Math.cos(g),Math.sin(g),-qr*U,qf*U),d=Math.hypot(dx,dy);
+  if(d>=r)continue;
+  let nx:number,ny:number,depth:number;
+  if(d>.001){nx=dx/d;ny=dy/d;depth=r-d;}
+  else{
+   // the two spines cross or lie end to end (nose into rump on one line): part along the line between their centres,
+   // as far as their extents along it overlap; right on top of each other, step out sideways
+   const cx=x-q.x,cy=y-q.y,c=Math.hypot(cx,cy);if(c>.001){nx=cx/c;ny=cy/c;}else{nx=-hy;ny=hx;}
+   const k=hx*nx+hy*ny,k2=Math.cos(g)*nx+Math.sin(g)*ny;
+   depth=(Math.max(k*rear,-k*front)+half+Math.max(-k2*qr,k2*qf)+qh)*U-c;if(depth<=0)continue;
+  }
+  x+=nx*depth;y+=ny*depth;
+  const inward=p.vx*nx+p.vy*ny;if(inward<0){p.vx-=inward*nx;p.vy-=inward*ny;}
+ }
+ return{x,y};
+}
+const BODY_CELL=80;
+/** Animals bucketed by 8 m cell, so each body only checks its neighbours (68 animals: a handful each instead of all). */
+export function bodyGrid(players:readonly Player[]){
+ const grid=new Map<number,Player[]>();
+ for(const p of players){if(p.deadUntil)continue;const k=Math.floor(p.x/BODY_CELL)*1024+Math.floor(p.y/BODY_CELL),cell=grid.get(k);if(cell)cell.push(p);else grid.set(k,[p]);}
+ return grid;
+}
+export function bodiesNear(grid:Map<number,Player[]>,x:number,y:number){
+ const cx=Math.floor(x/BODY_CELL),cy=Math.floor(y/BODY_CELL),out:Player[]=[];
+ for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++){const cell=grid.get((cx+i)*1024+cy+j);if(cell)out.push(...cell);}
+ return out;
 }
 export type Climb=''|'approach'|'trunk'|'mount'|'limb'|'drop'|'slip';
 /** Who climbs, and how (metres, m/s). Leopards are true climbers: up a trunk at about 2 m/s (forelimbs pulling, hind
@@ -478,8 +743,8 @@ export function climbPose(ps:Prop[],p:Pick<Player,'species'|'x'|'y'|'heading'|'c
 export const behind=(p:Player,q:{x:number;y:number})=>Math.cos(Math.atan2(q.y-p.y,q.x-p.x)-(p.heading??0))<-.35;
 export function useAbility(p:Player,room:Room,now:number){p.feeding=undefined;if(now<p.abilityReady||p.deadUntil)return;
  if(p.climb){notify(p,'Press Q to climb down first.',now);return;}
- if(p.species==='warthog'){const burrow=props(room.seed).filter(t=>t.kind==='burrow'&&dist(t,p)<BURROW_REACH).sort((a,b)=>dist(a,p)-dist(b,p))[0];if(!burrow){notify(p,'Find a burrow first: a dark hole in open ground.',now);return;}const sa=idHash(p.id)*6.28;p.x=burrow.x+Math.cos(sa)*5;p.y=burrow.y+Math.sin(sa)*5;p.dx=0;p.dy=0;}
- if(p.species==='zebra'){const close=room.players.filter(q=>!q.deadUntil&&ANIMALS[q.species].prey.includes('zebra')&&dist(q,p)<KICK_RANGE),kicked=close.filter(q=>behind(p,q));if(close.length&&!kicked.length)notify(p,'Missed: a kick only reaches behind you.',now);for(const q of kicked){q.stunUntil=now+2500;const d=Math.max(1,dist(q,p));q.x=Math.max(25,Math.min(W-25,q.x+(q.x-p.x)/d*20));q.y=Math.max(25,Math.min(H-25,q.y+(q.y-p.y)/d*20));notify(q,'Kicked by a zebra! Stunned.',now);}if(kicked.length){p.score+=4;notify(p,'Kick landed +4',now);}}
+ if(p.species==='warthog'){const burrow=props(room.seed).filter(t=>t.kind==='burrow'&&dist(t,p)<BURROW_REACH).sort((a,b)=>dist(a,p)-dist(b,p))[0];if(!burrow){notify(p,'Find a burrow first: a dark hole in open ground.',now);return;}const sa=idHash(p.id)*6.28;p.x=burrow.x+Math.cos(sa)*5;p.y=burrow.y+Math.sin(sa)*5;p.dx=0;p.dy=0;if(p.threatAt&&now-p.threatAt<3000)award(p,'tusks');}
+ if(p.species==='zebra'){const close=room.players.filter(q=>!q.deadUntil&&q.protectedUntil<now&&ANIMALS[q.species].prey.includes('zebra')&&dist(q,p)<KICK_RANGE),kicked=close.filter(q=>behind(p,q));if(kicked.length)dropShield(p,now);if(close.length&&!kicked.length)notify(p,'Missed: a kick only reaches behind you.',now);for(const q of kicked){q.stunUntil=now+2500;const d=Math.max(1,dist(q,p));q.x=Math.max(25,Math.min(W-25,q.x+(q.x-p.x)/d*20));q.y=Math.max(25,Math.min(H-25,q.y+(q.y-p.y)/d*20));notify(q,'Kicked by a zebra! Stunned.',now);}if(kicked.length){award(p,'kick');p.score+=4;notify(p,'Kick landed +4',now);}}
  if(p.species==='hyena')p.stamina=100,p.exhausted=false;
  if(p.species==='impala'){const g=Math.hypot(p.vx,p.vy)||1,h=Math.hypot(p.dx,p.dy)>.1?Math.atan2(p.dy,p.dx):Math.atan2(p.vy,p.vx),v=Math.max(g,LEAP_SPEED*UNITS_PER_METRE);p.vx=Math.cos(h)*v;p.vy=Math.sin(h)*v;}
  p.abilityUntil=now+ANIMALS[p.species].duration*1000;p.abilityReady=now+ANIMALS[p.species].cooldown*1000;if(p.species!=='zebra')notify(p,ANIMALS[p.species].ability+'!',now);}
@@ -488,14 +753,13 @@ export const RESTART_CAUSE='started a new life.';
  *  better fed or watered than this one was), so throwing a life away is never a shortcut to food or a better spot. */
 export function restartLife(p:Player,room:Room,now:number){if(p.deadUntil)return;p.carry={hunger:p.hunger,thirst:p.thirst??100};die(p,room,now,RESTART_CAUSE);p.deadUntil=now+6000;}
 export function die(p:Player,room:Room,now:number,cause:string){if(cause===RESTART_CAUSE&&!p.carry){restartLife(p,room,now);return;}if(p.deadUntil)return;
- if(!p.bot)(p.lives??=[]).push({species:p.species,seconds:Math.round(p.survivalSeconds),points:p.score-(p.lifeStart??0),food:p.food,hunts:p.hunts,cause});p.feeding=undefined;p.deadUntil=now+2600;p.dx=0;p.dy=0;p.vx=0;p.vy=0;endClimb(p);p.strikeId='';p.strikeAt=0;p.strikeAmbush=false;p.deaths++;notify(p,cause,now);if(!p.bot){room.events.unshift(p.name+' '+cause);room.events=room.events.slice(0,5);}}
+ if(!p.bot)(p.lives??=[]).push({species:p.species,seconds:Math.round(p.survivalSeconds),points:p.score-(p.lifeStart??0),food:p.food,hunts:p.hunts,cause});p.feeding=undefined;if(p.scorch)p.scorch=0;if(p.smokeUntil)p.smokeUntil=0;p.deadUntil=now+2600;p.dx=0;p.dy=0;p.vx=0;p.vy=0;endClimb(p);p.strikeId='';p.strikeAt=0;p.strikeAmbush=false;p.deaths++;notify(p,cause,now);if(!p.bot){room.events.unshift(p.name+' '+cause);room.events=room.events.slice(0,5);}}
 // A kill leaves a carcass for scavengers once the hunter has eaten. Old carcasses dry out.
 function dropCarcass(room:Room,x:number,y:number,now:number){room.foods=room.foods.filter(f=>!f.until||f.until>now);if(room.foods.length>620)return;const id=Math.max(0,...room.foods.map(f=>f.id))+1;room.foods.push({id,x,y,kind:'carrion',ready:now+7500,until:now+90000});}
 export function interact(p:Player,room:Room,now:number){if(p.deadUntil||p.feeding||now<p.interactReady||p.strikeId)return;if((p.stunUntil??0)>now){notify(p,'Still reeling from the kick.',now);return;}p.interactReady=now+650;p.actionUntil=now+500;
  if(p.stunUntil>now){notify(p,'Still stunned.',now);return;}
  const a=ANIMALS[p.species],ambush=p.species==='leopard'&&p.climb==='limb';
- const reach=(ambush?AMBUSH_RANGE:p.abilityUntil>now&&(p.species==='lion'||p.species==='leopard')?POUNCE_RANGE:a.catchRange)*HUNT_REACH_MULTIPLIER;
- if(engagePoacher(p,room,now,reach))return;
+ const reach=(ambush?AMBUSH_RANGE:p.abilityUntil>now&&(p.species==='lion'||p.species==='leopard')?POUNCE_RANGE:a.catchRange)*HUNT_REACH_MULTIPLIER*(perkOf(p)==='bite'?1+PERK_SIZE.bite:1);
  const victims=room.players.filter(q=>q.id!==p.id&&!q.deadUntil&&q.protectedUntil<now&&canTake(p,q,room)&&!hidden(q,room,now)&&!leaping(q,now)&&dist(p,q)<reach);victims.sort((x,y)=>dist(p,x)-dist(p,y));
  if(p.climb&&!ambush)return;
  // A catch is a committed lunge: aimed at prey in front, with nothing solid in between, and it lands a quarter of a
@@ -503,13 +767,14 @@ export function interact(p:Player,room:Room,now:number){if(p.deadUntil||p.feedin
  // is a leap from the bough that is checked when it lands.
  if(victims.length&&!ambush){const ps=props(room.seed),q=victims.find(q=>inFront(p,q)&&!contactBlocked(ps,p,q));
   if(!q){notify(p,'Missed: face your prey, with nothing in the way.',now);return;}
-  p.strikeId=q.id;p.strikeTargetBorn=q.born;p.strikeAt=now+STRIKE_WINDUP;p.strikeAmbush=false;p.strikeBorn=p.born;p.strikeDir=Math.atan2(q.y-p.y,q.x-p.x);q.threatAt=now;notify(p,'Lunge!',now);notify(q,'Lunge! '+a.name+' right on you',now);p.heading=Math.atan2(q.y-p.y,q.x-p.x);return;}
- if(victims[0]&&ambush){const q=victims[0];dropOnto(p,props(room.seed),q);p.strikeId=q.id;p.strikeTargetBorn=q.born;p.strikeAt=0;p.strikeAmbush=true;p.strikeBorn=p.born;return;}
+  p.strikeId=q.id;p.strikeTargetBorn=q.born;p.strikeAt=now+STRIKE_WINDUP;p.strikeAmbush=false;p.strikeBorn=p.born;p.strikeDir=Math.atan2(q.y-p.y,q.x-p.x);q.threatAt=now;notify(p,'Lunge!',now);dropShield(p,now);notify(q,'Lunge! '+a.name+' right on you',now);p.heading=Math.atan2(q.y-p.y,q.x-p.x);return;}
+ if(victims[0]&&ambush){const q=victims[0];dropShield(p,now);dropOnto(p,props(room.seed),q);p.strikeId=q.id;p.strikeTargetBorn=q.born;p.strikeAt=0;p.strikeAmbush=true;p.strikeBorn=p.born;return;}
  if(ambush){notify(p,'No prey below. Wait for it to come closer.',now);return;}
- const f=nearest(room.foods,p,FOOD_RANGE,f=>f.ready<=now&&(!f.until||f.until>now)&&(a.foods as string[]).includes(f.kind));
+ const f=nearest(room.foods,p,FOOD_RANGE,f=>f.ready<=now&&(!f.until||f.until>now)&&(a.foods as string[]).includes(f.kind)&&!grassGone(room,f,now));
  // a full animal can't keep eating for points (the same rule as water)
  if(f&&p.hunger>=FULL){notify(p,'Not hungry yet.',now);return;}
- if(f){if(f.until)f.until=now;else f.ready=now+(f.kind==='carrion'?CARRION_REGROW:18000);p.food++;if(f.kind==='carrion')p.scavenged++;p.hunger=Math.min(100,p.hunger+(f.kind==='carrion'?35:28));const points=(savannaEvent(room,now).kind==='forage'?5:3)+(f.kind==='carrion'&&p.species==='hyena'?2:0);p.score+=points;notify(p,(f.kind==='carrion'?'Scavenged ':f.kind==='roots'?'Dug up roots ':'Food found ')+'+'+points,now);return;}
+ if(f){if(f.until&&a.prey.length)award(p,'vultures');if(f.until)f.until=now;else f.ready=now+(f.kind==='carrion'?CARRION_REGROW:18000);p.food++;if(f.kind==='carrion')p.scavenged++;// the green flush after a fire: young shoots are richer than the old dry grass, worth more and more filling
+ const flush=f.kind==='grass'&&burnAt(room,f.x,f.y,now)==='flush';p.hunger=Math.min(100,p.hunger+(f.kind==='carrion'?35:flush?36:28));const points=(savannaEvent(room,now).kind==='forage'?5:3)+(f.kind==='carrion'&&p.species==='hyena'?2:0)+(flush?3:0);p.score+=points;notify(p,(f.kind==='carrion'?'Scavenged ':f.kind==='roots'?'Dug up roots ':flush?'Green shoots ':'Food found ')+'+'+points,now);return;}
  if(nearWater(props(room.seed),p.x,p.y,WATER_REACH)){
   // water refills thirst (not food) and only scores when the animal really needed it
   if((p.thirst??100)>=THIRSTY){notify(p,'Not thirsty yet.',now);return;}
@@ -525,16 +790,25 @@ export function resolveStrike(p:Player,room:Room,now:number){
  const q=room.players.find(o=>o.id===p.strikeId&&(p.strikeTargetBorn===undefined||o.born===p.strikeTargetBorn)),a=ANIMALS[p.species],ambush=!!p.strikeAmbush,ps=props(room.seed),life=p.strikeBorn;
  p.strikeId='';p.strikeAt=0;p.strikeAmbush=false;if(p.deadUntil||life!==p.born)return;
  if((p.stunUntil??0)>now){notify(p,'Missed: knocked off balance.',now);return;}
- const reach=(ambush?a.catchRange*1.3:p.abilityUntil>now&&(p.species==='lion'||p.species==='leopard')?POUNCE_RANGE:a.catchRange)*1.15*HUNT_REACH_MULTIPLIER;
+ const reach=(ambush?a.catchRange*1.3:p.abilityUntil>now&&(p.species==='lion'||p.species==='leopard')?POUNCE_RANGE:a.catchRange)*1.15*HUNT_REACH_MULTIPLIER*(perkOf(p)==='bite'?1+PERK_SIZE.bite:1);
  const caught=!!q&&!q.deadUntil&&q.protectedUntil<now&&canTake(p,q,room)&&!hidden(q,room,now)&&!leaping(q,now)&&dist(p,q)<reach&&(ambush||lungeLine(p,q))&&!contactBlocked(ps,p,q);
+ if(q&&!caught&&!q.deadUntil&&leaping(q,now)&&dist(p,q)<reach*1.5)award(q,'bound');
  if(!q||!caught){notify(p,ambush?'Missed: the prey moved before you landed.':'Missed: it broke away.',now);if(q&&!q.deadUntil)q.threatAt=now;return;}
- if((q.hitUntil??0)>now){notify(p,'It broke free. Give chase.',now);return;}
  // A valid landed hunt is lethal; range, cover, protection and defensive abilities were checked above.
- q.health=0;q.feeding=undefined;
+ q.feeding=undefined;if(ambush)award(p,'canopy');if(p.species==='hyena'&&q.species==='zebra')award(p,'clan');
  die(q,room,now,'was caught by a '+a.name.toLowerCase()+'.');dropCarcass(room,q.x,q.y,now);const duration=FEED_SECONDS[p.species]*1000;p.feeding={until:now+duration,duration,last:now};p.dx=p.dy=p.vx=p.vy=0;p.hunts++;p.food++;
- const points=(savannaEvent(room,now).kind==='hunt'?15:10)+(ambush?3:0);p.score+=points;notify(p,(ambush?'Ambush! ':'Successful hunt ')+'+'+points,now);
+ const points=(savannaEvent(room,now).kind==='hunt'?15:10)+(ambush?3:0)+(q.lane?5:0);p.score+=points;notify(p,(ambush?'Ambush! ':q.lane?'Hunt at the migration ':'Successful hunt ')+'+'+points,now);
 }
 export const STRIKE_WINDUP=250;
+/** Badge 'Unseen at 10 m': a player's predator closing in (moving towards it at 0.3 m/s or more, past its spawn
+ *  protection) within 10 m of live prey it could take, which neither sees, smells nor hears it right now (the same
+ *  sense() the wildlife uses) and isn't already running from something. Standing still while prey wanders close
+ *  isn't a stalk. */
+export const STALK_BADGE_RANGE=10*UNITS_PER_METRE;
+export function stalkedClose(p:Player,room:Room,ps:Prop[],t:number){
+ if(p.protectedUntil>t)return;
+ for(const q of room.players)if(q!==p&&!q.deadUntil&&q.mood!=='flee'&&Math.abs(q.x-p.x)<STALK_BADGE_RANGE&&dist(p,q)<STALK_BADGE_RANGE&&((q.x-p.x)*p.vx+(q.y-p.y)*p.vy)/Math.max(1,dist(p,q))>=.3*UNITS_PER_METRE&&canTake(p,q,room)&&!hidden(q,room,t)&&!sense(q,p,room,t,ps)){award(p,'stalk10');return;}
+}
 /** The first-seconds coaching line for each animal: what to do, in the order a new player needs it. */
 export const COACH:Record<Species,string>={
  lion:'Turn on Tracking to find prey. Creep in close, Charge, face it and Eat / Hunt.',
@@ -549,6 +823,7 @@ export function deathLesson(cause:string,species:Species){
  if(/leopard/.test(cause))return 'Leopards ambush from cover and from acacia boughs. Watch the trees and use Tracking (F).';
  if(/hyena/.test(cause))return 'Hyenas run for kilometres. Use your burst early and get to cover or a burrow.';
  if(/food/.test(cause))return ANIMALS[species].prey.length?'Hunger ran out. Carcasses (under circling vultures) tide you over between hunts.':'Hunger ran out. Eat whenever the Food meter drops below 90%.';
+ if(/fire/.test(cause))return 'A grass fire\'s head races downwind but its flanks creep. Run crosswind, or dash through a thin flame front onto the burnt ground behind it.';
  if(/new life/.test(cause))return 'You chose a fresh start. Points you earned stay with you.';
  return 'Every life is a fresh start in the chain.';
 }
@@ -580,25 +855,30 @@ export function tick(room:Room,now:number){
  const humans=room.players.filter(p=>!p.bot&&!p.deadUntil);
  const total=Math.min(1.5,Math.max(0,(Math.min(now,limit)-room.tick)/1000)),ps=props(room.seed),steps=Math.ceil(total/.1);
  for(let s=0;s<steps;s++){
- const dt=total/steps,t=Math.min(now,limit)-(steps-1-s)*dt*1000;
+ const dt=total/steps,t=Math.min(now,limit)-(steps-1-s)*dt*1000;stepMigration(room,t);const bodies=bodyGrid(room.players);let gone=false;
  for(const p of room.players){
  if(!p.bot&&t-p.lastSeen>8000){p.dx=0;p.dy=0;p.feeding=undefined;continue;}
+ // a migrating zebra that is caught, or has walked off the north edge, leaves the plains for good
+ if(p.lane&&(p.deadUntil?t>=p.deadUntil:p.y<70)){p.deadUntil=-1;gone=true;continue;}
  if(p.deadUntil){if(t>=p.deadUntil)respawn(p,t,room);continue;}
  if(p.bot&&!p.feeding)steer(p,room,ps,t,dt,humans);
- else if(t-p.inputAt>800){p.dx=0;p.dy=0;}
- stepFeeding(p,t);move(p,dt,ps,t);breathe(p,dt,t);
+ // a player's keys are kept through a slow request or two (a phone on mobile data); a dropped connection stops the animal
+ else if(t-p.inputAt>2000){p.dx=0;p.dy=0;}
+ stepFeeding(p,t);move(p,dt,ps,t,bodiesNear(bodies,p.x,p.y));breathe(p,dt,t);
  p.survivalSeconds+=dt;p.thirst=Math.max(0,(p.thirst??100)-dt*THIRST_RATE);
  // food runs down at its own pace; a parched animal burns through it twice as fast
  p.hunger-=dt*HUNGER_RATE[p.species]*(p.thirst<=0?2:1);
  if(p.strikeId&&p.strikeAt&&t>=p.strikeAt)resolveStrike(p,room,t);
  if(p.hunger<=0){die(p,room,t,'ran out of food.');continue;}
+ if(stepFire(p,room,t,dt))continue;stepTrek(p,room,t,dt);
+ if(!p.bot&&ANIMALS[p.species].prey.length&&!p.badges?.includes('stalk10'))stalkedClose(p,room,ps,t);
  if(hidden(p,room,t)||stalking(p,t)&&(inThicket(ps,p.x,p.y)||inTallGrass(ps,p.x,p.y)))p.hiddenSeconds+=dt;
  // Being hunted means a predator is actually after you (a wild one has picked you and is charging, or a player's
  // predator within 15 m is running at you), not merely that one is somewhere nearby.
  const threat=room.players.some(q=>!q.deadUntil&&!hidden(q,room,t)&&ANIMALS[q.species].prey.includes(p.species)&&(q.bot?q.mood==='chase'&&q.targetId===p.id:dist(p,q)<150&&((p.x-q.x)*(q.vx||0)+(p.y-q.y)*(q.vy||0))/Math.max(1,dist(p,q))>40));
  if(threat)p.threatAt=t;else if(p.threatAt&&t-p.threatAt>3000){p.escapes++;const points=savannaEvent(room,t).kind==='escape'?10:5;p.score+=points;p.threatAt=0;notify(p,'Escaped a threat +'+points,t);}
  tasks(p,t).forEach((task,i)=>{if(i===2){if(task.value>=task.target){p.survived=(p.survived??0)+1;p.score+=task.points;notify(p,'Still alive +'+task.points,t);}return;}if(!p.claimed[i]&&task.value>=task.target){p.claimed[i]=true;if(i<2&&!p.bot)(p.done??=[]).push(p.species+':'+i);p.score+=task.points;notify(p,'Task complete +'+task.points,t);}});
- }stepPoachers(room,t,dt); }room.tick=now;if(room.duration!==0&&now>=room.ends){room.phase='finished';room.players.forEach(p=>{p.dx=0;p.dy=0;p.vx=0;p.vy=0;});room.events.unshift('Round complete. Every life counted.');}}
+ }if(gone)room.players=room.players.filter(p=>p.deadUntil!==-1);}room.tick=now;if(room.duration!==0&&now>=room.ends){room.phase='finished';room.players.forEach(p=>{p.dx=0;p.dy=0;p.vx=0;p.vy=0;});room.events.unshift('Round complete. Every life counted.');}}
 // ---------------------------------------------------------------- wildlife
 // (an alias, so the linter's React-hook naming rule doesn't mistake the ability for a hook)
 const activate=useAbility;
@@ -619,7 +899,7 @@ function placeWildlife(room:Room,now:number){
 function rejoinHerd(p:Player,room:Room,now:number){
  const ps=props(room.seed),mates=room.players.filter(q=>q.bot&&q.herd===p.herd&&q.id!==p.id&&!q.deadUntil),centre=mates.length?{x:mates.reduce((s,q)=>s+q.x,0)/mates.length,y:mates.reduce((s,q)=>s+q.y,0)/mates.length}:{x:p.homeX,y:p.homeY};
  let spot=safePoint(Math.floor(roll(room)*1e6));
- for(let k=0;k<24;k++){const a=roll(room)*Math.PI*2,d=150+roll(room)*100+k*10,x=Math.max(80,Math.min(W-80,centre.x+Math.cos(a)*d)),y=Math.max(80,Math.min(H-80,centre.y+Math.sin(a)*d));if(blocked(ps,x,y,30)||room.players.some(q=>!q.bot&&!q.deadUntil&&dist(q,{x,y})<300))continue;spot={x,y};break;}
+ for(let k=0;k<24;k++){const a=roll(room)*Math.PI*2,d=150+roll(room)*100+k*10,x=Math.max(80,Math.min(W-80,centre.x+Math.cos(a)*d)),y=Math.max(80,Math.min(H-80,centre.y+Math.sin(a)*d));if(blocked(ps,x,y,30)||fireNear(room,{x,y},now,20000)||room.players.some(q=>!q.bot&&!q.deadUntil&&dist(q,{x,y})<300))continue;spot={x,y};break;}
  p.x=p.stuckX=spot.x;p.y=p.stuckY=spot.y;
  p.homeX=centre.x;p.homeY=centre.y;p.mood=ANIMALS[p.species].prey.length?'patrol':'regroup';p.moodUntil=now+15000;
 }
@@ -652,6 +932,12 @@ function grazer(p:Player,room:Room,ps:Prop[],t:number,think:number):Plan{
  }
  if(p.alert>=.4){p.mood='watch';p.heading=Math.atan2(p.threatY-p.y,p.threatX-p.x);return{pace:0};}
  if(p.mood==='watch')p.mood='graze';
+ // a migrating zebra keeps walking north along its lane: no stopping to drink or graze, back on the line after a scare
+ if(p.lane){p.mood='wander';
+  // wedged among a kopje's boulders: back out away from the nearest one for a few seconds, then rejoin the line
+  if(t<p.unstickUntil+2300){if(!p.targetX){const b=solidNear(ps,p.x,p.y,120).sort((a,c)=>dist(a,p)-dist(c,p))[0],n=b?Math.max(1,dist(b,p)):1;p.targetX=b?p.x+(p.x-b.x)/n*220:p.x+(idHash(p.id)-.5)*300;p.targetY=b?p.y+(p.y-b.y)/n*220+60:p.y+150;}return{goal:{x:p.targetX,y:p.targetY},pace:.5};}
+  p.targetX=0;
+  const y=p.y-260,f=1-Math.max(0,y)/H;p.homeX=p.x;p.homeY=y;return{goal:{x:p.lane[0]+(p.lane[1]-p.lane[0])*f,y},pace:TREK_PACE};}
  const mates=p.herd?room.players.filter(q=>q.bot&&q.herd===p.herd&&q!==p&&!q.deadUntil&&dist(q,p)<700):[];
  if(mates.length){p.homeX=(p.x+mates.reduce((s,q)=>s+q.x,0))/(mates.length+1);p.homeY=(p.y+mates.reduce((s,q)=>s+q.y,0))/(mates.length+1);}
  const centre={x:p.homeX,y:p.homeY};
@@ -665,7 +951,11 @@ function grazer(p:Player,room:Room,ps:Prop[],t:number,think:number):Plan{
  if(dist(p,centre)>170)return{goal:centre,pace:.55};
  const range=p.hunger<60?600:260;let food:Food|undefined,fd=range;
  const eats=ANIMALS[p.species].foods as string[],hungry=p.hunger<60;fd*=fd;
- for(const f of room.foods){const dx=f.x-p.x,dy=f.y-p.y,d=dx*dx+dy*dy;if(d>=fd||f.ready>t||f.until&&f.until<t||!eats.includes(f.kind))continue;if(hungry||dist(f,centre)<300){fd=d;food=f;}}
+ const fire=worldEvent(room,t)?.kind==='fire';
+ for(const f of room.foods){const dx=f.x-p.x,dy=f.y-p.y;let d=dx*dx+dy*dy;if(d>=fd||f.ready>t||f.until&&f.until<t||!eats.includes(f.kind))continue;
+  // grazers seek out the green flush on burnt ground (it counts as a quarter of the distance), and skip burnt grass
+  if(fire&&f.kind==='grass'){const b=burnAt(room,f.x,f.y,t);if(b==='flames'||b==='burnt')continue;if(b==='flush'){d*=.0625;if(d>=fd)continue;}}
+  if(hungry||dist(f,centre)<300){fd=d;food=f;}}
  p.mood='graze';
  if(food)return{goal:food,pace:headDown(p,t)?.15:.35};
  if(!p.targetX||dist(p,{x:p.targetX,y:p.targetY})<40){const a=roll(room)*Math.PI*2,d=roll(room)*160;p.targetX=Math.max(80,Math.min(W-80,centre.x+Math.cos(a)*d));p.targetY=Math.max(80,Math.min(H-80,centre.y+Math.sin(a)*d));}
@@ -677,9 +967,13 @@ function grazer(p:Player,room:Room,ps:Prop[],t:number,think:number):Plan{
 /** Below this food level a wild predator goes looking for prey. Lions and hyena clans take any good chance at a
  *  zebra herd (real lions hunt opportunistically when prey comes close, even after eating); leopards are choosier. */
 const KEEN:Partial<Record<Species,number>>={lion:97,hyena:97,leopard:85};
+/** By day the wild hunters mostly lie up: lions rest through much of the day and do most of their hunting after dark,
+ *  hyenas are mainly nocturnal, leopards hunt by night and at dawn and dusk but also by day. All of them still take a
+ *  good chance in daylight, so in full day they only set out when this much hungrier (game values). */
+export const DAY_REST:Partial<Record<Species,number>>={lion:22,hyena:16,leopard:10};
 export const CHASE={lion:{start:150,give:5000,walk:.35},leopard:{start:110,give:4000,walk:.3},hyena:{start:230,give:12000,walk:.55}} as const;
 function hunter(p:Player,room:Room,ps:Prop[],t:number):Plan{
- const a=ANIMALS[p.species],c=CHASE[p.species as keyof typeof CHASE],keen=KEEN[p.species]??85;
+ const a=ANIMALS[p.species],c=CHASE[p.species as keyof typeof CHASE],keen=(KEEN[p.species]??85)-(DAY_REST[p.species]??0)*lightAt(room,t).day;
  if(p.mood==='rest'&&t<p.moodUntil){const tree=nearest(ofKind(ps,'tree'),p,500);return{goal:tree?{x:tree.x+22,y:tree.y+6}:undefined,pace:.3};}
  let q=p.targetId?room.players.find(o=>o.id===p.targetId):undefined;
  if(q&&(q.deadUntil||hidden(q,room,t)))q=undefined;
@@ -730,7 +1024,9 @@ function steer(p:Player,room:Room,ps:Prop[],t:number,dt:number,humans:Player[]){
   else{const T=tree(ps,ps[p.tree!]),L=limbPoint(T,p.limb!,p.along!),want=CLIMB[p.species]!.rest*UNITS_PER_METRE;if(p.along!<want-2&&p.goal===p.limb){const l=Math.hypot(L.tx,L.ty)||1;p.dx=L.tx/l*.6;p.dy=L.ty/l*.6;}}
   return;}
  p.sprint=false;
- const plan=a.prey.length?hunter(p,room,ps,t):grazer(p,room,ps,t,think);
+ let plan=a.prey.length?hunter(p,room,ps,t):grazer(p,room,ps,t,think);
+ // every animal gets out of the way of a fire front coming at it (see fireEscape)
+ {const away=fireEscape(room,p,t);if(away&&!p.perched){plan={goal:away,pace:1};p.sprint=dist(p,away)<200;if(p.mood==='chase'||p.mood==='stalk'){p.mood='patrol';p.targetId='';}}}
  if(p.perched){p.dx=0;p.dy=0;return;}
  const d=plan.goal?dist(p,plan.goal):0;p.dx=plan.goal&&d>8?(plan.goal.x-p.x)/d*plan.pace:0;p.dy=plan.goal&&d>8?(plan.goal.y-p.y)/d*plan.pace:0;
  // keep a little space between animals of a kind, so a herd never piles into one spot
@@ -738,7 +1034,7 @@ function steer(p:Player,room:Room,ps:Prop[],t:number,dt:number,humans:Player[]){
  // never run off the plains: drop the outward part of the heading near an edge and slide along it
  const fleeing=p.mood==='flee',slide=idHash(p.id)>.5?1:-1;
  if(p.x<100&&p.dx<0||p.x>W-100&&p.dx>0){p.dx=0;if(fleeing&&Math.abs(p.dy)<.3)p.dy=slide;}
- if(p.y<100&&p.dy<0||p.y>H-100&&p.dy>0){p.dy=0;if(fleeing&&Math.abs(p.dx)<.3)p.dx=slide;}
+ if(p.y<100&&p.dy<0&&!p.lane||p.y>H-100&&p.dy>0){p.dy=0;if(fleeing&&Math.abs(p.dx)<.3)p.dx=slide;}
  // steer around trunks and boulders before collision instead of running into them forever
  for(const tree of solidNear(ps,p.x,p.y,90)){
   const ox=tree.x-p.x,oy=tree.y-p.y,clearance=solidRadius(tree)+BODY[p.species][0]*UNITS_PER_METRE+8;
@@ -760,55 +1056,6 @@ export function stepFeeding(p:Player,now:number){const f=p.feeding;if(!f)return;
  if(p.deadUntil||p.stunUntil>now||Math.hypot(p.dx,p.dy)>.1){p.feeding=undefined;notify(p,'Feeding stopped. You can move.',now);return;}
  const elapsed=Math.max(0,Math.min(now,f.until)-f.last);p.hunger=Math.min(100,p.hunger+45*elapsed/f.duration);f.last=Math.min(now,f.until);p.vx=p.vy=0;
  if(now>=f.until){p.feeding=undefined;notify(p,'Meal finished.',now);}}
-export function finishRound(room:Room,now:number){room.phase='finished';room.ends=now;for(const p of room.players){p.dx=p.dy=p.vx=p.vy=0;p.feeding=undefined;p.strikeId='';}room.events.unshift('The host ended the round.');}
-export type Poacher={x:number;y:number;jeepX:number;jeepY:number;exitX:number;exitY:number;state:'guarding'|'detecting'|'defending'|'retreating'|'entering'|'escaping'|'gone'|'subdued';target:string;health:number;since:number;shotAt:number;nextShot:number;heading:number;escapeHeading?:number;steerSide?:number};
-export function jeepDoor(n:Poacher){const rot=Math.PI/2-(n.escapeHeading??Math.PI);return{x:n.jeepX-16*Math.cos(rot)-3*Math.sin(rot),y:n.jeepY+16*Math.sin(rot)-3*Math.cos(rot)};}
-function spawnPoachers(room:Room):Poacher[]{const ps=props(room.seed),random=rng(room.seed+room.round*17),result:Poacher[]=[];
- // One bounded encounter per map edge, with an inspected corridor to its own exit.
- for(let side=0;side<4;side++)for(let attempt=0;attempt<160;attempt++){
-  const inset=90+random()*80,along=.3+random()*.4;
-  const x=side===0?inset:side===2?W-inset:W*along,y=side===1?inset:side===3?H-inset:H*along;
-  const exitX=side===0?-90:side===2?W+90:x,exitY=side===1?-90:side===3?H+90:y,escapeHeading=Math.atan2(exitY-y,exitX-x);
-  const n:Poacher={x:x-Math.cos(escapeHeading)*35,y:y-Math.sin(escapeHeading)*35,jeepX:x,jeepY:y,exitX,exitY,state:'guarding',target:'',health:100,since:0,shotAt:0,nextShot:0,heading:escapeHeading,escapeHeading};
-  if(room.players.some(p=>!p.bot&&dist(p,n)<300)||blocked(ps,x,y,70)||blocked(ps,n.x,n.y,15))continue;
-  const len=Math.hypot(exitX-x,exitY-y);let clear=true;
-  for(let d=0;d<len;d+=10)if(blocked(ps,x+Math.cos(escapeHeading)*d,y+Math.sin(escapeHeading)*d,40)){clear=false;break;}
-  if(!clear)continue;result.push(n);break;
- }
- return result;
-}
-function engagePoacher(p:Player,room:Room,now:number,reach:number){if(!ANIMALS[p.species].prey.length||p.bot)return false;
- const n=room.poachers?.find(n=>!['gone','escaping','subdued'].includes(n.state)&&dist(p,n)<reach&&inFront(p,n)&&!contactBlocked(props(room.seed),p,n));if(!n)return false;
- n.target=p.id;n.health=Math.max(0,n.health-({lion:46,leopard:38,hyena:32}[p.species as 'lion'|'leopard'|'hyena']??30));if(n.health===0){n.state='subdued';}else if(n.health<=15&&now-n.since>1800&&!['retreating','entering'].includes(n.state)){n.state='retreating';n.since=now;}else if(!['retreating','entering','defending'].includes(n.state)){n.state='defending';n.since=now;}p.stamina=Math.max(0,p.stamina-12);notify(p,n.health===0?'Poacher stopped. Leave the area.':'Poacher aiming! Break contact and use cover.',now);return true;}
-export function stepPoachers(room:Room,now:number,dt:number){for(const n of room.poachers??[]){if(n.state==='gone'||n.state==='subdued')continue;const ps=props(room.seed),p=room.players.find(p=>p.id===n.target);
- if(p&&['detecting','defending'].includes(n.state))n.heading=Math.atan2(p.y-n.y,p.x-n.x);
- const sees=(p:Player)=>!p.deadUntil&&p.protectedUntil<now&&ANIMALS[p.species].prey.length>0&&!hidden(p,room,now)&&dist(p,n)<180&&!contactBlocked(ps,n,p)&&poacherSight(room,n,p);
- if(n.state==='guarding'){const q=room.players.find(p=>!p.bot&&sees(p));if(q){n.target=q.id;n.state='detecting';n.since=now;notify(q,'Poacher aiming at you! Leave range or take cover now.',now);}}
- else if(n.state==='detecting'){if(!p||!sees(p)){n.state='guarding';n.target='';}else if(now-n.since>=1500){n.state='defending';n.since=now-1201;n.nextShot=now;notify(p,'Poacher opening fire! Leave range or find cover.',now);}}
- else if(n.state==='defending'){if(now-n.since>7000||!p||!sees(p)){n.state='retreating';n.since=now;}else if(now-n.since>1200&&now>=n.nextShot){n.shotAt=now;n.nextShot=now+1500;p.health=Math.max(0,(p.health??100)-25);p.feeding=undefined;notify(p,'Shot! Find cover.',now);if(p.health<=0)die(p,room,now,'was stopped by a poacher.');}}
- else if(n.state==='retreating'){const door=jeepDoor(n),d=dist(n,door);if(d<3){n.state='entering';n.since=now;}else{const k=Math.min(1,55*dt/d);n.heading=Math.atan2(door.y-n.y,door.x-n.x);n.x+=(door.x-n.x)*k;n.y+=(door.y-n.y)*k;}}
- else if(n.state==='entering'&&now-n.since>1200){n.state='escaping';n.since=now;}
- else if(n.state==='escaping'){driveEscape(n,room,dt);}
- }}
-
-let sightSeed:number|undefined,sightTerrain:ReturnType<typeof createTerrainHeight>|undefined;
-export function poacherSight(room:Room,a:{x:number;y:number},b:{x:number;y:number}){
- if(sightSeed!==room.seed||!sightTerrain){sightSeed=room.seed;sightTerrain=createTerrainHeight(props(room.seed),W,H);}
- const ground=sightTerrain.groundY,from=ground(a.x,a.y)+14,to=ground(b.x,b.y)+7,steps=Math.ceil(dist(a,b)/8);
- for(let i=1;i<steps;i++){const t=i/steps;if(ground(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t)>from+(to-from)*t)return false;}
- return true;
-}
-export function driveEscape(n:Poacher,room:Room,dt:number){
- const ps=props(room.seed),origin={x:n.jeepX,y:n.jeepY},step=Math.min(5,70*dt);
- // Probe a full vehicle length ahead; use one stable side to avoid left/right oscillation.
- const side=n.steerSide??(n.jeepY<H/2?1:-1);n.steerSide=side;const goal=Math.atan2(n.exitY-n.jeepY,n.exitX-n.jeepX);
- for(const angle of [goal,goal-side*.55,goal-side*1.1,goal-side*Math.PI/2,goal+side*.55,goal+side*1.1]){
-  const dx=Math.cos(angle),dy=Math.sin(angle);let clear=true;
-  for(let d=step;d<=step+35;d+=5){const q={x:origin.x+dx*d,y:origin.y+dy*d};
-   if(q.x< -150||q.x>W+150||q.y< -150||q.y>H+150||blocked(ps,q.x,q.y,29)||room.players.some(p=>!p.deadUntil&&dist(p,q)<38)){clear=false;break;}}
-  if(!clear)continue;
-  n.heading=angle;n.jeepX+=dx*step;n.jeepY+=dy*step;n.x=n.jeepX;n.y=n.jeepY;
-  if(Math.hypot(n.jeepX-n.exitX,n.jeepY-n.exitY)<step+5)n.state='gone';return;
- }
- // Surrounded vehicles wait safely; they never run over a player or teleport away.
-}
+/** Round lengths the host can pick, in seconds; 0 = no time limit (the host ends it). Rooms saved before this default to 300. */
+export const DURATIONS=[300,600,0] as const;
+export function finishRound(room:Room,now:number,_by:'host'='host'){room.phase='finished';room.ends=now;room.endedBy='host';for(const p of room.players){p.dx=p.dy=p.vx=p.vy=0;p.feeding=undefined;p.strikeId='';}room.events.unshift('The host ended the round.');}

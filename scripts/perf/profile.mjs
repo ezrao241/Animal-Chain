@@ -38,10 +38,11 @@ await page.addInitScript(seed => {
   // a seeded Math.random, so two builds spawn the same species in the same places and their numbers compare
   if (seed) { let a = seed | 0; Math.random = () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 }, Number(process.env.PERF_SEED || 417));
-await page.goto(url);
-await page.getByPlaceholder('Enter a nickname').fill('Perf');
-await page.getByText('Create a room').click();
-await page.locator('.practice-button').click();
+// PERF_QUERY='?graphics=balanced' pins a quality tier so the auto downgrade can't switch mid-run
+await page.goto(url + (process.env.PERF_QUERY || ''));
+// Enter in the name field on the home screen starts solo practice
+await page.getByPlaceholder('Nickname').fill('Perf');
+await page.getByPlaceholder('Nickname').press('Enter');
 await page.waitForFunction(() => document.querySelector('.world-scene canvas'), null, {timeout: 30000});
 await page.waitForTimeout(3000);
 

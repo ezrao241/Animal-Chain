@@ -23,20 +23,25 @@ function geometry(kind:string){
 
 export type FoodItem={id:number;x:number;y:number;kind:string;ready:number;until?:number};
 export class FoodField{
- private meshes=new Map<string,THREE.InstancedMesh>();private rings:THREE.InstancedMesh;private material=facetMaterial();private m=new THREE.Matrix4();private q=new THREE.Quaternion();private e=new THREE.Euler();private v=new THREE.Vector3();private s=new THREE.Vector3(1,1,1);
+ private meshes=new Map<string,THREE.InstancedMesh>();private rings:THREE.InstancedMesh;private lit:THREE.InstancedMesh;private material=facetMaterial();private m=new THREE.Matrix4();private q=new THREE.Quaternion();private e=new THREE.Euler();private v=new THREE.Vector3();private s=new THREE.Vector3(1,1,1);
  constructor(private scene:THREE.Scene){
   for(const kind of ['grass','browse','roots','carrion']){const mesh=new THREE.InstancedMesh(geometry(kind),this.material,700);mesh.count=0;mesh.castShadow=true;mesh.frustumCulled=false;scene.add(mesh);this.meshes.set(kind,mesh);}
   this.rings=new THREE.InstancedMesh(new THREE.RingGeometry(10,12,20).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:0xf2d27a,transparent:true,opacity:.6,depthWrite:false}),700);this.rings.count=0;this.rings.frustumCulled=false;scene.add(this.rings);
+  // the one item E would eat right now: a brighter, fuller ring
+  this.lit=new THREE.InstancedMesh(new THREE.RingGeometry(8,13,24).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:0xfff2b0,transparent:true,opacity:.95,depthWrite:false}),1);this.lit.count=0;this.lit.frustumCulled=false;scene.add(this.lit);
  }
- update(foods:FoodItem[],now:number,focus:{x:number;y:number}|null,range:number,ground:(x:number,z:number)=>number,edible:(kind:string)=>boolean,showRings:(f:FoodItem)=>boolean){
-  for(const mesh of this.meshes.values())mesh.count=0;this.rings.count=0;
+ update(foods:FoodItem[],now:number,focus:{x:number;y:number}|null,range:number,ground:(x:number,z:number)=>number,edible:(kind:string)=>boolean,showRings:(f:FoodItem)=>boolean,reach?:{x:number;y:number;range:number}){
+  for(const mesh of this.meshes.values())mesh.count=0;this.rings.count=0;this.lit.count=0;let litD=reach?reach.range*reach.range:0,litAt:THREE.Vector3|null=null;
   for(const f of foods){
-   if(f.ready>now||f.until&&f.until<=now)continue;if(focus&&Math.hypot(focus.x-f.x,focus.y-f.y)>range)continue;
+   // a fresh kill (a carcass that isn't open to scavengers yet) is drawn at once, so the hunter is seen feeding at it
+   if(f.ready>now&&!f.until||f.until&&f.until<=now)continue;if(focus&&Math.hypot(focus.x-f.x,focus.y-f.y)>range)continue;
    const mesh=this.meshes.get(f.kind);if(!mesh)continue;const y=ground(f.x,f.y);
    this.q.setFromEuler(this.e.set(0,hash(f.id,3,7)*6.28,0));this.s.setScalar(.85+hash(f.id,5,1)*.35);this.m.compose(this.v.set(f.x,y,f.y),this.q,this.s);mesh.setMatrixAt(mesh.count++,this.m);
-   if(edible(f.kind)&&showRings(f)){this.s.setScalar(1);this.m.compose(this.v.set(f.x,y+.8,f.y),this.q.identity(),this.s);this.rings.setMatrixAt(this.rings.count++,this.m);}
+   if(reach&&f.ready<=now&&edible(f.kind)){const d=(f.x-reach.x)**2+(f.y-reach.y)**2;if(d<litD){litD=d;litAt=(litAt||new THREE.Vector3()).set(f.x,y+1,f.y);}}
+   if(f.ready<=now&&edible(f.kind)&&showRings(f)){this.s.setScalar(1);this.m.compose(this.v.set(f.x,y+.8,f.y),this.q.identity(),this.s);this.rings.setMatrixAt(this.rings.count++,this.m);}
   }
-  for(const mesh of [...this.meshes.values(),this.rings])mesh.instanceMatrix.needsUpdate=true;
+  if(litAt){const pulse=1+Math.sin(now/180)*.08;this.s.setScalar(pulse);this.m.compose(litAt,this.q.identity(),this.s);this.lit.setMatrixAt(0,this.m);this.lit.count=1;}
+  for(const mesh of [...this.meshes.values(),this.rings,this.lit])mesh.instanceMatrix.needsUpdate=true;
  }
- dispose(){for(const mesh of [...this.meshes.values(),this.rings]){this.scene.remove(mesh);mesh.geometry.dispose();}this.material.dispose();(this.rings.material as THREE.Material).dispose();}
+ dispose(){for(const mesh of [...this.meshes.values(),this.rings,this.lit]){this.scene.remove(mesh);mesh.geometry.dispose();}this.material.dispose();(this.rings.material as THREE.Material).dispose();(this.lit.material as THREE.Material).dispose();}
 }

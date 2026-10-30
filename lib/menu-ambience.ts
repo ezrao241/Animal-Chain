@@ -1,12 +1,12 @@
 // The home screen's soundscape, synthesised in the page (no audio files): a low evening breeze, crickets, now and
 // then a bird, and a far-off call from whichever animal the camera is watching. Plus the menu's own soft UI sounds.
-import {playAnimalSound} from './animal-sounds';
+import {playAnimalSound,soundBus} from './animal-sounds';
 import type {Species} from './game';
 
 export class MenuAmbience{
  private out:GainNode;private timers:ReturnType<typeof setTimeout>[]=[];private stopped=false;
  constructor(private ctx:AudioContext,private watching:()=>Species|null){
-  this.out=ctx.createGain();this.out.gain.value=0;this.out.connect(ctx.destination);
+  this.out=ctx.createGain();this.out.gain.value=0;this.out.connect(soundBus(ctx).ambience);
   this.out.gain.linearRampToValueAtTime(1,ctx.currentTime+2.5);
   // breeze: pink-ish noise through a slowly swaying band-pass
   const len=ctx.sampleRate*4,buf=ctx.createBuffer(1,len,ctx.sampleRate),d=buf.getChannelData(0);let b=0;
@@ -35,7 +35,7 @@ export class MenuAmbience{
 /** Soft menu sounds: 'move' when the highlight moves, 'select' for a choice, 'back' for going back. */
 export function uiSound(ctx:AudioContext,kind:'move'|'select'|'back'){
  if(ctx.state==='suspended')void ctx.resume().catch(()=>{});
- const t=ctx.currentTime,g=ctx.createGain();g.connect(ctx.destination);
+ const t=ctx.currentTime,g=ctx.createGain();g.connect(soundBus(ctx).effects);
  const notes=kind==='move'?[1320]:kind==='select'?[523,784,1046]:[660,440];
  notes.forEach((f,i)=>{const o=ctx.createOscillator(),s=t+i*(kind==='select'?.05:.07),v=kind==='move'?.012:.03;o.type=kind==='move'?'sine':'triangle';o.frequency.setValueAtTime(f,s);const e=ctx.createGain();e.gain.setValueAtTime(.0001,s);e.gain.exponentialRampToValueAtTime(v,s+.012);e.gain.exponentialRampToValueAtTime(.0001,s+(kind==='move'?.07:.35));o.connect(e);e.connect(g);o.start(s);o.stop(s+.4);});
 }
