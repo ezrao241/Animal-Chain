@@ -109,3 +109,27 @@ test('Field Guide Quiz: ten sourced questions; only a perfect run opens the Auro
  p.quizPerfect=true;for(const s of ['lion','leopard','hyena','zebra','impala','warthog'])assert.ok(coatUnlocked(p,s,aurora));
  assert.equal(coatOf('666666','zebra'),6);
 });
+
+test('coat perks: black leopard hides at night, dark-maned lion reaches further, Emberhide is faster, Sun-Gilded lasts longer',async()=>{
+ const G=await import('../lib/game.ts');const {perkText}=await import('../lib/rewards.ts');
+ const {newPlayer,newRoom,move,props,perkOf,coatPerk,PERK_SIZE,ANIMALS,sense,interact,lightAt}=G;const T=1800000000000,ps=props(417);
+ assert.equal(coatPerk('leopard',2),'night');assert.equal(coatPerk('lion',1),'bite');assert.equal(coatPerk('zebra',4),'speed');assert.equal(coatPerk('impala',3),'stamina');
+ assert.equal(coatPerk('lion',2),undefined,'the white lion is cosmetic');assert.equal(coatPerk('leopard',1),undefined,'the strawberry leopard is cosmetic');
+ assert.equal(perkOf({species:'zebra',coats:'000400',bot:false}),'speed');assert.equal(perkOf({species:'zebra',coats:'000400',bot:true}),undefined);
+ for(const [s,i] of [['leopard',2],['lion',1],['hyena',4],['warthog',3]])assert.ok(perkText(s,i));
+ // speed: top speed 5 % higher
+ const run=coats=>{const p=newPlayer('p','P',T,false,'zebra');Object.assign(p,{x:2000,y:1400,dx:1,dy:0,sprint:true,coats});for(let i=0;i<120;i++)move(p,.05,[],T+i*50);return Math.hypot(p.vx,p.vy)/10;};
+ const plain=run('000000'),swift=run('000400');assert.ok(Math.abs(swift/plain-1.05)<.01,`${plain} -> ${swift}`);
+ // stamina: a sprint drains 20 % slower
+ const drain=coats=>{const p=newPlayer('p','P',T,false,'lion');Object.assign(p,{x:2000,y:1400,dx:1,dy:0,sprint:true,coats,stamina:100,vx:200,vy:0});for(let i=0;i<40;i++){move(p,.05,[],T+i*50);G.breathe(p,.05,T+i*50);}return 100-p.stamina;};
+ assert.ok(Math.abs(drain('000000')/drain('300000')-1.2)<.05);
+ // bite: a dark-maned lion catches just beyond the usual reach
+ const reach=ANIMALS.lion.catchRange*G.HUNT_REACH_MULTIPLIER;
+ for(const [coats,ok] of [['000000',false],['100000',true]]){const p=newPlayer('p','P',T,false,'lion'),q=newPlayer('q','Q',T,false,'zebra');let xy;for(let x=300;x<3700&&!xy;x+=50)for(let y=300;y<2500;y+=50)if(ps.every(o=>Math.hypot(x-o.x,y-o.y)>160)){xy={x,y};break;}
+  Object.assign(p,xy,{heading:0,protectedUntil:0,coats});Object.assign(q,{x:p.x+reach*1.05,y:p.y,protectedUntil:0});const r=newRoom('ABCDEF',p,T);Object.assign(r,{phase:'playing',started:T,ends:T+300000,foods:[],players:[p,q]});interact(p,r,T);assert.equal(Boolean(p.strikeId),ok,coats);}
+ // night: the black leopard is seen from less far once it is dark, and no differently by day
+ const r=newRoom('ABCDEF',newPlayer('h','H',T),T);r.started=T;let night=T;for(let t=T;t<T+600000;t+=5000)if(lightAt(r,t).day<.05){night=t;break;}
+ const seenFrom=(coats,now)=>{const o=newPlayer('o','O',now,true,'impala'),t=newPlayer('t','L',now,false,'leopard');Object.assign(t,{x:2000,y:1400,vx:0,vy:0,coats});Object.assign(o,{x:2000,y:1400,heading:0});let d=0;for(let k=20;k<400;k+=4){o.x=2000-k;if(sense(o,t,r,now,[])?.how==='sight')d=k;}return d;};
+ assert.ok(night>T&&seenFrom('020000',night)<seenFrom('000000',night)*.8,'harder to see at night');
+ assert.equal(seenFrom('020000',T+1000),seenFrom('000000',T+1000),'no difference by day');
+});

@@ -301,7 +301,7 @@ export function sense(o:Player,t:Player,room:Room,now:number,ps=props(room.seed)
  if(t.deadUntil||hidden(t,room,now))return null;
  const d=dist(o,t),unnoticed=creptBehind(o,t,room,now);if(d<CLOSE_RANGE&&!unnoticed)return{how:'close',range:d};
  if(d>400)return null;
- const sight=ANIMALS[o.species].sight*(headDown(o,now)?.7:1)*conspicuity(t,ps,now)*sightInLight(o.species,lightAt(room,now));
+ const light=lightAt(room,now),sight=ANIMALS[o.species].sight*(headDown(o,now)?.7:1)*conspicuity(t,ps,now)*sightInLight(o.species,light)*(perkOf(t)==='night'?1-PERK_SIZE.night*(1-light.day):1);
  if(d<sight&&!sightBlocked(ps,o,t))return{how:'sight',range:d};
  const w=wind(room);if(d<SCENT_RANGE&&!unnoticed&&((o.x-t.x)*w.x+(o.y-t.y)*w.y)/d>.64)return{how:'scent',range:d};
  if(d<SOUND_RANGE&&speedOf(t)>walkPace(t.species)*1.05)return{how:'sound',range:d};
@@ -327,6 +327,20 @@ const PREFERENCE:Partial<Record<Species,Partial<Record<Species,number>>>>={lion:
 export const HUNGER_RATE:Record<Species,number>={lion:.35,leopard:.4,hyena:.45,zebra:.6,impala:.6,warthog:.6};
 /** catch reach over each species' catchRange: 1.2 and then 1.44 in the Oct 27 playtests, then 18% more (Oct 29) */
 export const HUNT_REACH_MULTIPLIER=1.44*1.18;
+/** Coat perks: a few coats and skins (lib/rewards.ts) carry a small advantage, read by the server from the player's
+ *  coat code, so multiplayer stays fair. Game rules, kept modest:
+ *  - night: a melanistic (black) leopard is 30 % harder to see in the dark, fading in as the light goes;
+ *  - bite: a dark-maned lion reaches 10 % further with a lunge (a nod to dark manes marking males in good condition,
+ *    West & Packer 2002; the reach itself is invented);
+ *  - speed: Emberhide, on any animal, adds 5 % to its own run and sprint speeds;
+ *  - stamina: Sun-Gilded, on any animal, makes its sprint last 20 % longer. */
+export type Perk='night'|'bite'|'speed'|'stamina';
+export const PERK_SIZE={night:.3,bite:.1,speed:.05,stamina:.2} as const;
+/** which coat (code digit) carries which perk; legendary skins (3+) are the same for every species */
+export const COAT_PERKS:{species?:Species;coat:number;perk:Perk}[]=[{species:'leopard',coat:2,perk:'night'},{species:'lion',coat:1,perk:'bite'},{coat:4,perk:'speed'},{coat:3,perk:'stamina'}];
+export const coatPerk=(species:Species,coat:number)=>COAT_PERKS.find(k=>k.coat===coat&&(!k.species||k.species===species))?.perk;
+/** the perk of the coat this player wears in this room (bots wear the usual coat) */
+export const perkOf=(p:Pick<Player,'species'|'coats'|'bot'>)=>p.bot||!p.coats?undefined:coatPerk(p.species,Number(p.coats[SPECIES.indexOf(p.species)]??0));
 export const UNITS_PER_METRE=10,TRUNK_RADIUS=7,POUNCE_RANGE=42,AMBUSH_RANGE=60,KICK_RANGE=40,FOOD_RANGE=18,BURROW_REACH=45,TREE_REACH=40,WATER_REACH=30,THREAT_RANGE=300,LEAP_SPEED=11,STALK_SPEED=4.5;
 const wrap=(a:number)=>Math.atan2(Math.sin(a),Math.cos(a)),clamp=(v:number,a:number,b:number)=>Math.max(a,Math.min(b,v));
 /** True while the animal is running flat out on its stamina (Charge and Tireless sprint for free). */
@@ -351,6 +365,7 @@ export function move(p:Player,dt:number,ps:Prop[],now:number,others:readonly Pla
  let vx=p.vx/U,vy=p.vy/U,speed=Math.hypot(vx,vy);
  // a partly pushed stick (or a grazing herd's slow drift) moves between a walk and the normal run
  let target=!input&&!charge?0:stalk?STALK_SPEED:(p.sprint||charge)&&(free||!p.exhausted&&p.stamina>0)?g.sprint:Math.max(g.walk,g.run*Math.min(1,Math.hypot(p.dx,p.dy)));
+ if(perkOf(p)==='speed'&&target>g.walk)target*=1+PERK_SIZE.speed;
  {const pose=postureOf(p);if(pose==='lie')target=0;else if(pose==='crouch'&&!charge)target=Math.min(target,g.walk);}
  // game rule: wading through a watering hole or its mud ring slows every animal a little
  if(ofKind(ps,'water').some(t=>Math.hypot(p.x-t.x,p.y-t.y)<t.size*1.25))target*=.8;
@@ -370,9 +385,9 @@ export function move(p:Player,dt:number,ps:Prop[],now:number,others:readonly Pla
  p.x=x;p.y=y;if(Math.abs(p.vx)>1)p.face=p.vx>0?1:-1;if(Math.hypot(p.vx,p.vy)>5)p.heading=Math.atan2(p.vy,p.vx);
 }
 /** Stamina: a flat-out sprint empties it in the species' sprint time; resting refills it over its recovery time. */
-function breathe(p:Player,dt:number,now:number){
+export function breathe(p:Player,dt:number,now:number){
  const g=ANIMALS[p.species].gait,speed=Math.hypot(p.vx,p.vy)/UNITS_PER_METRE;
- if(sprinting(p,now))p.stamina-=100/g.sprintTime*dt;else p.stamina+=100/g.recover*dt*(speed>g.run*.8?.4:1)*(postureOf(p)==='lie'?LIE_RECOVERY:1);
+ if(sprinting(p,now))p.stamina-=100/(g.sprintTime*(perkOf(p)==='stamina'?1+PERK_SIZE.stamina:1))*dt;else p.stamina+=100/g.recover*dt*(speed>g.run*.8?.4:1)*(postureOf(p)==='lie'?LIE_RECOVERY:1);
  p.stamina=clamp(p.stamina,0,100);if(p.stamina<=.5)p.exhausted=true;else if(p.stamina>=30)p.exhausted=false;
 }
 // ---------------------------------------------------------------- bodies, trunks and climbing
@@ -615,7 +630,7 @@ function dropCarcass(room:Room,x:number,y:number,now:number){room.foods=room.foo
 export function interact(p:Player,room:Room,now:number){if(p.deadUntil||p.feeding||now<p.interactReady||p.strikeId)return;if((p.stunUntil??0)>now){notify(p,'Still reeling from the kick.',now);return;}p.interactReady=now+650;p.actionUntil=now+500;
  if(p.stunUntil>now){notify(p,'Still stunned.',now);return;}
  const a=ANIMALS[p.species],ambush=p.species==='leopard'&&p.climb==='limb';
- const reach=(ambush?AMBUSH_RANGE:p.abilityUntil>now&&(p.species==='lion'||p.species==='leopard')?POUNCE_RANGE:a.catchRange)*HUNT_REACH_MULTIPLIER;
+ const reach=(ambush?AMBUSH_RANGE:p.abilityUntil>now&&(p.species==='lion'||p.species==='leopard')?POUNCE_RANGE:a.catchRange)*HUNT_REACH_MULTIPLIER*(perkOf(p)==='bite'?1+PERK_SIZE.bite:1);
  const victims=room.players.filter(q=>q.id!==p.id&&!q.deadUntil&&q.protectedUntil<now&&canTake(p,q,room)&&!hidden(q,room,now)&&!leaping(q,now)&&dist(p,q)<reach);victims.sort((x,y)=>dist(p,x)-dist(p,y));
  if(p.climb&&!ambush)return;
  // A catch is a committed lunge: aimed at prey in front, with nothing solid in between, and it lands a quarter of a
@@ -645,7 +660,7 @@ export function resolveStrike(p:Player,room:Room,now:number){
  const q=room.players.find(o=>o.id===p.strikeId&&(p.strikeTargetBorn===undefined||o.born===p.strikeTargetBorn)),a=ANIMALS[p.species],ambush=!!p.strikeAmbush,ps=props(room.seed),life=p.strikeBorn;
  p.strikeId='';p.strikeAt=0;p.strikeAmbush=false;if(p.deadUntil||life!==p.born)return;
  if((p.stunUntil??0)>now){notify(p,'Missed: knocked off balance.',now);return;}
- const reach=(ambush?a.catchRange*1.3:p.abilityUntil>now&&(p.species==='lion'||p.species==='leopard')?POUNCE_RANGE:a.catchRange)*1.15*HUNT_REACH_MULTIPLIER;
+ const reach=(ambush?a.catchRange*1.3:p.abilityUntil>now&&(p.species==='lion'||p.species==='leopard')?POUNCE_RANGE:a.catchRange)*1.15*HUNT_REACH_MULTIPLIER*(perkOf(p)==='bite'?1+PERK_SIZE.bite:1);
  const caught=!!q&&!q.deadUntil&&q.protectedUntil<now&&canTake(p,q,room)&&!hidden(q,room,now)&&!leaping(q,now)&&dist(p,q)<reach&&(ambush||lungeLine(p,q))&&!contactBlocked(ps,p,q);
  if(q&&!caught&&!q.deadUntil&&leaping(q,now)&&dist(p,q)<reach*1.5)award(q,'bound');
  if(!q||!caught){notify(p,ambush?'Missed: the prey moved before you landed.':'Missed: it broke away.',now);if(q&&!q.deadUntil)q.threatAt=now;return;}

@@ -128,7 +128,7 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
     else if(own&&r?.phase==='playing'){
      // moving stands a lying animal up, a sprint ends a crouch, and a new life, a death or a climb starts standing
      {const i=input.current;if(i.posture==='lie'&&Math.hypot(i.dx,i.dy)>.1||i.posture==='crouch'&&i.sprint||p.deadUntil||p.climb||p.perched||p.born!==ownBorn&&!first)i.posture=undefined;}
-     Object.assign(position,{species:p.species,perched:p.perched,abilityUntil:p.abilityUntil,deadUntil:p.deadUntil,stunUntil:p.stunUntil,stamina:p.stamina,exhausted:p.exhausted,...input.current,...cameraInput(input.current.dx,input.current.dy,input.current.moveYaw??input.current.cameraYaw)});
+     Object.assign(position,{species:p.species,coats:p.coats,perched:p.perched,abilityUntil:p.abilityUntil,deadUntil:p.deadUntil,stunUntil:p.stunUntil,stamina:p.stamina,exhausted:p.exhausted,...input.current,...cameraInput(input.current.dx,input.current.dy,input.current.moveYaw??input.current.cameraYaw)});
      // This device moves its own animal (the same move() the server runs) and reports where it got to (lib/net.ts claim),
      // so the server's copy, a moment old, is never pulled back toward. The server's position is only rejoined while it
      // holds the animal (in a tree, stunned) or for a moment after it refused a reported position (fix).

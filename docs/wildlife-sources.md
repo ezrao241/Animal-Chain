@@ -132,6 +132,11 @@ Game rules for day and night (simplifications, not facts):
 - **Crouching and lying down (player posture).** Wild hunters crouch to stalk and animals lie up to rest, and the
   computer animals already show both. A player can do the same: C crouches (no faster than the species' walk, about 40 %
   harder to pick out), X lies down (still, half as easy to see, stamina back 50 % faster). The numbers are game rules.
+- **Coat perks (game rules, not biology).** Four coats carry a small edge, applied by the server: the Black Panther
+  (melanistic leopard) is 30 % harder to see at night; the Black Mane lion's lunge reaches 10 % further (a nod to dark
+  manes marking males in good condition, West & Packer 2002, but the reach is invented); the Emberhide skin makes any
+  animal 5 % faster at a run and sprint; the Sun-Gilded skin makes a sprint last 20 % longer. No claim is made that coat
+  colour changes these things in real animals.
 - **Field Guide Quiz.** Ten multiple-choice questions (lib/quiz.ts), each answered by one of the field-guide facts and
   shown with that fact's source after answering. All ten right in one attempt unlocks the Aurora skin, a cosmetic fantasy
   finish (not a real animal colour) that nothing else unlocks.

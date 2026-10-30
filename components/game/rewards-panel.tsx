@@ -3,12 +3,12 @@
 // the tally that turns badges the server awards into lasting progress on this device, the toast when one is earned,
 // and the reveal card when a coat unlocks.
 import {useCallback,useEffect,useRef,useState,type ReactElement} from 'react';
-import {Award,Lock,Sparkles} from 'lucide-react';
+import {Award,Lock,Sparkles,Zap} from 'lucide-react';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogTrigger} from '@/components/ui/dialog';
 import {ModelPortrait as Portrait} from '@/components/game/WorldScene';
 import {ANIMALS,SPECIES,type Player,type Species} from '@/lib/game';
 import {QUIZ_LENGTH,newAttempt,quizFact,type Question} from '@/lib/quiz';
-import {SKIN_BASE,BADGES,SKINS,COSMETIC_NOTE,badgeById,coatUnlocked,coatChoices,coatProgress,unlockedKeys,loadProgress,saveProgress,type Progress,type BadgeId,type Tier} from '@/lib/rewards';
+import {perkText,SKIN_BASE,BADGES,SKINS,COSMETIC_NOTE,badgeById,coatUnlocked,coatChoices,coatProgress,unlockedKeys,loadProgress,saveProgress,type Progress,type BadgeId,type Tier} from '@/lib/rewards';
 
 /** The player's progress, loaded from this browser once on mount and saved on every change. */
 export function useProgress(){
@@ -70,7 +70,7 @@ export function CoatReveal({next,done,update,compact=false}:{next:{s:Species;i:n
  return <div className={`coat-reveal tier-${c.tier} ${compact?'compact':''}`} role="dialog" aria-label="New coat unlocked"><span className="reveal-rays" aria-hidden="true"/>
   <span className="eyebrow"><Sparkles size={13}/> NEW {TIER_NAME[c.tier].toUpperCase()} COAT</span>
   <div className="reveal-portrait"><Portrait species={next.s} coat={next.i} size={compact?96:150}/></div>
-  <h3>{c.title}</h3><small>{c.tier==='legendary'?'Every animal':ANIMALS[next.s].name+' · '+c.name}</small>{compact?null:<p>{c.note}</p>}
+  <h3>{c.title}</h3><small>{c.tier==='legendary'?'Every animal':ANIMALS[next.s].name+' · '+c.name}</small>{perkText(next.s,next.i)&&<span className="coat-perk"><Zap size={12}/> {perkText(next.s,next.i)}</span>}{compact?null:<p>{c.note}</p>}
   <div className="reveal-actions"><button className="quiet-link" onClick={done}>Later</button><button className="tutorial-next" onClick={()=>{update(p=>({...p,coats:c.tier==='legendary'?Object.fromEntries(SPECIES.map(s=>[s,next.i])):{...p.coats,[next.s]:next.i}}));done();}}>{c.tier==='legendary'?'Wear it on all':'Wear it'}</button></div></div>;
 }
 
@@ -89,17 +89,17 @@ export function RewardsBook({progress,update,trigger}:{progress:Progress;update:
 
 function CoatPicker({progress,update}:{progress:Progress;update:(c:(p:Progress)=>Progress)=>void}){
  return <div className="coat-list">
-  <div className="skin-goals"><span className="eyebrow"><Sparkles size={13}/> LEGENDARY SKINS · ANY ANIMAL</span>{SKINS.map(k=>{const have=Math.min(k.have(progress),k.need);return <div key={k.id} className={have>=k.need?'won':''}><b>{k.title}</b><small>{k.goal}</small><i><em style={{width:`${have/k.need*100}%`}}/></i><span>{have}/{k.need}</span></div>;})}<p className="small-note">{COSMETIC_NOTE} Legendary skins are made up for the game.</p></div>
+  <div className="skin-goals"><span className="eyebrow"><Sparkles size={13}/> LEGENDARY SKINS · ANY ANIMAL</span>{SKINS.map((k,n)=>{const have=Math.min(k.have(progress),k.need),perk=perkText('lion',SKIN_BASE+n);return <div key={k.id} className={have>=k.need?'won':''}><b>{k.title}{have>=k.need?<i className="won-mark"> ✓</i>:null}</b><small>{k.goal}{perk?<span className="coat-perk"><Zap size={11}/> {perk}</span>:null}</small><i><em style={{width:`${have/k.need*100}%`}}/></i><span>{have}/{k.need}</span></div>;})}<p className="small-note">{COSMETIC_NOTE} Legendary skins are made up for the game.</p></div>
   {SPECIES.map(s=>{const chosen=progress.coats[s]??0;
   return <section key={s}><strong>{ANIMALS[s].name}</strong><div className="coat-row">{[[0,null] as const,...coatChoices(s)].map(([i,c])=>{const open=coatUnlocked(progress,s,i),tier=c?.tier??'common',goal=i?coatProgress(progress,s,i):null;
    return <button key={i} className={`coat-option tier-${tier} ${chosen===i?'on':''} ${open?'':'locked'}`} disabled={!open} aria-pressed={chosen===i} onClick={()=>update(p=>({...p,coats:{...p.coats,[s]:i}}))} title={c?.note||'The usual coat'}>
     <span className="coat-tier">{TIER_NAME[tier]}</span>
     <span className="coat-portrait"><Portrait species={s} coat={i} size={64}/>{open?null:<span className="coat-lock"><Lock size={14}/></span>}</span>
-    <b>{c?.title??'Usual'}</b>{c&&c.tier!=='legendary'&&<small className="coat-real">{c.name}</small>}
+    <b>{c?.title??'Usual'}</b>{c&&c.tier!=='legendary'&&<small className="coat-real">{c.name}</small>}{perkText(s,i)&&<span className="coat-perk"><Zap size={11}/> {perkText(s,i)}</span>}
     {c&&(open?<small>{c.note}</small>:<span className="coat-goal"><small>{goal!.goal}</small><i><em style={{width:`${goal!.have/goal!.need*100}%`}}/></i><small>{goal!.have}/{goal!.need}</small></span>)}
     {c?.url&&open?<a href={c.url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}>{c.source}</a>:null}
    </button>;})}</div></section>;})}
-  <p className="small-note">Rare and Epic coats are real colour variants of the wild species, from the source shown; some are very rare in the wild. Legendary skins are cosmetic. Other players see your coat in multiplayer rounds.</p></div>;
+  <p className="small-note">Rare and Epic coats are real colour variants of the wild species, from the source shown; some are very rare in the wild. Legendary skins are made-up finishes. Coats marked with a perk give a small, fair edge (the server applies it, in solo and multiplayer). Other players see your coat in multiplayer rounds.</p></div>;
 }
 
 /** The Field Guide Quiz: ten questions on the real animals, one at a time, each answered with its fact and source.

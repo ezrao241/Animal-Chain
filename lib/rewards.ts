@@ -2,7 +2,7 @@
 // server decides when a badge is earned (lib/game.ts award, kept owner-only in lib/net.ts); the progress itself (badge
 // counts, chosen coats) lives in the player's own browser.
 // Every badge and coat points at a real behaviour or a real colour variant with its source (docs/wildlife-sources.md).
-import {SPECIES,type Species} from './game.ts';
+import {SPECIES,coatPerk,PERK_SIZE,type Species,type Perk} from './game.ts';
 import {SPECIES_FACTS} from './species-facts.ts';
 
 export type BadgeId='stalk10'|'canopy'|'clan'|'kick'|'bound'|'tusks'|'vultures';
@@ -63,7 +63,10 @@ export const SKINS:Skin[]=[
  {id:'starlight',title:'Starlight',goal:'Earn 3 different badges in one round',have:p=>p.bestRound??0,need:3},
  {id:'aurora',title:'Aurora',goal:'Answer every Field Guide Quiz question right in one go',have:p=>p.quizPerfect?1:0,need:1},
 ];
-export const COSMETIC_NOTE='Cosmetic skin: not a real animal colour.';
+export const COSMETIC_NOTE='Fantasy skin: not a real animal colour.';
+/** what a coat's perk does, in words, for its card (the rule itself is lib/game.ts COAT_PERKS) */
+export const PERK_TEXT:Record<Perk,string>={night:`Night camouflage: ${PERK_SIZE.night*100}% harder to see in the dark`,bite:`Longer reach: lunges reach ${PERK_SIZE.bite*100}% further`,speed:`Swift: ${PERK_SIZE.speed*100}% faster run and sprint`,stamina:`Enduring: sprint lasts ${PERK_SIZE.stamina*100}% longer`};
+export const perkText=(s:Species,i:number)=>{const k=coatPerk(s,i);return k?PERK_TEXT[k]:undefined;};
 
 // ---------------------------------------------------------------- the player's own progress (this browser only)
 export type Progress={badges:Partial<Record<BadgeId,number>>;earnedAs:Partial<Record<Species,number>>;coats:Partial<Record<Species,number>>;
