@@ -129,6 +129,9 @@ Game rules for day and night (simplifications, not facts):
   sector for its close-range and scent checks; a predator that isn't sprinting and is behind it (the rear 140°) is not
   noticed by those two. Sight, sprint noise and herd alarms still work as before. Prey eyes on the sides of the head do
   give a wide field of view, but the 220° figure and the all-or-nothing cut-off are a game rule, not a measurement.
+- **Crouching and lying down (player posture).** Wild hunters crouch to stalk and animals lie up to rest, and the
+  computer animals already show both. A player can do the same: C crouches (no faster than the species' walk, about 40 %
+  harder to pick out), X lies down (still, half as easy to see, stamina back 50 % faster). The numbers are game rules.
 - **Field Guide Quiz.** Ten multiple-choice questions (lib/quiz.ts), each answered by one of the field-guide facts and
   shown with that fact's source after answering. All ten right in one attempt unlocks the Aurora skin, a cosmetic fantasy
   finish (not a real animal colour) that nothing else unlocks.

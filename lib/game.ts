@@ -60,6 +60,8 @@ export type Player={id:string;token?:string;name:string;bot:boolean;species:Spec
  /** badges earned this round (lib/rewards.ts), for the player's own progress; the chosen coat colour per species (one
   *  digit each in SPECIES order, lib/rewards.ts coatCode), which everyone sees */
  badges?:string[];coats?:string;
+ /** a player's chosen posture: crouched (creeping, low and harder to spot) or lying down (still, resting) */
+ posture?:Posture;
  tree?:number;climb?:Climb;ch?:number;side?:number;limb?:number;along?:number;limbDir?:number;goal?:number;mount?:number;climbHold?:number;vh?:number};
 /** one finished life: what it was, how long it lasted, what it earned and how it ended */
 export type LifeRecord={species:Species;seconds:number;points:number;food:number;hunts:number;cause:string};
@@ -255,6 +257,7 @@ export function conspicuity(t:Player,ps:Prop[],now:number){
  // a zebra is big and boldly striped in open grass: even standing still it is easy to pick out
  if(t.species==='zebra')c=Math.max(c,.65);
  if(stalking(t,now))c*=.45;
+ {const pose=postureOf(t);if(pose)c*=POSTURE_SIGHT[pose];}
  if(t.perched)c*=.5;
  else if(t.species!=='zebra'&&inThicket(ps,t.x,t.y))c*=.45;
  else if(ANIMALS[t.species].size<1&&inTallGrass(ps,t.x,t.y))c*=v>pace*1.05?.8:.5;
@@ -333,6 +336,12 @@ export const sprinting=(p:Player,now:number)=>{const g=ANIMALS[p.species].gait,f
 // and pushes off the other way instead of looping round, and a sideways input bends the path within a few metres.
 // Facing is separate (the renderer turns the body at the species' turnRate), so movement never waits on rotation.
 /** `others`: animals near enough to touch (see bodyGrid); their bodies are solid to this one. */
+/** Posture a player can choose, as the wildlife does (a stalking hunter crouches, an animal lies up to rest). Game rules:
+ *  crouched, it moves no faster than its walk and is about 40 % harder to pick out; lying down, it doesn't move, is
+ *  half as easy to see and gets its breath back 50 % faster. Sprinting or (when lying) moving stands it up. */
+export type Posture='crouch'|'lie';
+export const POSTURE_SIGHT={crouch:.6,lie:.5} as const,LIE_RECOVERY=1.5;
+export const postureOf=(p:Pick<Player,'posture'|'perched'|'climb'|'deadUntil'>)=>p.perched||p.climb||p.deadUntil?undefined:p.posture;
 export function move(p:Player,dt:number,ps:Prop[],now:number,others:readonly Player[]=[]){
  p.vx??=0;p.vy??=0;p.stamina??=100;
  if(p.climb){climbStep(p,dt,ps,now);return;}
@@ -342,6 +351,7 @@ export function move(p:Player,dt:number,ps:Prop[],now:number,others:readonly Pla
  let vx=p.vx/U,vy=p.vy/U,speed=Math.hypot(vx,vy);
  // a partly pushed stick (or a grazing herd's slow drift) moves between a walk and the normal run
  let target=!input&&!charge?0:stalk?STALK_SPEED:(p.sprint||charge)&&(free||!p.exhausted&&p.stamina>0)?g.sprint:Math.max(g.walk,g.run*Math.min(1,Math.hypot(p.dx,p.dy)));
+ {const pose=postureOf(p);if(pose==='lie')target=0;else if(pose==='crouch'&&!charge)target=Math.min(target,g.walk);}
  // game rule: wading through a watering hole or its mud ring slows every animal a little
  if(ofKind(ps,'water').some(t=>Math.hypot(p.x-t.x,p.y-t.y)<t.size*1.25))target*=.8;
  const dir=input?Math.atan2(p.dy,p.dx):Math.atan2(vy,vx),wx=Math.cos(dir)*target,wy=Math.sin(dir)*target;
@@ -362,7 +372,7 @@ export function move(p:Player,dt:number,ps:Prop[],now:number,others:readonly Pla
 /** Stamina: a flat-out sprint empties it in the species' sprint time; resting refills it over its recovery time. */
 function breathe(p:Player,dt:number,now:number){
  const g=ANIMALS[p.species].gait,speed=Math.hypot(p.vx,p.vy)/UNITS_PER_METRE;
- if(sprinting(p,now))p.stamina-=100/g.sprintTime*dt;else p.stamina+=100/g.recover*dt*(speed>g.run*.8?.4:1);
+ if(sprinting(p,now))p.stamina-=100/g.sprintTime*dt;else p.stamina+=100/g.recover*dt*(speed>g.run*.8?.4:1)*(postureOf(p)==='lie'?LIE_RECOVERY:1);
  p.stamina=clamp(p.stamina,0,100);if(p.stamina<=.5)p.exhausted=true;else if(p.stamina>=30)p.exhausted=false;
 }
 // ---------------------------------------------------------------- bodies, trunks and climbing

@@ -13,7 +13,7 @@ const markSeen=()=>{try{localStorage.setItem(TUTORIAL_KEY,'1');}catch{}};
 export function Tutorial({species,onClose}:{species:Species;onClose:()=>void}){
  const [step,setStep]=useState(0),a=ANIMALS[species];
  const steps=[
-  {title:'Move',body:'WASD or the arrow keys move you the way the camera looks (on a phone, the left stick). Shift sprints until your stamina runs out. Drag to look around; R puts the camera behind you.'},
+  {title:'Move',body:'WASD or the arrow keys move you the way the camera looks (on a phone, the left stick). Shift sprints until your stamina runs out. Drag to look around; R puts the camera behind you. C crouches and X lies down, like the wild animals do.'},
   {title:'Survive',body:'Keep Food and Water up: E eats, drinks or hunts when you are close enough, and the ring around food you can eat lights up. Your three tasks are on the right; every extra minute a life lasts scores more.'},
   {title:`Your ${a.name.toLowerCase()}`,body:`You eat: ${a.diet}. Watch for: ${a.threat}. ${a.ability} (Space): ${a.tip}`},
  ];

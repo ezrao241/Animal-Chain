@@ -354,7 +354,7 @@ export function animateSafari(r:SafariRig,p:SafariPose){
  // longer strides as the gait opens up; a full gallop settles at about 2.6 strides a second, as real quadrupeds do
  const strideLen=Math.max(s.stride*(1+trot*.5+gallop*.9),v/2.6);r.phase=(r.phase+dt*v/strideLen)%1;const phi=r.phase*Math.PI*2;
  const amp=Math.min(1,v/1.4)*(.3+.1*trot+.26*gallop),ab=p.ability,active=ab>=0;
- const stalk=r.species==='leopard'&&active||!!p.crouch&&!!a.prey.length,kick=r.species==='zebra'&&active?Math.sin(Math.min(1,ab)*Math.PI):0,leap=r.species==='impala'&&active?Math.sin(Math.min(1,ab)*Math.PI):0,burrow=r.species==='warthog'&&active;
+ const stalk=r.species==='leopard'&&active||!!p.crouch,kick=r.species==='zebra'&&active?Math.sin(Math.min(1,ab)*Math.PI):0,leap=r.species==='impala'&&active?Math.sin(Math.min(1,ab)*Math.PI):0,burrow=r.species==='warthog'&&active;
  const graze=!!p.feeding||(p.action||!!p.grazing)&&v<1&&!a.prey.length&&!p.alert,lunge=!p.feeding&&p.action&&!!a.prey.length,resting=!!p.resting&&v<.5,alert=!!p.alert&&v<1;
  // legs: walk is a lateral sequence, faster gaits swing the front and hind pairs together
  const walkOff={FR:.75,FL:.25,HR:.5,HL:0},trotOff={FR:.5,FL:0,HR:0,HL:.5},runOff={FR:.6,FL:.5,HR:.1,HL:0};

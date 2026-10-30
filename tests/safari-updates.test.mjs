@@ -34,3 +34,19 @@ test('a quiet player predator behind wild prey (outside its 220 degree forward a
  q.species='zebra';p.species='leopard';Object.assign(p,{x:q.x-30,y:q.y,sprint:false,vx:0,vy:0});assert.equal(creptBehind(q,p,r,T),false);
  assert.equal(FORWARD_ARC,220);
 });
+
+test('player posture: crouching caps speed at a walk and hides better; lying down stops, hides more and recovers faster',async()=>{
+ const {conspicuity,POSTURE_SIGHT}=await import('../lib/game.ts');const {roomRequest}=await import('../lib/net.ts');
+ const run=posture=>{const {p,r}=setup('lion');Object.assign(p,{posture,dx:1,dy:0,sprint:false,vx:0,vy:0,stamina:50});for(let i=0;i<40;i++)move(p,.05,props(417),T+i*50);return p;};
+ const free=run(undefined),low=run('crouch'),flat=run('lie');
+ assert.ok(Math.hypot(free.vx,free.vy)/10>ANIMALS.lion.gait.walk+1,'standing it runs');
+ assert.ok(Math.hypot(low.vx,low.vy)/10<=ANIMALS.lion.gait.walk+1e-6,'crouched: no faster than a walk');
+ assert.equal(Math.hypot(flat.vx,flat.vy),0,'lying down: still');
+ const {p}=setup('lion'),ps=props(417);p.vx=p.vy=0;const c0=conspicuity(p,ps,T);
+ p.posture='crouch';assert.ok(Math.abs(conspicuity(p,ps,T)-c0*POSTURE_SIGHT.crouch)<1e-9);
+ p.posture='lie';assert.ok(Math.abs(conspicuity(p,ps,T)-c0*POSTURE_SIGHT.lie)<1e-9);
+ // the server takes the posture with each sync and ignores anything else
+ const {r}=setup('lion'),me=r.players[0];Object.assign(me,{token:'t',seq:0});
+ roomRequest(r,{id:me.id,token:'t',seq:1,dx:0,dy:0,posture:'lie'},'sync',T+10,()=>'x');assert.equal(me.posture,'lie');
+ roomRequest(r,{id:me.id,token:'t',seq:2,dx:0,dy:0,posture:'fly'},'sync',T+20,()=>'x');assert.equal(me.posture,undefined);
+});

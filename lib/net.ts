@@ -97,7 +97,7 @@ export function roomRequest(room:Room,b:Record<string,unknown>,action:string,now
   if(room.phase!=='playing')return fail(409,'Start the round first.');restartLife(p,room,now);
  }else if(room.phase==='playing'){
   const seq=Number(b.seq)||0;
-  if(seq>p.seq){p.seq=seq;p.dx=clamp(b.dx);p.dy=clamp(b.dy);p.sprint=b.sprint===true;p.inputAt=now;stepFeeding(p,now);claim(p,b,now);}
+  if(seq>p.seq){p.seq=seq;p.dx=clamp(b.dx);p.dy=clamp(b.dy);p.sprint=b.sprint===true;p.posture=b.posture==='crouch'||b.posture==='lie'?b.posture:undefined;p.inputAt=now;stepFeeding(p,now);claim(p,b,now);}
   applyActions(p,room,b.actions,now);
  }
  return{status:200,body:{room:viewFor(room,p.id,now)},save:true};
@@ -134,7 +134,7 @@ function quiet(p:Player,seenBefore:number,room:Room,b:Record<string,unknown>,now
  // a moving animal's reported position is news even when the keys held haven't changed
  if(b.x!==undefined&&Math.hypot(Number(b.x)-p.x,Number(b.y)-p.y)>2)return false;
  if(room.phase!=='playing')return true;
- return now-room.tick<COALESCE_MS&&clamp(b.dx)===p.dx&&clamp(b.dy)===p.dy&&(b.sprint===true)===!!p.sprint;
+ return now-room.tick<COALESCE_MS&&clamp(b.dx)===p.dx&&clamp(b.dy)===p.dy&&(b.sprint===true)===!!p.sprint&&(b.posture==='crouch'||b.posture==='lie'?b.posture:undefined)===p.posture;
 }
 
 // Fields only the server (and the animal's own player) may see: credentials, input, AI plans and targets, task progress,
