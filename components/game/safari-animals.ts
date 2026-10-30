@@ -251,7 +251,7 @@ const PAINT:Record<Species,Paint[]>={
  ],
 };
 // Legendary skins (lib/rewards.ts SKINS, cosmetic, not real animals): one finish for every species, in coat code
-// digits 3, 4, 5. The markings each animal already has (rosettes, stripes, spots) carry through, and the bright parts
+// digits 3, 4, 5, 6. The markings each animal already has (rosettes, stripes, spots) carry through, and the bright parts
 // of ember and starlight glow (skinMaterial).
 const SKIN_PAINT:Paint[]=[
  // sun-gilded: polished gold, markings in dark bronze
@@ -260,6 +260,10 @@ const SKIN_PAINT:Paint[]=[
  (c,p,n,part)=>{if(part.includes('#eye'))return hex(0xffb347);if(!furred(part))return c;const {d}=cellDistance(p,.07,5);return dark(c)||d>.55?hex(0xff6a12):retint(c,0xc8914a,0x24170f,.55,1.1);},
  // starlight: night-blue coat full of stars, markings in violet
  (c,p,n,part)=>{if(part.includes('#eye'))return hex(0xcfe0ff);if(!furred(part))return c;if(cellDistance(p,.04,11).d<.11)return hex(0xf2f6ff);return dark(c)?hex(0x7a6cff):retint(c,0xc8914a,0x182050,.6,1.2);},
+ // aurora (perfect Field Guide Quiz only): pearl-white coat washed with bands of polar-light green, teal and violet that
+ // drift along the body; the animal's markings in deep teal
+ (c,p,n,part)=>{if(part.includes('#eye'))return hex(0xb8fff0);if(!furred(part))return c;if(dark(c))return hex(0x0f4a57);
+  const t=(Math.sin(p.x*5.5+p.y*3.1+p.z*2.3)+1)/2,band=[0x7dffc8,0x56d8f0,0xb48cff,0xff9ad8][Math.floor(t*3.999)];return hex(0xeef4ff).lerp(hex(band),.55+.25*Math.sin(p.y*9));},
 ];
 export const coatCount=(s:Species)=>PAINT[s].length;
 export const cameraProfile=(s:Species):CameraProfile=>SPECS[s].camera;
@@ -315,7 +319,7 @@ function skinMaterial(coat:number){
  m=facetMaterial();
  // no environment map in the scene, so the gold is only part metal (full metal would read black) plus a slow glint
  if(coat===3){m.metalness=.45;m.roughness=.3;}
- {const strength=coat===3?.3:coat===4?1.6:1.1,from=coat===3?.4:.22;
+ {const strength=coat===3?.3:coat===4?1.6:coat===6?.75:1.1,from=coat===3?.4:.22;
   m.onBeforeCompile=shader=>{shader.uniforms.skinTime=skinTime;
    shader.fragmentShader='uniform float skinTime;\n'+shader.fragmentShader.replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
    #ifdef USE_COLOR

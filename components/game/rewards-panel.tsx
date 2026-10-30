@@ -7,7 +7,8 @@ import {Award,Lock,Sparkles} from 'lucide-react';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogTrigger} from '@/components/ui/dialog';
 import {ModelPortrait as Portrait} from '@/components/game/WorldScene';
 import {ANIMALS,SPECIES,type Player,type Species} from '@/lib/game';
-import {BADGES,SKINS,COSMETIC_NOTE,badgeById,coatUnlocked,coatChoices,coatProgress,unlockedKeys,loadProgress,saveProgress,type Progress,type BadgeId,type Tier} from '@/lib/rewards';
+import {QUIZ_LENGTH,newAttempt,quizFact,type Question} from '@/lib/quiz';
+import {SKIN_BASE,BADGES,SKINS,COSMETIC_NOTE,badgeById,coatUnlocked,coatChoices,coatProgress,unlockedKeys,loadProgress,saveProgress,type Progress,type BadgeId,type Tier} from '@/lib/rewards';
 
 /** The player's progress, loaded from this browser once on mount and saved on every change. */
 export function useProgress(){
@@ -55,7 +56,8 @@ export function useCoatReveal(progress:Progress,loaded:boolean){
  const keys=unlockedKeys(progress).join();
  useEffect(()=>{
   if(!loaded)return;const now=new Set(keys?keys.split(','):[]);
-  if(known.current){const fresh=[...now].filter(k=>!known.current!.has(k)).map(k=>{const [s,i]=k.split(':');return{s:s as Species,i:Number(i)};});if(fresh.length)setQueue(q=>[...q,...fresh]);}
+  // a legendary skin opens for every animal at once: one card for it, not six
+  if(known.current){const fresh=[...now].filter(k=>!known.current!.has(k)).map(k=>{const [s,i]=k.split(':');return{s:s as Species,i:Number(i)};}).filter((x,n,all)=>x.i<SKIN_BASE||all.findIndex(y=>y.i===x.i)===n);if(fresh.length)setQueue(q=>[...q,...fresh]);}
   known.current=now;
  },[keys,loaded]);
  return [queue[0],()=>setQueue(q=>q.slice(1))] as const;
@@ -68,8 +70,8 @@ export function CoatReveal({next,done,update,compact=false}:{next:{s:Species;i:n
  return <div className={`coat-reveal tier-${c.tier} ${compact?'compact':''}`} role="dialog" aria-label="New coat unlocked"><span className="reveal-rays" aria-hidden="true"/>
   <span className="eyebrow"><Sparkles size={13}/> NEW {TIER_NAME[c.tier].toUpperCase()} COAT</span>
   <div className="reveal-portrait"><Portrait species={next.s} coat={next.i} size={compact?96:150}/></div>
-  <h3>{c.title}</h3><small>{ANIMALS[next.s].name}{c.tier==='legendary'?'':' · '+c.name}</small>{compact?null:<p>{c.note}</p>}
-  <div className="reveal-actions"><button className="quiet-link" onClick={done}>Later</button><button className="tutorial-next" onClick={()=>{update(p=>({...p,coats:{...p.coats,[next.s]:next.i}}));done();}}>Wear it</button></div></div>;
+  <h3>{c.title}</h3><small>{c.tier==='legendary'?'Every animal':ANIMALS[next.s].name+' · '+c.name}</small>{compact?null:<p>{c.note}</p>}
+  <div className="reveal-actions"><button className="quiet-link" onClick={done}>Later</button><button className="tutorial-next" onClick={()=>{update(p=>({...p,coats:c.tier==='legendary'?Object.fromEntries(SPECIES.map(s=>[s,next.i])):{...p.coats,[next.s]:next.i}}));done();}}>{c.tier==='legendary'?'Wear it on all':'Wear it'}</button></div></div>;
 }
 
 type Tab='badges'|'coats';
@@ -98,4 +100,27 @@ function CoatPicker({progress,update}:{progress:Progress;update:(c:(p:Progress)=
     {c?.url&&open?<a href={c.url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}>{c.source}</a>:null}
    </button>;})}</div></section>;})}
   <p className="small-note">Rare and Epic coats are real colour variants of the wild species, from the source shown; some are very rare in the wild. Legendary skins are cosmetic. Other players see your coat in multiplayer rounds.</p></div>;
+}
+
+/** The Field Guide Quiz: ten questions on the real animals, one at a time, each answered with its fact and source.
+ *  All ten right in one go opens the Aurora skin (nothing else does); the best score is kept. */
+export function QuizDialog({progress,update,trigger}:{progress:Progress;update:(c:(p:Progress)=>Progress)=>void;trigger:ReactElement}){
+ const [qs,setQs]=useState<Question[]|null>(null),[at,setAt]=useState(0),[picked,setPicked]=useState<number|null>(null),[right,setRight]=useState(0);
+ const start=()=>{setQs(newAttempt());setAt(0);setPicked(null);setRight(0);};
+ const q=qs?.[at],done=!!qs&&at>=qs.length,fact=q&&quizFact(q);
+ const choose=(i:number)=>{if(!q||picked!==null)return;setPicked(i);if(i===q.answer)setRight(n=>n+1);};
+ const next=()=>{const n=at+1;setAt(n);setPicked(null);
+  if(qs&&n>=qs.length)update(p=>({...p,quizBest:Math.max(p.quizBest??0,right),quizPerfect:p.quizPerfect||right===qs.length}));};
+ return <Dialog onOpenChange={open=>{if(open)setQs(null);}}><DialogTrigger asChild>{trigger}</DialogTrigger><DialogContent className="guide-dialog quiz-dialog"><DialogHeader><DialogTitle>Field Guide Quiz</DialogTitle></DialogHeader>
+  {!qs&&<div className="quiz-intro"><p>{QUIZ_LENGTH} questions about the real lion, leopard, hyena, zebra, impala and warthog. Every answer is in the field guide's “The real animals” section.</p>
+   <div className="quiz-prize"><Portrait species="leopard" coat={6} size={96}/><div><span className="eyebrow"><Sparkles size={13}/> EXCLUSIVE LEGENDARY SKIN</span><b>Aurora</b><small>Answer all {QUIZ_LENGTH} right in one go. This is the only way to get it. {COSMETIC_NOTE}</small></div></div>
+   <p className="small-note">{progress.quizPerfect?'You have already won Aurora: it is in Badges & coats for every animal.':progress.quizBest?`Your best so far: ${progress.quizBest}/${QUIZ_LENGTH}.`:'Not tried yet.'}</p>
+   <button className="tutorial-next" onClick={start}>Start the quiz</button></div>}
+  {q&&!done&&<div className="quiz-card"><span className="eyebrow">QUESTION {at+1} / {qs!.length} · {ANIMALS[q.species].name.toUpperCase()}</span><h3>{q.q}</h3>
+   <div className="quiz-options">{q.options.map((o,i)=><button key={i} disabled={picked!==null} className={picked===null?'':i===q.answer?'right':i===picked?'wrong':''} onClick={()=>choose(i)}>{o}</button>)}</div>
+   {picked!==null&&fact&&<p className="quiz-fact"><b>{picked===q.answer?'Right.':'Not quite.'}</b> {fact.text} <a href={fact.url} target="_blank" rel="noreferrer">{fact.source}</a></p>}
+   <div className="quiz-foot"><small>{right} right so far</small>{picked!==null&&<button className="tutorial-next" onClick={next}>{at+1<qs!.length?'Next':'See my score'}</button>}</div></div>}
+  {done&&<div className="quiz-result"><h3>{right} / {qs!.length}</h3>{right===qs!.length?<><p><b>Perfect.</b> The Aurora skin is yours, for every animal. Wear it from Badges & coats.</p><div className="quiz-win"><Portrait species="lion" coat={6} size={130}/><Portrait species="zebra" coat={6} size={130}/></div></>:<p>All {qs!.length} right in one go wins the Aurora skin. Read the field guide's “The real animals” section and try again.</p>}
+   <button className="tutorial-next" onClick={start}>{right===qs!.length?'Play again':'Try again'}</button></div>}
+ </DialogContent></Dialog>;
 }

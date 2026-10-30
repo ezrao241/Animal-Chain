@@ -85,13 +85,27 @@ test('every badge and coat cites a source, and every species has a natural coat'
 });
 
 test('legendary skins: every badge once, 25 badges in all, 3 badges in one round; open to every species',()=>{
- assert.equal(SKIN_BASE,3);assert.deepEqual(SKINS.map(k=>k.id),['gilded','ember','starlight']);
+ assert.equal(SKIN_BASE,3);assert.deepEqual(SKINS.map(k=>k.id),['gilded','ember','starlight','aurora']);
  const p={badges:{},earnedAs:{},coats:{}};for(let i=0;i<3;i++)assert.ok(!coatUnlocked(p,'lion',SKIN_BASE+i));
  for(const b of BADGES)p.badges[b.id]=1;assert.ok(coatUnlocked(p,'warthog',3),'all seven badges: gilded');assert.ok(!coatUnlocked(p,'warthog',4));
  p.badges.kick=19;assert.ok(coatUnlocked(p,'zebra',4),'25 badges: ember');
  p.bestRound=3;assert.ok(coatUnlocked(p,'impala',5),'three in a round: starlight');
  p.coats={lion:3,leopard:4,hyena:5,zebra:0,impala:5,warthog:3};assert.equal(coatCode(p),'345053');
  for(const s of ['lion','impala'])for(const i of [3,4,5])assert.equal(coatOf('333333'.replace(/3/g,String(i)),s),i);
- assert.equal(coatOf('600000','lion'),0);
+ assert.equal(coatOf('700000','lion'),0);
  assert.ok(unlockedKeys(p).includes('lion:3')&&!unlockedKeys(p).includes('lion:0'),'the usual coat is never "new"');
+});
+
+test('Field Guide Quiz: ten sourced questions; only a perfect run opens the Aurora skin, which nothing else unlocks',async()=>{
+ const {QUIZ,quizFact,newAttempt}=await import('../lib/quiz.ts');
+ assert.equal(QUIZ.length,10);
+ for(const q of QUIZ){assert.ok(q.answer>=0&&q.answer<q.options.length);const f=quizFact(q);assert.ok(f&&f.url.startsWith('https://'),q.q);}
+ const shuffled=newAttempt(()=>.3);assert.equal(shuffled.length,10);
+ for(const q of shuffled){const orig=QUIZ.find(o=>o.q===q.q);assert.equal(q.options[q.answer],orig.options[orig.answer],'the right answer survives the shuffle');}
+ const aurora=SKIN_BASE+SKINS.findIndex(k=>k.id==='aurora');assert.equal(aurora,6);
+ const p={badges:{},earnedAs:{},coats:{},bestRound:99};for(const b of BADGES)p.badges[b.id]=50;
+ assert.ok(!coatUnlocked(p,'lion',aurora),'badges never open Aurora');
+ p.quizBest=9;assert.ok(!coatUnlocked(p,'lion',aurora),'nine out of ten is not enough');
+ p.quizPerfect=true;for(const s of ['lion','leopard','hyena','zebra','impala','warthog'])assert.ok(coatUnlocked(p,s,aurora));
+ assert.equal(coatOf('666666','zebra'),6);
 });

@@ -129,6 +129,9 @@ Game rules for day and night (simplifications, not facts):
   sector for its close-range and scent checks; a predator that isn't sprinting and is behind it (the rear 140°) is not
   noticed by those two. Sight, sprint noise and herd alarms still work as before. Prey eyes on the sides of the head do
   give a wide field of view, but the 220° figure and the all-or-nothing cut-off are a game rule, not a measurement.
+- **Field Guide Quiz.** Ten multiple-choice questions (lib/quiz.ts), each answered by one of the field-guide facts and
+  shown with that fact's source after answering. All ten right in one attempt unlocks the Aurora skin, a cosmetic fantasy
+  finish (not a real animal colour) that nothing else unlocks.
 - **Field-guide facts.** The "The real animals" section of the field guide and the animal note in the room menu
   (lib/species-facts.ts) use only sources already listed above, plus the African Wildlife Foundation species pages for
   the leopard lines and the "more" links. The AWF pages could not be opened from the build environment, so those links

@@ -53,13 +53,15 @@ export const COATS:Record<Species,Coat[]>={
 };
 
 /** Legendary skins: fantasy finishes for any animal, for the hardest goals. Cosmetic only, not real animals, and the
- *  game says so wherever they are shown. They sit after the natural coats in the coat code (digits 3, 4, 5). */
-export type Skin={id:'gilded'|'ember'|'starlight';title:string;goal:string;have:(p:Progress)=>number;need:number};
+ *  game says so wherever they are shown. They sit after the natural coats in the coat code (digits 3, 4, 5, 6). Aurora
+ *  comes only from a perfect Field Guide Quiz (lib/quiz.ts): no badge count opens it. */
+export type Skin={id:'gilded'|'ember'|'starlight'|'aurora';title:string;goal:string;have:(p:Progress)=>number;need:number};
 export const SKIN_BASE=3;
 export const SKINS:Skin[]=[
  {id:'gilded',title:'Sun-Gilded',goal:'Earn every badge at least once',have:p=>BADGES.filter(b=>p.badges[b.id]).length,need:BADGES.length},
  {id:'ember',title:'Emberhide',goal:'Earn 25 badges in all',have:p=>Object.values(p.badges).reduce((n,x)=>n+(x??0),0),need:25},
  {id:'starlight',title:'Starlight',goal:'Earn 3 different badges in one round',have:p=>p.bestRound??0,need:3},
+ {id:'aurora',title:'Aurora',goal:'Answer every Field Guide Quiz question right in one go',have:p=>p.quizPerfect?1:0,need:1},
 ];
 export const COSMETIC_NOTE='Cosmetic skin: not a real animal colour.';
 
@@ -67,6 +69,8 @@ export const COSMETIC_NOTE='Cosmetic skin: not a real animal colour.';
 export type Progress={badges:Partial<Record<BadgeId,number>>;earnedAs:Partial<Record<Species,number>>;coats:Partial<Record<Species,number>>;
  /** most badges earned in a single round */
  bestRound?:number;
+ /** a Field Guide Quiz answered with every question right (opens the Aurora skin), and the best score so far */
+ quizPerfect?:boolean;quizBest?:number;
  /** the badges of the current round already counted (a reload mid-round doesn't count them twice) */
  seen?:{round:string;ids:string[]}};
 const KEY='animal-chain-progress';

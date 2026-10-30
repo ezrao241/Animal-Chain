@@ -62,7 +62,7 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
   const cinema=preview?new MenuCinema():null,demo=cinema?.players||[];let shownShot:Species|null|undefined;
   // the menu backdrop is graded to late golden hour: lower, redder sun, cooler sky fill and a warm haze
   if(preview){sun.color.set(0xffa65c);sun.intensity=3.4;rim.color.set(0x8f9be0);rim.intensity=.7;renderer.toneMappingExposure=1.18;scene.traverse(o=>{if(o instanceof THREE.HemisphereLight){o.color.set(0xb7b9e0);o.groundColor.set(0x9a6a3e);o.intensity=1.15;}});savanna.dusk();scene.background=new THREE.Color(0xd9a77a);(scene.fog as THREE.Fog).color.set(0xd8a47a);}
-  let width=0,height=0,last=performance.now(),lastPreviewFrame=0,lastTraceFrame=0,yaw=0,pitch=.24,distance=155,shownDistance=0,dragging=false,lastX=0,lastY=0,ownHeading=Math.PI/2,first=true,ownBorn=0,frameCost=16,dragPointer=-1,lastLook=-1e9,latchKey='',moveYaw=0,ownFix:number|undefined,rejoinUntil=0,lastServerTime=0,updateGap=.2,reach=.3;
+  let width=0,height=0,last=performance.now(),lastPreviewFrame=0,lastTraceFrame=0,yaw=0,pitch=.24,distance=155,shownDistance=0,dragging=false,lastX=0,lastY=0,ownHeading=Math.PI/2,first=true,ownBorn=0,frameCost=16,dragPointer=-1,lastLook=-1e9,yawVel=0,recentering=false,latchKey='',moveYaw=0,ownFix:number|undefined,rejoinUntil=0,lastServerTime=0,updateGap=.2,reach=.3;
   const follow=new THREE.Vector3(1600,20,820),target=new THREE.Vector3(),projected=new THREE.Vector3(),view=new THREE.Vector3();
   const qualityCaps={high:1.5,balanced:1.12,performance:.78};
   const resize=()=>{const bounds=element.getBoundingClientRect();width=bounds.width;height=bounds.height;if(!width||!height)return;renderer.setSize(width,height);camera.aspect=width/height;camera.updateProjectionMatrix();overlay.width=Math.round(width);overlay.height=Math.round(height);};
@@ -72,7 +72,7 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
   let soundRoomCode='';
   // one finger (or the mouse) looks around; a second finger on the canvas is ignored so look never jumps
   const down=(e:PointerEvent)=>{if(preview||dragging)return;dragging=true;dragPointer=e.pointerId;lastX=e.clientX;lastY=e.clientY;canvas.setPointerCapture(e.pointerId);canvas.focus({preventScroll:true});};
-  const drag=(e:PointerEvent)=>{if(!dragging||e.pointerId!==dragPointer)return;yaw-=(e.clientX-lastX)*.005;pitch=THREE.MathUtils.clamp(pitch+(e.clientY-lastY)*.003,-.06,.62);lastX=e.clientX;lastY=e.clientY;lastLook=performance.now();input.current.cameraYaw=yaw;};
+  const drag=(e:PointerEvent)=>{if(!dragging||e.pointerId!==dragPointer)return;recentering=false;yaw-=(e.clientX-lastX)*.005;pitch=THREE.MathUtils.clamp(pitch+(e.clientY-lastY)*.003,-.06,.62);lastX=e.clientX;lastY=e.clientY;lastLook=performance.now();input.current.cameraYaw=yaw;};
   const up=(e:PointerEvent)=>{if(e.pointerId===dragPointer){dragging=false;dragPointer=-1;}};const wheel=(e:WheelEvent)=>{if(preview)return;e.preventDefault();distance=THREE.MathUtils.clamp(distance+e.deltaY*.12,95,260);};
   canvas.addEventListener('pointerdown',down);canvas.addEventListener('pointermove',drag);canvas.addEventListener('pointerup',up);canvas.addEventListener('pointercancel',up);canvas.addEventListener('wheel',wheel,{passive:false});
   const render=(ms:number)=>{
@@ -156,10 +156,18 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
     /* with real shadow maps the painted shadow is only contact shade under the body; without them it stands in for the cast shadow, away from the sun */{const real=renderer.shadowMap.enabled?0:1;shadow.position.set(position.x+shadowShift.x*real,groundY(position.x,position.y)+.6,position.y+shadowShift.z*real);}{const sp=cameraProfile(p.species);shadow.scale.set(sp.shadow[0],sp.shadow[1],1);shadow.rotation.z=rig.turn;}
     if(own){ownHeading=rig.turn;const headHeight=cameraProfile(p.species).head;target.set(position.x,rig.root.position.y+headHeight,position.y);if(first||ownBorn!==p.born){follow.copy(target);ownBorn=p.born;first=false;yaw=rig.turn-Math.PI/2;pitch=.24;}follow.lerp(target,1-Math.exp(-9*dt));}
    }
-   if(input.current.recenter){yaw=ownHeading-Math.PI/2;pitch=.24;input.current.recenter=false;}
-   // the camera eases round behind a moving animal (quick turns and flight included) unless the player looked around
-   // in the last second and a half
-   else if(!preview&&m&&!m.perched&&!dragging&&ms-lastLook>1500){const own=positions.get(m.id),sp=own?Math.hypot(own.vx||0,own.vy||0):0;if(sp>20){const want=ownHeading-Math.PI/2,delta=Math.atan2(Math.sin(want-yaw),Math.cos(want-yaw));yaw+=delta*(1-Math.exp(-(m.sprint?2.6:1.6)*dt));}}if(!preview)input.current.cameraYaw=yaw;
+   if(input.current.recenter){recentering=true;input.current.recenter=false;}
+   // The camera turns with the animal: a critically damped spring swings it round behind the body, gently as the animal
+   // gets going and faster at a sprint, so turns read as one continuous move rather than a lag and a catch-up. When the
+   // animal turns right round and comes toward the lens, the camera holds and shows its face (fading out between about
+   // 110 and 140 degrees, so there is no snap); it follows again as soon as the animal heads off to either side. A drag
+   // to look around pauses it for a second and a half; R swings back behind the animal.
+   if(!preview&&m&&(dragging||m.perched||ms-lastLook<1500)&&!recentering)yawVel=0;
+   else if(!preview&&m){const own=positions.get(m.id),sp=own?Math.hypot(own.vx||0,own.vy||0):0,want=ownHeading-Math.PI/2,delta=Math.atan2(Math.sin(want-yaw),Math.cos(want-yaw));
+    const facing=recentering?1:1-THREE.MathUtils.smoothstep(Math.abs(delta),1.9,2.45),moving=recentering?1:THREE.MathUtils.smoothstep(sp,4,30),w=recentering?7:(m.sprint?3.4:2.4)*moving*facing;
+    yawVel+=(w*w*delta-2*Math.max(w,2.5)*yawVel)*Math.min(dt,.05);yaw+=yawVel*dt;
+    if(recentering){pitch=THREE.MathUtils.damp(pitch,.24,8,dt);if(Math.abs(delta)<.01&&Math.abs(yawVel)<.05)recentering=false;}}
+   if(!preview)input.current.cameraYaw=yaw;
    if(cinema){follow.copy(cinema.frame(camera,time,dt,latest.current.focus??null,groundY,width/height,positions));if(cinema.shot!==shownShot){shownShot=cinema.shot;latest.current.onShot?.(shownShot);}}else{
    const prof=!preview&&m?cameraProfile(m.species):undefined;if(camera.near!==(prof?.near??1.8)){camera.near=prof?.near??1.8;camera.updateProjectionMatrix();}let actualDistance=(prof?prof.distance*distance/155:distance)*(width<650?.91:1);const forwardX=Math.sin(yaw),forwardZ=Math.cos(yaw);
    // a boulder or an acacia trunk between the animal and the camera pulls the camera in front of it (a thin trunk only
