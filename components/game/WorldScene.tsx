@@ -2,11 +2,12 @@
 import {useEffect,useRef,useState} from 'react';
 import * as THREE from 'three';
 import {createRenderer,SoftwareRenderer} from './software-renderer';
-import {cameraInput,ANIMALS,SPECIES,Species,Room,Player,W,H,props,makeFoods,move,newPlayer,dist,solidNear,solidRadius,sense,wind,headDown,canClimb,sightBlocked,idHash,FOOD_RANGE,lightAt,isPredator,postureOf,type Posture} from '@/lib/game';
+import {cameraInput,ANIMALS,SPECIES,Species,Room,Player,W,H,props,makeFoods,move,newPlayer,dist,solidNear,solidRadius,sense,wind,headDown,canClimb,sightBlocked,idHash,FOOD_RANGE,lightAt,isPredator,postureOf,worldEvent,fireEdge,FIRE,type Posture} from '@/lib/game';
 import {climberPose,climberFeet} from './climb-pose';
 import {SafariTraces} from './safari-traces';
 import {makeSafariAnimal,animateSafari,SafariRig,animalPortrait,cameraProfile} from './safari-animals';
 import {createSavanna,groundY,SUN_DIRECTION} from './savanna-world';
+import {WorldEffects} from './world-effects';
 import {FoodField} from './safari-food';
 import {AnimalBatches} from './animal-batches';
 import {MenuCinema} from './menu-cinema';
@@ -41,13 +42,13 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
   // Day and night (lib/game.ts lightAt): the key light is the sun by day and the moon (or faint starlight from overhead)
   // at night. Exposure stands in for the eyes of the animal you play: after dark a lion, leopard or hyena sees the
   // moonlit plain well (eyes built for low light), a grazer sees it darker.
-  const keyDir=SUN_DIRECTION.clone(),sunV=new THREE.Vector3(),moonV=new THREE.Vector3(),overhead=new THREE.Vector3(.2,.95,.25).normalize(),dayFog=new THREE.Color(0xcbd3d1),dayBg=new THREE.Color(0xd2dad8),emberFog=new THREE.Color(0xd8a47a),nightFog=new THREE.Color(0x111a2c),warm=new THREE.Color(0xffa65c),moonCol=new THREE.Color(0xa9bde6);let lastLight=-1e9;
+  const keyDir=SUN_DIRECTION.clone(),sunV=new THREE.Vector3(),moonV=new THREE.Vector3(),overhead=new THREE.Vector3(.2,.95,.25).normalize(),dayFog=new THREE.Color(0xcbd3d1),dayBg=new THREE.Color(0xd2dad8),emberFog=new THREE.Color(0xd8a47a),nightFog=new THREE.Color(0x111a2c),warm=new THREE.Color(0xffa65c),moonCol=new THREE.Color(0xa9bde6);let lastLight=-1e9,dayLevel=1;
   const smoothK=(a:number,b:number,v:number)=>{const k=THREE.MathUtils.clamp((v-a)/(b-a),0,1);return k*k*(3-2*k);};
   const daylight=(room:Room|null|undefined,now:number,me:Player|null|undefined)=>{
    const l=lightAt(room||{started:0,seed:417,round:0},now),toMap=(v:{east:number;north:number;up:number},out:THREE.Vector3)=>out.set(v.east,v.up,-v.north).normalize();
    toMap(l.sun,sunV);toMap(l.moon,moonV);const up=sunV.y,ember=smoothK(-.2,.02,up)*(1-smoothK(.05,.4,up)),night=1-l.day;
    savanna.daylight(sunV,moonV,l.day,l.moonlight);
-   const sunUp=smoothK(-.02,.25,up);keyDir.copy(up>.0?sunV:moonV.y>.05?moonV:overhead);
+   dayLevel=l.day;const sunUp=smoothK(-.02,.25,up);keyDir.copy(up>.0?sunV:moonV.y>.05?moonV:overhead);
    sun.color.set(0xfff0d8).lerp(warm,ember);if(up<=0)sun.color.copy(moonCol);sun.intensity=up>0?2.8*sunUp+.2:.12+.6*l.moonlight;
    sky.color.set(0xb9d3ef).lerp(moonCol,night*.6);sky.groundColor.set(0x8f805c).lerp(new THREE.Color(0x2a2a30),night*.8);sky.intensity=1.2*l.day+(1-l.day)*(.5+.35*l.moonlight);
    rim.intensity=.35+.25*night;
@@ -55,7 +56,7 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
    shadowMat.opacity=.22*(.3+.7*sunUp);
    renderer.toneMappingExposure=1+night*(me&&isPredator(me.species)?.55:-.05);
   };
-  const savanna=createSavanna(scene,lightweight),ps=props(417),previewFoods=makeFoods(417),food=new FoodField(scene),traces=new SafariTraces(scene,groundY,lightweight);
+  const savanna=createSavanna(scene,lightweight),ps=props(417),previewFoods=makeFoods(417),food=new FoodField(scene),traces=new SafariTraces(scene,groundY,lightweight),effects=new WorldEffects(scene,savanna,lightweight);
   const rigs=new Map<string,SafariRig>(),positions=new Map<string,Player>(),shadows=new Map<string,THREE.Mesh>(),shadowGeo=new THREE.CircleGeometry(1,20),shadowShift={x:-SUN_DIRECTION.x/SUN_DIRECTION.y*5,z:-SUN_DIRECTION.z/SUN_DIRECTION.y*5},shadowMat=new THREE.MeshBasicMaterial({color:0x0b1913,transparent:true,opacity:.22,depthWrite:false});
   const animalBatches=lightweight?null:new AnimalBatches(scene);
   const solidNearCamera=(x:number,z:number,range:number)=>solidNear(ps,x,z,range).filter(t=>Math.abs(t.x-x)<range&&Math.abs(t.y-z)<range);
@@ -190,12 +191,12 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
    {const wantY=Math.max(groundY(follow.x+forwardX*actualDistance,follow.z+forwardZ*actualDistance)+(prof?prof.clearance:12),follow.y+Math.sin(pitch)*actualDistance+(prof?prof.lift:13));
     camY=preview||!Number.isFinite(camY)?wantY:THREE.MathUtils.damp(camY,wantY,wantY>camY?16:6,dt);
     camera.position.set(follow.x+forwardX*Math.cos(pitch)*actualDistance,camY,follow.z+forwardZ*Math.cos(pitch)*actualDistance);}
-   {const la=prof?prof.lookAhead:32;camera.lookAt(follow.x-forwardX*la,follow.y+(prof?prof.lookY:6),follow.z-forwardZ*la);}}if(!preview&&ms-lastLight>=200){lastLight=ms;daylight(r,now,m);}sun.position.set(follow.x+keyDir.x*700,follow.y+keyDir.y*700,follow.z+keyDir.z*700);sun.target.position.set(follow.x,follow.y,follow.z);const breeze=wind(r||{seed:417,round:0});savanna.update(time,follow.x,follow.z,drawRange,camera.far,camera.position,breeze);
+   {const la=prof?prof.lookAhead:32;camera.lookAt(follow.x-forwardX*la,follow.y+(prof?prof.lookY:6),follow.z-forwardZ*la);}}if(!preview&&ms-lastLight>=200){lastLight=ms;daylight(r,now,m);}sun.position.set(follow.x+keyDir.x*700,follow.y+keyDir.y*700,follow.z+keyDir.z*700);sun.target.position.set(follow.x,follow.y,follow.z);const breeze=wind(r||{seed:417,round:0});savanna.update(time,follow.x,follow.z,drawRange,camera.far,camera.position,breeze);if(!preview)effects.update(r?.phase==='playing'||r?.phase==='finished'?r:null,now,time,camera.position,camera.far,players.map(p=>{const q=positions.get(p.id);return q?{id:p.id,x:q.x,y:q.y,vx:q.vx,vy:q.vy,deadUntil:p.deadUntil}:p;}),dayLevel);
    if(ms-lastTraceFrame>=100){lastTraceFrame=ms;traces.update(players.filter(p=>rigs.get(p.id)?.root.visible).map(p=>{const pos=positions.get(p.id)||p,rig=rigs.get(p.id);return{id:p.id+':'+p.born,species:p.species,x:pos.x,z:pos.y,vx:pos.vx||0,vy:pos.vy||0,heading:p.heading||0,visible:!!rig?.root.visible,moving:true,quiet:p.species==='leopard'&&p.abilityUntil>now,onGround:!p.deadUntil&&!p.perched&&!(p.species==='warthog'&&p.abilityUntil>now)};}),r?.foods||[],now,{x:follow.x,z:follow.z},breeze);}animalBatches?.update(rigs.values(),camera,!renderer.shadowMap.enabled);
    if(renderer instanceof THREE.WebGLRenderer&&renderer.shadowMap.enabled&&ms-lastShadow>100){renderer.shadowMap.needsUpdate=true;lastShadow=ms;}
    food.update(r?.foods||previewFoods,now,m||null,lightweight?240:360,groundY,kind=>!!m&&(ANIMALS[m.species].foods as string[]).includes(kind),f=>input.current.instinct!==false||(!!m&&dist(m,f)<75),m&&!m.deadUntil?{...(positions.get(m.id)||m),range:FOOD_RANGE}:undefined);
    const before=performance.now();renderer.render(scene,camera);frameCost=frameCost*.97+(performance.now()-before)*.03;
-   sampleFrames++;sampleWork+=performance.now()-before;if(ms-sampleStart>=2000){const fps=sampleFrames*1000/(ms-sampleStart),renderMs=sampleWork/sampleFrames;const stats={fps:Math.round(fps),renderMs:Math.round(renderMs*10)/10,renderer:lightweight?'software':'webgl',quality:activeTier,drawCalls:renderer instanceof THREE.WebGLRenderer?renderer.info.render.calls:0};element.dataset.fps=fps.toFixed(1);element.dataset.renderMs=renderMs.toFixed(1);element.dataset.renderer=stats.renderer;element.dataset.drawCalls=String(stats.drawCalls);if(renderer instanceof THREE.WebGLRenderer)element.dataset.triangles=String(renderer.info.render.triangles);element.dataset.animalDrawCalls=String(animalBatches?.drawCalls||0);element.dataset.quality=activeTier;latest.current.onPerformance?.(stats);if(!document.hidden&&mode==='auto'&&!lightweight){slowSamples=(frameCost>25||fps<40)?slowSamples+1:0;if(slowSamples>=2)autoTier='performance';}sampleStart=ms;sampleFrames=0;sampleWork=0;}
+   sampleFrames++;sampleWork+=performance.now()-before;if(ms-sampleStart>=2000){const fps=sampleFrames*1000/(ms-sampleStart),renderMs=sampleWork/sampleFrames;const stats={fps:Math.round(fps),renderMs:Math.round(renderMs*10)/10,renderer:lightweight?'software':'webgl',quality:activeTier,drawCalls:renderer instanceof THREE.WebGLRenderer?renderer.info.render.calls:0};element.dataset.fps=fps.toFixed(1);element.dataset.renderMs=renderMs.toFixed(1);element.dataset.renderer=stats.renderer;element.dataset.drawCalls=String(stats.drawCalls);if(renderer instanceof THREE.WebGLRenderer)element.dataset.triangles=String(renderer.info.render.triangles);element.dataset.animalDrawCalls=String(animalBatches?.drawCalls||0);element.dataset.quality=activeTier;element.dataset.worldEvent=effects.stats;latest.current.onPerformance?.(stats);if(!document.hidden&&mode==='auto'&&!lightweight){slowSamples=(frameCost>25||fps<40)?slowSamples+1:0;if(slowSamples>=2)autoTier='performance';}sampleStart=ms;sampleFrames=0;sampleWork=0;}
    if(ms-lastOverlay<100)return;lastOverlay=ms;{const own=m&&positions.get(m.id);if(own)element.dataset.own=own.x.toFixed(1)+' '+own.y.toFixed(1);}element.dataset.camera=yaw.toFixed(3)+' '+ownHeading.toFixed(3)+' '+distance.toFixed(0);ctx.clearRect(0,0,width,height);if(preview||!m)return;
    const placed:[number,number][]=[];
    function label(text:string,x:number,y:number,z:number,color='#f0f3de'){view.set(x,y,z).applyMatrix4(camera.matrixWorldInverse);if(view.z>=-2)return;projected.set(x,y,z).project(camera);const sx=(projected.x*.5+.5)*width,sy=(-projected.y*.5+.5)*height;if(sx<20||sx>width-20||sy<100||sy>height-100)return;if(placed.some(([px,py])=>Math.abs(px-sx)<90&&Math.abs(py-sy)<16))return;placed.push([sx,sy]);ctx.font='600 12px Arial';ctx.textAlign='center';ctx.lineWidth=4;ctx.strokeStyle='#2a1d0ed9';ctx.strokeText(text,sx,sy);ctx.fillStyle=color;ctx.fillText(text,sx,sy);}
@@ -216,11 +217,15 @@ export default function WorldScene({room,me,input,preview=false,focus=null,onSho
    const mw=width<760?106:142,mh=mw*H/W,mx=width-mw-22,my=width<760?94:height-mh-24;
    ctx.fillStyle='#2a2112da';ctx.fillRect(mx-8,my-24,mw+16,mh+32);ctx.strokeStyle='#e6c47a55';ctx.strokeRect(mx-8,my-24,mw+16,mh+32);ctx.textAlign='left';ctx.font='600 11px Arial';ctx.fillStyle='#f3e7cc';ctx.fillText('GOLDEN PLAINS',mx,my-10);ctx.fillStyle='#b8954e';ctx.fillRect(mx,my,mw,mh);
    for(const t of ps){if(t.kind==='tallgrass'){ctx.fillStyle='#9c8a3f';ctx.beginPath();ctx.arc(mx+t.x/W*mw,my+t.y/H*mh,Math.max(1.5,t.size*100/W*mw),0,Math.PI*2);ctx.fill();continue;}if(t.kind==='water'){ctx.fillStyle='#5e9a96';ctx.beginPath();ctx.arc(mx+t.x/W*mw,my+t.y/H*mh,Math.max(2,t.size/W*mw),0,Math.PI*2);ctx.fill();continue;}if(t.kind==='bush')continue;ctx.fillStyle=t.kind==='tree'?'#5f7a33':t.kind==='rock'?'#8b8070':'#4a3420';ctx.fillRect(mx+t.x/W*mw,my+t.y/H*mh,2,2);}
+   // the day's world event on the map: the burnt patch and its burning edge, or the migrating column and its heading
+   {const ev=r?worldEvent(r,now):null;
+    if(ev?.kind==='fire'&&now>=ev.at){const e=fireEdge(ev,(Math.min(now,ev.until)-ev.at)/1000);ctx.save();ctx.beginPath();ctx.ellipse(mx+e.cx/W*mw,my+e.cy/H*mh,Math.max(1,e.a/W*mw),Math.max(1,e.b/H*mh),Math.atan2(ev.uy*mh/H,ev.ux*mw/W),0,Math.PI*2);ctx.fillStyle=now-ev.at>FIRE.flush+20000?'#4f5a2ccc':'#231a14d9';ctx.fill();if(now<ev.until){ctx.strokeStyle='#ff8a3a';ctx.lineWidth=1.6;ctx.stroke();}ctx.restore();}
+    if(ev?.kind==='migration'&&now>=ev.at-10000&&now<ev.until+60000){ctx.fillStyle='#f6eedb';ctx.strokeStyle='#2a1d0e';ctx.lineWidth=1;for(const p of players)if(p.id.startsWith('trek-')&&!p.deadUntil){ctx.fillRect(mx+p.x/W*mw-1.5,my+p.y/H*mh-1.5,3,3);ctx.strokeRect(mx+p.x/W*mw-1.5,my+p.y/H*mh-1.5,3,3);}if(now<ev.at+20000){const ax=mx+ev.x0/W*mw,bx=mx+ev.x1/W*mw;ctx.strokeStyle='#e9dcc099';ctx.setLineDash([3,3]);ctx.beginPath();ctx.moveTo(ax,my+mh);ctx.lineTo(bx,my);ctx.stroke();ctx.setLineDash([]);}}}
    for(const p of humans){ctx.fillStyle=playerColour(p.id);ctx.strokeStyle='#2a1d0e';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(mx+p.x/W*mw,my+p.y/H*mh,3.2,0,Math.PI*2);ctx.fill();ctx.stroke();}
    ctx.save();ctx.translate(mx+m.x/W*mw,my+m.y/H*mh);ctx.rotate(-yaw);ctx.fillStyle='#fff6dc';ctx.beginPath();ctx.moveTo(0,-5);ctx.lineTo(-3,3);ctx.lineTo(3,3);ctx.closePath();ctx.fill();ctx.restore();
   };
   renderer.setAnimationLoop(render);
-  return()=>{observer.disconnect();renderer.setAnimationLoop(null);canvas.removeEventListener('pointerdown',down);canvas.removeEventListener('pointermove',drag);canvas.removeEventListener('pointerup',up);canvas.removeEventListener('pointercancel',up);canvas.removeEventListener('wheel',wheel);animalBatches?.dispose();savanna.dispose();traces.dispose();food.dispose();shadowGeo.dispose();shadowMat.dispose();renderer.dispose();renderer.forceContextLoss();canvas.remove();overlay.remove();};
+  return()=>{observer.disconnect();renderer.setAnimationLoop(null);canvas.removeEventListener('pointerdown',down);canvas.removeEventListener('pointermove',drag);canvas.removeEventListener('pointerup',up);canvas.removeEventListener('pointercancel',up);canvas.removeEventListener('wheel',wheel);animalBatches?.dispose();savanna.dispose();effects.dispose();traces.dispose();food.dispose();shadowGeo.dispose();shadowMat.dispose();renderer.dispose();renderer.forceContextLoss();canvas.remove();overlay.remove();};
  },[preview,input]);
  return <div ref={host} className="world-scene">{failure&&<div className="graphics-error" role="alert">{failure}</div>}{software&&!preview&&<span className="render-mode">Compatibility graphics</span>}</div>;
 }

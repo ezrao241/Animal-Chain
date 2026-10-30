@@ -12,7 +12,7 @@ There is no Blender or game engine at runtime, and no model or texture files: ev
 
 ```bash
 pnpm install                                   # Node >= 22.13
-node --test tests/game.test.mjs tests/route.test.mjs tests/rewards.test.mjs   # all tests (node --test tests/ also picks up helper files and fails)
+node --test tests/game.test.mjs tests/route.test.mjs tests/rewards.test.mjs tests/world-events.test.mjs   # all tests (node --test tests/ also picks up helper files and fails)
 node scripts/mp-playtest.mjs [shots-dir]       # two browser sessions vs the real route on a local server (needs the play build below)
 node --test --test-name-pattern "zebra" tests/game.test.mjs   # a single test by name
 pnpm lint                                      # reports pre-existing React-hooks errors in WorldScene.tsx; compare against main rather than expecting zero
@@ -57,6 +57,7 @@ LAG_MS=250 JITTER_MS=120 node scripts/perf/lag-test.mjs [dist-play]  # two brows
 - `safari-animals.ts`: per-species anatomy specs in metres, a joint hierarchy (body, neck, head, ears, two tail segments, three per leg), procedural gait animation (`animateSafari`), camera profiles, and menu portraits. Geometry is built once per species and LOD and cached.
 - `animal-batches.ts`: rigs keep their articulated scene-graph transforms but are not drawn directly; each frame every visible body part is copied into one `InstancedMesh` per part geometry (lod 0 or lod 1 beyond 26 m), and animals outside the camera frustum are skipped unless shadow maps are on.
 - `savanna-world.ts`: terrain height grid (`groundY` interpolates the exact triangles drawn, so animals stand on the facets), terrain and pooled ground shade split into tiles for frustum culling, instanced acacias/boulders with near/far LOD and far-plane culling (re-levelled every 40 units of movement), grass/flower/pebble instancing in 400-unit chunks thinned with distance, wind in a patched grass vertex shader, water, sky, clouds and horizon.
+- `world-effects.ts`: the day's world event (lib/game.ts `worldEvent`): flames along the fire front, smoke, the burnt-ground overlay (per-vertex arrival times on the terrain triangles), the smoke column on the horizon and migration dust; the grass shader in `savanna-world.ts` burns and regrows tufts from the same formula. Events are computed from the room clock, so nothing extra is synced.
 - `safari-food.ts` and `safari-traces.ts` (tracks, trails, vultures) are instanced the same way.
 
 ## Project rules from the owner

@@ -91,8 +91,26 @@ function tuft(seed:number,tall:boolean){
 }
 /** Grass bends in one shared breeze: every tuft leans downwind, and gusts roll across the plain in the wind's direction
  *  (the bend is turned into each instance's own frame, so rotated tufts still lean the same way). */
+/** The day's grass fire (lib/game.ts fireArrival, worked out again per tuft on the GPU): ignition and head direction,
+ *  then seconds since the strike, the fire's run, a point's flaming time and the wait for green shoots, and the
+ *  ellipse's growth rates (semi-major, centre drift, semi-minor in units a second). uFireOn is 0 on days without one. */
+const fireUniforms={uFire:{value:new THREE.Vector4()},uFireT:{value:new THREE.Vector4()},uFireK:{value:new THREE.Vector3(1,0,1)},uFireOn:{value:0}};
+const FIRE_GLSL=`
+  vGlow=0.;
+  if(uFireOn>.5){
+   vec2 fd=iPos.xz-uFire.xy;float fl=dot(fd,uFire.zw),fs=-fd.x*uFire.w+fd.y*uFire.z,A2=uFireK.x*uFireK.x,al=1.-uFireK.y*uFireK.y/A2,be=2.*fl*uFireK.y/A2,ga=fl*fl/A2+fs*fs/(uFireK.z*uFireK.z);
+   float arr=(-be+sqrt(be*be+4.*al*ga))/(2.*al),age=uFireT.x-arr;
+   if(arr<=uFireT.y&&age>=0.){
+    // in the flames the tuft glows and shrivels; then black stubble; then fresh green shoots coming through
+    if(age<uFireT.z&&uFireT.x<uFireT.y){float k=age/uFireT.z;transformed*=1.-k*.85;vColor.rgb=mix(vec3(1.,.62,.2),vec3(.12,.07,.05),k);vGlow=1.-k;}
+    else if(age<uFireT.w){transformed*=.1;vColor.rgb=vec3(.1,.09,.08);}
+    else{float g=min(1.,(age-uFireT.w)/30.);transformed*=.1+.32*g;vColor.rgb=mix(vec3(.1,.09,.08),vec3(.4,.6,.24),g);}
+   }
+  }`;
 function windy(material:THREE.MeshStandardMaterial,time:{value:number},wind:{value:THREE.Vector2},cam:{value:THREE.Vector3}){
- material.onBeforeCompile=shader=>{shader.uniforms.uTime=time;shader.uniforms.uWind=wind;shader.uniforms.uCam=cam;shader.vertexShader='uniform float uTime;\nuniform vec2 uWind;\nuniform vec3 uCam;\n'+shader.vertexShader.replace('#include <begin_vertex>',`#include <begin_vertex>
+ material.onBeforeCompile=shader=>{shader.uniforms.uTime=time;shader.uniforms.uWind=wind;shader.uniforms.uCam=cam;Object.assign(shader.uniforms,fireUniforms);
+  shader.fragmentShader='varying float vGlow;\n'+shader.fragmentShader.replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\n totalEmissiveRadiance+=vGlow*vec3(1.,.42,.1);');
+  shader.vertexShader='uniform float uTime;\nuniform vec2 uWind;\nuniform vec3 uCam;\nuniform vec4 uFire;\nuniform vec4 uFireT;\nuniform vec3 uFireK;\nuniform float uFireOn;\nvarying float vGlow;\n'+shader.vertexShader.replace('#include <begin_vertex>',`#include <begin_vertex>
   #ifdef USE_INSTANCING
   vec3 iPos=instanceMatrix[3].xyz;vec3 lw=normalize((vec4(uWind.x,0.,uWind.y,0.)*instanceMatrix).xyz+vec3(1e-5));
   #else
@@ -102,7 +120,7 @@ function windy(material:THREE.MeshStandardMaterial,time:{value:number},wind:{val
   float gust=.55+.45*sin(along*.011-uTime*1.6)+.15*sin(along*.037-uTime*2.7+iPos.x*.002);
   transformed.xz+=lw.xz*gust*transformed.y*.17;
   // tufts right in front of the lens sink into the ground so they never wall off the view
-  transformed*=smoothstep(35.,95.,distance(iPos.xz,uCam.xz));`);};
+  transformed*=smoothstep(35.,95.,distance(iPos.xz,uCam.xz));`+FIRE_GLSL);};
  return material;
 }
 
@@ -172,7 +190,10 @@ function pool(size:number,seed:number){
  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));g.computeVertexNormals();return g;
 }
 
-export type Savanna={/** direction to the sun now (late morning in play, low in the west on the home screen) */sun:THREE.Vector3;update(time:number,x:number,z:number,range:number,cameraFar:number,camera:THREE.Vector3,wind?:{x:number;y:number}):void;realShadows(on:boolean):void;dusk():void;/** time of day in play: sun and moon directions (x east, y up, z south), how light it is (0 night, 1 day) and the moonlight */daylight(sun:THREE.Vector3,moon:THREE.Vector3,day:number,moonlight:number):void;dispose():void};
+export type Savanna={/** direction to the sun now (late morning in play, low in the west on the home screen) */sun:THREE.Vector3;update(time:number,x:number,z:number,range:number,cameraFar:number,camera:THREE.Vector3,wind?:{x:number;y:number}):void;realShadows(on:boolean):void;dusk():void;/** time of day in play: sun and moon directions (x east, y up, z south), how light it is (0 night, 1 day) and the moonlight */daylight(sun:THREE.Vector3,moon:THREE.Vector3,day:number,moonlight:number):void;/** the day's grass fire for the grass shader (null on a day without one) */fire(state:GrassFire|null):void;dispose():void};
+export type GrassFire={x:number;y:number;ux:number;uy:number;seconds:number;run:number;flame:number;flush:number;a:number;c:number;f:number};
+/** the terrain grid (cell size and origin), so overlays can follow the same ground triangles */
+export const TERRAIN_GRID={S,X0,Z0,NX,NZ};
 export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
  const disposables:{dispose():void}[]=[],add=<T extends THREE.Object3D>(o:T)=>{scene.add(o);return o;};
  const facet=facetMaterial();disposables.push(facet);
@@ -296,6 +317,7 @@ export function createSavanna(scene:THREE.Scene,lightweight:boolean):Savanna{
    starMat.opacity=(1-smooth(-.25,.05,up))*(1-moonlight*.45);stars.visible=starMat.opacity>.01;
    shadeMat.opacity=.2*smooth(.15,.6,up);
   },
+  fire(f){fireUniforms.uFireOn.value=f?1:0;if(!f)return;fireUniforms.uFire.value.set(f.x,f.y,f.ux,f.uy);fireUniforms.uFireT.value.set(f.seconds,f.run,f.flame,f.flush);fireUniforms.uFireK.value.set(f.a,f.c,f.f);},
   dispose(){disposables.forEach(d=>d.dispose());},
  };
 }
