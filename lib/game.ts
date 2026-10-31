@@ -43,6 +43,8 @@ export type Player={id:string;token?:string;name:string;bot:boolean;species:Spec
  thirst?:number;
  /** a committed catch attempt: the prey it is aimed at and when the lunge lands (or a leopard's leap, on landing) */
  strikeId?:string;strikeAt?:number;strikeAmbush?:boolean;
+ /** when a held E press was made (interact): it runs as soon as the re-arm or the lunge in progress is over */
+ interactQueued?:number;
  /** the life (born time) a strike was committed in: a strike never carries over into a new life */
  strikeBorn?:number;strikeTargetBorn?:number;
  /** the line the lunge was launched along */
@@ -741,7 +743,8 @@ export function climbPose(ps:Prop[],p:Pick<Player,'species'|'x'|'y'|'heading'|'c
 }
 /** True when q stands in the rear arc of p (more than about 110° off the way p faces): where a zebra's hind legs reach. */
 export const behind=(p:Player,q:{x:number;y:number})=>Math.cos(Math.atan2(q.y-p.y,q.x-p.x)-(p.heading??0))<-.35;
-export function useAbility(p:Player,room:Room,now:number){p.feeding=undefined;if(now<p.abilityReady||p.deadUntil)return;
+export function useAbility(p:Player,room:Room,now:number){p.feeding=undefined;if(p.deadUntil)return;
+ if(now<p.abilityReady){if(!p.bot)notify(p,ANIMALS[p.species].ability+' ready in '+Math.ceil((p.abilityReady-now)/1000)+' s',now);return;}
  if(p.climb){notify(p,'Press Q to climb down first.',now);return;}
  if(p.species==='warthog'){const burrow=props(room.seed).filter(t=>t.kind==='burrow'&&dist(t,p)<BURROW_REACH).sort((a,b)=>dist(a,p)-dist(b,p))[0];if(!burrow){notify(p,'Find a burrow first: a dark hole in open ground.',now);return;}const sa=idHash(p.id)*6.28;p.x=burrow.x+Math.cos(sa)*5;p.y=burrow.y+Math.sin(sa)*5;p.dx=0;p.dy=0;if(p.threatAt&&now-p.threatAt<3000)award(p,'tusks');}
  if(p.species==='zebra'){const close=room.players.filter(q=>!q.deadUntil&&q.protectedUntil<now&&ANIMALS[q.species].prey.includes('zebra')&&dist(q,p)<KICK_RANGE),kicked=close.filter(q=>behind(p,q));if(kicked.length)dropShield(p,now);if(close.length&&!kicked.length)notify(p,'Missed: a kick only reaches behind you.',now);for(const q of kicked){q.stunUntil=now+2500;const d=Math.max(1,dist(q,p));q.x=Math.max(25,Math.min(W-25,q.x+(q.x-p.x)/d*20));q.y=Math.max(25,Math.min(H-25,q.y+(q.y-p.y)/d*20));notify(q,'Kicked by a zebra! Stunned.',now);}if(kicked.length){award(p,'kick');p.score+=4;notify(p,'Kick landed +4',now);}}
@@ -756,12 +759,17 @@ export function die(p:Player,room:Room,now:number,cause:string){if(cause===RESTA
  if(!p.bot)(p.lives??=[]).push({species:p.species,seconds:Math.round(p.survivalSeconds),points:p.score-(p.lifeStart??0),food:p.food,hunts:p.hunts,cause});p.feeding=undefined;if(p.scorch)p.scorch=0;if(p.smokeUntil)p.smokeUntil=0;p.deadUntil=now+2600;p.dx=0;p.dy=0;p.vx=0;p.vy=0;endClimb(p);p.strikeId='';p.strikeAt=0;p.strikeAmbush=false;p.deaths++;notify(p,cause,now);if(!p.bot){room.events.unshift(p.name+' '+cause);room.events=room.events.slice(0,5);}}
 // A kill leaves a carcass for scavengers once the hunter has eaten. Old carcasses dry out.
 function dropCarcass(room:Room,x:number,y:number,now:number){room.foods=room.foods.filter(f=>!f.until||f.until>now);if(room.foods.length>620)return;const id=Math.max(0,...room.foods.map(f=>f.id))+1;room.foods.push({id,x,y,kind:'carrion',ready:now+7500,until:now+90000});}
-export function interact(p:Player,room:Room,now:number){if(p.deadUntil||p.feeding||now<p.interactReady||p.strikeId)return;if((p.stunUntil??0)>now){notify(p,'Still reeling from the kick.',now);return;}p.interactReady=now+650;p.actionUntil=now+500;
+/** A player's E pressed during the 0.65 s re-arm after the last press, or while a lunge is still in the air, is held
+ *  and runs the moment the animal is ready (tick), so a quick second press is never swallowed. */
+const INTERACT_HOLD_MS=1000;
+export function interact(p:Player,room:Room,now:number){if(p.deadUntil)return;
+ if(p.feeding){if(!p.bot)notify(p,'Feeding: '+Math.max(1,Math.ceil((p.feeding.until-now)/1000))+' s left. Move to stop.',now);return;}
+ if(now<p.interactReady||p.strikeId){if(!p.bot)p.interactQueued=now;return;}p.interactQueued=0;if((p.stunUntil??0)>now){notify(p,'Still reeling from the kick.',now);return;}p.interactReady=now+650;p.actionUntil=now+500;
  if(p.stunUntil>now){notify(p,'Still stunned.',now);return;}
  const a=ANIMALS[p.species],ambush=p.species==='leopard'&&p.climb==='limb';
  const reach=(ambush?AMBUSH_RANGE:p.abilityUntil>now&&(p.species==='lion'||p.species==='leopard')?POUNCE_RANGE:a.catchRange)*HUNT_REACH_MULTIPLIER*(perkOf(p)==='bite'?1+PERK_SIZE.bite:1);
  const victims=room.players.filter(q=>q.id!==p.id&&!q.deadUntil&&q.protectedUntil<now&&canTake(p,q,room)&&!hidden(q,room,now)&&!leaping(q,now)&&dist(p,q)<reach);victims.sort((x,y)=>dist(p,x)-dist(p,y));
- if(p.climb&&!ambush)return;
+ if(p.climb&&!ambush){if(!p.bot)notify(p,'Not while climbing: get onto a branch to drop on prey, or Q to come down.',now);return;}
  // A catch is a committed lunge: aimed at prey in front, with nothing solid in between, and it lands a quarter of a
  // second later (the prey sees the hunter gather itself and can still leap, kick or break away). A leopard's ambush
  // is a leap from the bough that is checked when it lands.
@@ -869,6 +877,7 @@ export function tick(room:Room,now:number){
  // food runs down at its own pace; a parched animal burns through it twice as fast
  p.hunger-=dt*HUNGER_RATE[p.species]*(p.thirst<=0?2:1);
  if(p.strikeId&&p.strikeAt&&t>=p.strikeAt)resolveStrike(p,room,t);
+ if(p.interactQueued){if(p.feeding||p.deadUntil||t-p.interactQueued>INTERACT_HOLD_MS)p.interactQueued=0;else if(!p.strikeId&&t>=p.interactReady)interact(p,room,t);}
  if(p.hunger<=0){die(p,room,t,'ran out of food.');continue;}
  if(stepFire(p,room,t,dt))continue;stepTrek(p,room,t,dt);
  if(!p.bot&&ANIMALS[p.species].prey.length&&!p.badges?.includes('stalk10'))stalkedClose(p,room,ps,t);
