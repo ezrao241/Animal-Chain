@@ -8,7 +8,8 @@ export const ONLINE_MS=8000,        // a human who hasn't synced for this long i
  HOST_GRACE_MS=GRACE_MS,            // and an away host keeps the room as long, then an online player takes over
  STALE_MS=GRACE_MS,                 // (kept as names for the two uses)
  IDLE_ROOM_MS=30*60000,             // nobody has synced for this long: the room is gone
- ACTION_MAX_AGE=1500,               // a one-shot press older than this (a long outage) is dropped rather than replayed late
+ ACTION_MAX_AGE=3000,               // a one-shot press older than this (a long outage) is dropped rather than replayed late;
+                                    // it covers a press that waited behind one slow sync (abandoned after 1.5-3 s, lib/link.ts)
  COALESCE_MS=60,                    // a sync carrying nothing new within this long of the last tick is answered from the stored state
  MAX_PLAYERS=8,
  CLAIM_SLACK=90,                    // how far (game units, 9 m) a reported position may run ahead of top speed: network jitter, banked between syncs
@@ -36,7 +37,8 @@ export function settleRoom(room:Room,now:number){
 }
 
 /** Runs one-shot presses at most once each: ids are per-player and increasing, so a retried or reordered request can't
- *  repeat one. A press made in an earlier life (born), while dead, outside a round, or too long ago is acknowledged and dropped. */
+ *  repeat one. A press made in an earlier life (born), while dead, outside a round, or too long ago is acknowledged and dropped.
+ *  A press the rules can't run yet is answered with a message (or, for E in its short re-arm, held: lib/game.ts interact). */
 export function applyActions(p:Player,room:Room,list:unknown,now:number){
  if(!Array.isArray(list))return false;
  const actions=list.slice(0,8).filter((a):a is Action=>!!a&&Number.isSafeInteger(a.id)&&['ability','interact','perch'].includes(a.kind)).sort((a,b)=>a.id-b.id);
@@ -149,7 +151,7 @@ function quiet(p:Player,seenBefore:number,room:Room,b:Record<string,unknown>,now
 
 // Fields only the server (and the animal's own player) may see: credentials, input, AI plans and targets, task progress,
 // private messages. Everything else describes what any animal on the plains could observe.
-const SERVER_ONLY=['token','anchorX','anchorY','anchorAt','anchorBorn','slack','bag','seq','act','inputAt','lastSeen','strikeId','strikeBorn','strikeTargetBorn','strikeDir'] as const;
+const SERVER_ONLY=['token','anchorX','anchorY','anchorAt','anchorBorn','slack','bag','seq','act','inputAt','lastSeen','strikeId','strikeBorn','strikeTargetBorn','strikeDir','interactQueued'] as const;
 const OWNER_ONLY=['dx','fix','dy','targetX','targetY','targetId','threatX','threatY','lastThreatAt','threatAt','homeX','homeY','nextDrink','chaseStart','thinkAt','stuckX','stuckY','stuckAt','unstickUntil','moodUntil','alarmAt','message','messageUntil','hunger','thirst','claimed','food','hunts','drinks','scavenged','escapes','hiddenSeconds','survivalSeconds','abilityReady','interactReady','done','carry','lives','lifeStart','survived','badges','lane','scorch','smokeUntil','trekked'] as const;
 // Beyond FAR_VIEW (past the largest draw range, sound and sense ranges) an animal is never drawn or heard; it is sent with just
 // what its tracks need (components/game/safari-traces.ts), about a quarter of the size.
